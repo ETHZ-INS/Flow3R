@@ -222,6 +222,7 @@
      <string>Recording</string>
     </property>
     <addaction name="action_configure_cameras"/>
+    <addaction name="action_configure_recordings"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuRecording"/>
@@ -230,6 +231,11 @@
   <action name="action_configure_cameras">
    <property name="text">
     <string>Configure Cameras</string>
+   </property>
+  </action>
+  <action name="action_configure_recordings">
+   <property name="text">
+    <string>Configure Recording</string>
    </property>
   </action>
  </widget>

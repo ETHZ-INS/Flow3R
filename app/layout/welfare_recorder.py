@@ -30,6 +30,8 @@ class Ui_WelfareRecorder(object):
         WelfareRecorder.setUnifiedTitleAndToolBarOnMac(False)
         self.action_configure_cameras = QAction(WelfareRecorder)
         self.action_configure_cameras.setObjectName(u"action_configure_cameras")
+        self.action_configure_recordings = QAction(WelfareRecorder)
+        self.action_configure_recordings.setObjectName(u"action_configure_recordings")
         self.centralwidget = QWidget(WelfareRecorder)
         self.centralwidget.setObjectName(u"centralwidget")
         self.verticalLayout = QVBoxLayout(self.centralwidget)
@@ -127,6 +129,7 @@ class Ui_WelfareRecorder(object):
         self.menubar.addAction(self.menuFile.menuAction())
         self.menubar.addAction(self.menuRecording.menuAction())
         self.menuRecording.addAction(self.action_configure_cameras)
+        self.menuRecording.addAction(self.action_configure_recordings)
 
         self.retranslateUi(WelfareRecorder)
 
@@ -136,6 +139,7 @@ class Ui_WelfareRecorder(object):
     def retranslateUi(self, WelfareRecorder):
         WelfareRecorder.setWindowTitle(QCoreApplication.translate("WelfareRecorder", u"Welfar3Recorder", None))
         self.action_configure_cameras.setText(QCoreApplication.translate("WelfareRecorder", u"Configure Cameras", None))
+        self.action_configure_recordings.setText(QCoreApplication.translate("WelfareRecorder", u"Configure Recording", None))
 #if QT_CONFIG(tooltip)
         self.btn_record.setToolTip("")
 #endif // QT_CONFIG(tooltip)

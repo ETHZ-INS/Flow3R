@@ -56,6 +56,7 @@ class VideoFileCameraConfig:
 class CameraConfig:
     camera_id: str
     camera_name: str
+    recording_id: str | None
     camera_type: Literal['pylon', 'video_file']
 
     pylon: PylonCameraConfig = field(default_factory=PylonCameraConfig)
@@ -65,6 +66,7 @@ class CameraConfig:
         return {
             "camera_id": self.camera_id,
             "camera_name": self.camera_name,
+            "recording_id": self.recording_id,
             "camera_type": self.camera_type,
             "pylon": self.pylon.to_dict() if self.pylon else None,
             "video_file": self.video_file.to_dict() if self.video_file else None
@@ -72,4 +74,11 @@ class CameraConfig:
 
     @classmethod
     def from_dict(cls, data: dict) -> 'CameraConfig':
-        raise NotImplementedError("Subclasses must implement from_dict method.")
+        return cls(
+            camera_id=data['camera_id'],
+            camera_name=data['camera_name'],
+            recording_id=data.get('recording_id'),
+            camera_type=data['camera_type'],
+            pylon=PylonCameraConfig.from_dict(data['pylon']) if data.get('pylon') else PylonCameraConfig(),
+            video_file=VideoFileCameraConfig.from_dict(data['video_file']) if data.get('video_file') else VideoFileCameraConfig()
+        )
