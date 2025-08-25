@@ -12,7 +12,7 @@ class PositionHeatmapTransform:
     def __init__(self,
                  width: int,
                  height: int,
-                 kernel_sigma: int = 8,
+                 kernel_sigma: int = 20,
                  decay: float = 0.0):
         """
         kernel_sigma  – std-dev of the Gaussian kernel in *pixels*.
@@ -34,8 +34,8 @@ class PositionHeatmapTransform:
         return kernel
 
     # ------------------------------------------------------------------
-    def _accumulate(self, heatmap: np.ndarray, instances) -> np.ndarray:
-        center_points = [instance.points[5] for instance in instances]
+    def _accumulate(self, heatmap: np.ndarray, pose_results) -> np.ndarray:
+        center_points = [instance.points[5] for instance in pose_results.instances]
         """Add one centre point; apply optional decay."""
         if self.decay:
             heatmap *= (1.0 - self.decay)

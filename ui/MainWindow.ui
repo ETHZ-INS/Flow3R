@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>WelfareRecorder</class>
+ <widget class="QMainWindow" name="WelfareRecorder">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>800</width>
+    <height>600</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Welfar3Recorder</string>
+  </property>
+  <property name="dockOptions">
+   <set>QMainWindow::AllowNestedDocks|QMainWindow::AllowTabbedDocks|QMainWindow::AnimatedDocks</set>
+  </property>
+  <property name="unifiedTitleAndToolBarOnMac">
+   <bool>false</bool>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <item>
+     <widget class="QFrame" name="frm_dock_window">
+      <property name="frameShape">
+       <enum>QFrame::StyledPanel</enum>
+      </property>
+      <property name="frameShadow">
+       <enum>QFrame::Raised</enum>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QFrame" name="frm_recordings">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="frameShape">
+       <enum>QFrame::NoFrame</enum>
+      </property>
+      <property name="frameShadow">
+       <enum>QFrame::Raised</enum>
+      </property>
+      <layout class="QVBoxLayout" name="verticalLayout_3">
+       <property name="spacing">
+        <number>2</number>
+       </property>
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+      </layout>
+     </widget>
+    </item>
+    <item>
+     <widget class="QFrame" name="frm_footer">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>0</width>
+        <height>60</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>16777215</width>
+        <height>60</height>
+       </size>
+      </property>
+      <property name="styleSheet">
+       <string notr="true"/>
+      </property>
+      <property name="frameShape">
+       <enum>QFrame::StyledPanel</enum>
+      </property>
+      <property name="frameShadow">
+       <enum>QFrame::Raised</enum>
+      </property>
+      <layout class="QHBoxLayout" name="horizontalLayout_4">
+       <property name="topMargin">
+        <number>9</number>
+       </property>
+       <property name="rightMargin">
+        <number>9</number>
+       </property>
+       <item>
+        <widget class="QLabel" name="lbl_message">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="MinimumExpanding">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="text">
+          <string>Status messages will be displayed here</string>
+         </property>
+         <property name="textFormat">
+          <enum>Qt::MarkdownText</enum>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>800</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menuFile">
+    <property name="title">
+     <string>File</string>
+    </property>
+    <addaction name="action_load_project"/>
+    <addaction name="action_save_project"/>
+    <addaction name="action_save_project_as"/>
+   </widget>
+   <widget class="QMenu" name="menuRecording">
+    <property name="title">
+     <string>Recording</string>
+    </property>
+    <addaction name="action_add_camera_group"/>
+    <addaction name="action_configure_camera_groups"/>
+   </widget>
+   <widget class="QMenu" name="menuCameras">
+    <property name="title">
+     <string>Cameras</string>
+    </property>
+    <addaction name="action_add_camera"/>
+    <addaction name="action_configure_cameras"/>
+   </widget>
+   <widget class="QMenu" name="menuProcessing">
+    <property name="title">
+     <string>Processing</string>
+    </property>
+    <addaction name="action_configure_pipelines"/>
+   </widget>
+   <addaction name="menuFile"/>
+   <addaction name="menuCameras"/>
+   <addaction name="menuRecording"/>
+   <addaction name="menuProcessing"/>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+  <action name="action_configure_recordings">
+   <property name="text">
+    <string>Configure Recording</string>
+   </property>
+  </action>
+  <action name="action_configure_pipelines">
+   <property name="text">
+    <string>Configure Processing Pipeline</string>
+   </property>
+  </action>
+  <action name="action_load_project">
+   <property name="text">
+    <string>Load Project...</string>
+   </property>
+  </action>
+  <action name="action_save_project">
+   <property name="text">
+    <string>Save Project</string>
+   </property>
+  </action>
+  <action name="action_save_project_as">
+   <property name="text">
+    <string>Save Project As...</string>
+   </property>
+  </action>
+  <action name="action_add_camera">
+   <property name="text">
+    <string>Add Camera</string>
+   </property>
+  </action>
+  <action name="action_configure_cameras">
+   <property name="text">
+    <string>Configure Cameras</string>
+   </property>
+  </action>
+  <action name="action_add_camera_group">
+   <property name="text">
+    <string>Add Camera Group</string>
+   </property>
+  </action>
+  <action name="action_configure_camera_groups">
+   <property name="text">
+    <string>Configure Camera Groups</string>
+   </property>
+  </action>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

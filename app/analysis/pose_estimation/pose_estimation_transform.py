@@ -1,14 +1,24 @@
 import numpy as np
 import rx
 import rx.operators as ops
+from py3r.point_tracking.core.data.frame import Frame
 from rx.scheduler import ThreadPoolScheduler
 
 from app.analysis.pose_estimation.pose_model import PoseModel
 
 
-def ensure_3_channel_input(batch):
-    """Ensure that each frame in the batch has 3 channels (RGB)."""
-    return [f if f.shape[2] == 3 else np.repeat(f, 3, axis=2) for _, _, f in batch]
+def ensure_3_channel_input(img):
+    fn, ts, f = img
+    # grayscale, plain 2-D
+    if f.ndim == 2:
+        v = np.broadcast_to(f[..., None], f.shape + (3,))
+    # grayscale, already (H,W,1)
+    elif f.shape[2] == 1:
+        v = np.broadcast_to(f, f.shape[:2] + (3,))
+    # already RGB/BGR
+    else:
+        v = f
+    return fn, ts, v
 
 
 class PoseEstimationTransform:
@@ -20,23 +30,15 @@ class PoseEstimationTransform:
 
     # --------------------------------------------------------------
     def _infer_batch(self, batch):
-        poses = self.model.predict_frames(batch)     # heavy call
-        return poses
+        poses = self.model.predict_frames([f for _, _, f in batch])
+        results = [Frame(fn, f.shape[1], f.shape[0], instances) for (fn, _, f), instances in zip(batch, poses)]
+        return results
 
     def __call__(self, upstream: rx.Observable) -> rx.Observable:
         return upstream.pipe(
-            # 1️⃣ collect successive frames into fixed-size lists
-            ops.buffer_with_count(self.batch_size),
-
-            # 2️⃣ hop to the worker thread — every *next* operator runs there
             ops.observe_on(self.scheduler),
-
-            # 3️⃣ ensure that each frame has 3 channels (RGB)
-            ops.map(ensure_3_channel_input),          # → list[frame] with 3 channels
-
-            # 3️⃣ run a single inference per batch
-            ops.map(self._infer_batch),          # → list[(ts, pose)]
-
-            # 4️⃣ flatten the list back into individual items
-            ops.flat_map(rx.from_iterable)       # → (ts, pose) per frame
+            ops.map(ensure_3_channel_input),
+            ops.buffer_with_count(self.batch_size),
+            ops.map(self._infer_batch),
+            ops.flat_map(rx.from_iterable)
         )

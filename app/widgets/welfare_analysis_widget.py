@@ -20,14 +20,22 @@ class WelfareAnalysisWidget(Ui_WelfareAnalysisWidget, QDockWidget):
 
         self.update_signal.connect(self.update_analysis)
 
+    @classmethod
+    def create_widget(cls, config):
+        return cls()
+
+    @classmethod
+    def update_widget(cls, widget, config):
+        return widget
+
     def on_next(self, distance_travelled: float):
         self.update_signal.emit(distance_travelled)
 
     def on_error(self, err):
-        print(f"[CameraWidget] error: {err}")
+        print(f"[WelfareAnalysisWidget] error: {err}")
 
     def on_completed(self):
-        print("[CameraWidget] completed")
+        print("[WelfareAnalysisWidget] completed")
 
     def update_analysis(self, distance_travelled: float):
         self.label.setText(f"Distance Travelled: {distance_travelled:.2f}")

@@ -15,8 +15,8 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QFont, QFontDatabase, QGradient, QIcon,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
-from PySide6.QtWidgets import (QApplication, QDockWidget, QLabel, QSizePolicy,
-    QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QApplication, QDockWidget, QFrame, QLabel,
+    QSizePolicy, QVBoxLayout, QWidget)
 
 class Ui_WelfareAnalysisWidget(object):
     def setupUi(self, WelfareAnalysisWidget):
@@ -27,13 +27,24 @@ class Ui_WelfareAnalysisWidget(object):
         self.dockWidgetContents = QWidget()
         self.dockWidgetContents.setObjectName(u"dockWidgetContents")
         self.verticalLayout = QVBoxLayout(self.dockWidgetContents)
+        self.verticalLayout.setSpacing(0)
         self.verticalLayout.setObjectName(u"verticalLayout")
-        self.label = QLabel(self.dockWidgetContents)
+        self.verticalLayout.setContentsMargins(0, 0, 0, 0)
+        self.frame = QFrame(self.dockWidgetContents)
+        self.frame.setObjectName(u"frame")
+        self.frame.setFrameShape(QFrame.StyledPanel)
+        self.frame.setFrameShadow(QFrame.Raised)
+        self.verticalLayout_2 = QVBoxLayout(self.frame)
+        self.verticalLayout_2.setObjectName(u"verticalLayout_2")
+        self.label = QLabel(self.frame)
         self.label.setObjectName(u"label")
         self.label.setTextFormat(Qt.MarkdownText)
         self.label.setAlignment(Qt.AlignCenter)
 
-        self.verticalLayout.addWidget(self.label)
+        self.verticalLayout_2.addWidget(self.label)
+
+
+        self.verticalLayout.addWidget(self.frame)
 
         WelfareAnalysisWidget.setWidget(self.dockWidgetContents)
 

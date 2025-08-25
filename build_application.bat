@@ -1,5 +1,5 @@
 :: The pyinstaller command is provided by the pyinstaller Python module, so the command needs to be executed inside the conda environment
-call conda activate GrimaceRecorder
+call conda activate Welfar3Recorder
 pyinstaller^
  --add-data "res/logo.png;./res"^
  --add-data "res/logo.ico;./res"^

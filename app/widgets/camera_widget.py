@@ -1,41 +1,88 @@
-from typing import Dict, Tuple
-import time
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
 from PySide6 import QtCore
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QImage, QPixmap
-from PySide6.QtWidgets import QDockWidget, QMenu
+from PySide6.QtWidgets import QDockWidget, QMenu, QLabel
 
-import rx
-from rx import operators as ops
-from rx.scheduler import ThreadPoolScheduler
-
-from app.config.camera_config import CameraConfig
-from app.config.recording_config import RecordingConfig
 from app.layout.camera_widget import Ui_CameraWidget
+from app.thread_bound_callable import thread_bound
+from app.widgets.recording_controls_widget import RecordingControlsWidget
+
+if TYPE_CHECKING:
+    from app.controller import Controller
+    from app.widgets.main_window import WelfareRecorder
+
+
+class CameraWidgetFactory:
+    def __init__(self, controller: "Controller", ui: "WelfareRecorder"):
+        self.controller = controller
+        self.ui = ui
+
+    def create_widget(self, config) -> "CameraWidget":
+        camera_id = config["camera_id"]
+        camera_name = config["camera_name"]
+        recording_id = config.get("recording_id", None)
+        recording_name = config.get("recording_name", None)
+
+        widget = CameraWidget(camera_id, camera_name, recording_id, recording_name)
+
+        widget.recording_controls.recording_start.connect(lambda rid: self.controller.start_recording.future(rid))
+        widget.recording_controls.recording_stop.connect(lambda rid: self.controller.stop_recording.future(rid))
+        widget.retry.connect(lambda cid: self.controller.setup_camera.future(cid))
+        widget.edit_camera.connect(self.ui.edit_camera)
+        widget.edit_recording.connect(self.ui.edit_camera_group)
+
+        self.controller.recording_state_changed.connect(widget.recording_controls._recording_state_changed)
+        self.controller.recording_name_changed.connect(widget.recording_controls._recording_name_changed)
+
+        return widget
+
+    def update_widget(self, widget: "CameraWidget", config) -> "CameraWidget":
+        camera_id = config["camera_id"]
+        camera_name = config["camera_name"]
+        recording_id = config.get("recording_id", None)
+        recording_name = config.get("recording_name", None)
+
+        widget.set_camera_config(camera_id, recording_id, camera_name, recording_name)
+        return widget
 
 
 class CameraWidget(Ui_CameraWidget, QDockWidget):
     image_signal = Signal()
-    configure_camera_signal = Signal(str)
-    configure_recording_signal = Signal(str)
-    start_signal = Signal()
+    time_signal = Signal()
+    status_signal = Signal()
 
-    def __init__(self):
+    edit_camera = Signal(str)  # Signal to edit camera configuration
+    edit_recording = Signal(str)  # Signal to edit recording configuration
+    edit_pipeline = Signal(str)
+    retry = Signal(str)  # Signal to retry the camera setup
+
+    def __init__(self, camera_id: str, camera_name: str, recording_id: str = None, recording_name: str = None):
         super(CameraWidget, self).__init__()
 
         self.setupUi(self)
 
+        self.camera_id = camera_id
+        self.recording_id = recording_id or camera_id
+        self.camera_name = camera_name
+        self.recording_name = recording_name
+
+        print(self.recording_id)
+
+        self.recording_controls = RecordingControlsWidget(self.recording_id, self.recording_name, show_recording_name=False, show_context_menu=False)
+        self.recording_controls_frame = self.recording_controls.frm_controls
+        self.frm_content.layout().addWidget(self.recording_controls_frame)
+
         self.context_menu = QMenu(self)
         self.action_configure_camera = self.context_menu.addAction("Configure Camera")
         self.action_configure_recording = self.context_menu.addAction("Configure Recording")
-        self.action_configure_camera.triggered.connect(self.on_configure_camera)
-        self.action_configure_recording.triggered.connect(self.on_configure_recording)
+        self.action_configure_camera.triggered.connect(self.configure_camera)
+        self.action_configure_recording.triggered.connect(self.configure_recording)
 
-        self._worker = ThreadPoolScheduler(1)
-        self._sub = None
+        self.label.linkActivated.connect(self.on_link_activated)
 
         self.label.setMinimumSize(20, 20)
 
@@ -43,38 +90,81 @@ class CameraWidget(Ui_CameraWidget, QDockWidget):
 
         self.current_image = None
         self.current_time = 0.0
+        self.camera_message = None
+        self.status_type = "neutral"
+        self.status_message = None
 
-    def set_camera_config(self, camera_config: CameraConfig, recording_name: str = None):
-        self.camera_id = camera_config.camera_id
-        self.recording_id = camera_config.recording_id
+        self.recording_running = False
 
-        title = f"{camera_config.camera_name}"
-        if recording_name:
-            title += f" ({recording_name})"
+        # Move widget to ui thread
+        self.moveToThread(QtCore.QCoreApplication.instance().thread())
+
+        self._update()
+
+    @thread_bound()
+    def set_show_controls(self, show: bool):
+        """Enable or disable the controls in the widget."""
+        self.recording_controls_frame.setVisible(show)
+
+    def _update(self):
+        title = f"{self.camera_name}"
+        if self.recording_name:
+            title += f" ({self.recording_name})"
         self.setWindowTitle(title)
 
-    def on_configure_camera(self):
-        self.configure_camera_signal.emit(self.camera_id)
+    def set_camera_config(self, camera_id: str, recording_id: str, camera_name: str, recording_name: str = None):
+        self.camera_id = camera_id
+        self.recording_id = recording_id or camera_id
+        self.camera_name = camera_name
+        self.recording_name = recording_name
 
-    def on_configure_recording(self):
-        self.configure_recording_signal.emit(self.recording_id)
+        self.recording_controls.set_recording_id(self.recording_id, self.recording_name)
+        self._update()
 
-    def on_next(self, image: Tuple[int, float, np.ndarray]):
-        _, self.current_time, self.current_image = image
+    def set_image(self, image: np.ndarray):
+        """Set the current image to be displayed."""
+        self.current_image = image
         self.image_signal.emit()
 
-    def on_error(self, err):
-        print(f"[CameraWidget] error: {err}")
-        import traceback
-        traceback.print_exc()
+    def set_camera_message(self, message: str, show_retry: bool = False, show_edit: bool = False):
+        """Set an error message to be displayed."""
+        if show_edit:
+            message += "<br><a href=\"edit\">Edit Camera</a>"
+        if show_retry:
+            message += "<br><a href=\"retry\">Retry</a>"
+        self.camera_message = message
+        self.image_signal.emit()
 
-    def on_completed(self):
-        print("[CameraWidget] completed")
+    def configure_camera(self):
+        self.edit_camera.emit(self.camera_id)
+
+    def configure_recording(self):
+        self.edit_recording.emit(self.recording_id)
+
+    def on_link_activated(self, link: str):
+        """Handle link activation in the camera message."""
+        if link == "retry":
+            self.retry_camera_setup()
+        elif link == "edit":
+            self.edit_camera.emit(self.camera_id)
+
+    def retry_camera_setup(self):
+        """Signal to retry the camera setup."""
+        print(f"[CameraWidget] retry_camera_setup: {self.camera_id}")
+        if self.camera_id is not None:
+            print(f"[CameraWidget] emitting retry signal for {self.camera_id}")
+            self.set_camera_message("Retrying camera setup...")
+            self.retry.emit(self.camera_id)
 
     def display_image(self):
+        if self.camera_message is not None:
+            self.label.clear()
+            self.label.setText(self.camera_message)
+            return
+
         if self.current_image is None:
             self.label.clear()
-            self.label.setText("No image")
+            self.label.setText("Waiting for image...")
             return
 
         label_width = self.label.width()
@@ -102,25 +192,6 @@ class CameraWidget(Ui_CameraWidget, QDockWidget):
             q_image = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
 
         self.label.setPixmap(QPixmap.fromImage(q_image))
-        time_str = time.strftime("%H:%M:%S", time.gmtime(self.current_time))
-        self.lbl_time.setText(f"{time_str}")
-
-    # -------- public -------------------------------------------------
-    def attach(self, obs):
-        self.dispose()
-
-        self._sub = (
-            obs.pipe(
-                ops.observe_on(self._worker),
-            )
-            .subscribe(self)
-        )
-        return self._sub
-
-    def dispose(self):
-        if self._sub:
-            self._sub.dispose()
-            self._sub = None
 
     def resizeEvent(self, event):
         super(CameraWidget, self).resizeEvent(event)

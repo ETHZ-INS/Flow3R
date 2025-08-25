@@ -15,8 +15,8 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QFont, QFontDatabase, QGradient, QIcon,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
-from PySide6.QtWidgets import (QApplication, QDockWidget, QHBoxLayout, QLabel,
-    QSizePolicy, QWidget)
+from PySide6.QtWidgets import (QApplication, QDockWidget, QFrame, QHBoxLayout,
+    QLabel, QSizePolicy, QVBoxLayout, QWidget)
 
 class Ui_HeatmapWidget(object):
     def setupUi(self, HeatmapWidget):
@@ -24,16 +24,27 @@ class Ui_HeatmapWidget(object):
             HeatmapWidget.setObjectName(u"HeatmapWidget")
         HeatmapWidget.resize(400, 300)
         HeatmapWidget.setFeatures(QDockWidget.DockWidgetFloatable|QDockWidget.DockWidgetMovable)
-        HeatmapWidget.setAllowedAreas(Qt.TopDockWidgetArea)
+        HeatmapWidget.setAllowedAreas(Qt.AllDockWidgetAreas)
         self.dockWidgetContents = QWidget()
         self.dockWidgetContents.setObjectName(u"dockWidgetContents")
         self.horizontalLayout = QHBoxLayout(self.dockWidgetContents)
+        self.horizontalLayout.setSpacing(0)
         self.horizontalLayout.setObjectName(u"horizontalLayout")
-        self.label = QLabel(self.dockWidgetContents)
+        self.horizontalLayout.setContentsMargins(0, 0, 0, 0)
+        self.frame = QFrame(self.dockWidgetContents)
+        self.frame.setObjectName(u"frame")
+        self.frame.setFrameShape(QFrame.StyledPanel)
+        self.frame.setFrameShadow(QFrame.Raised)
+        self.verticalLayout = QVBoxLayout(self.frame)
+        self.verticalLayout.setObjectName(u"verticalLayout")
+        self.label = QLabel(self.frame)
         self.label.setObjectName(u"label")
         self.label.setAlignment(Qt.AlignCenter)
 
-        self.horizontalLayout.addWidget(self.label)
+        self.verticalLayout.addWidget(self.label)
+
+
+        self.horizontalLayout.addWidget(self.frame)
 
         HeatmapWidget.setWidget(self.dockWidgetContents)
 

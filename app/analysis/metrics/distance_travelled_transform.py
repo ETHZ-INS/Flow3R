@@ -1,6 +1,4 @@
-from typing import List
-
-from py3r.point_tracking.core.data.instance import Instance
+from py3r.point_tracking.core.data.frame import Frame
 from rx import Observable
 import rx.operators as ops
 
@@ -11,8 +9,8 @@ class DistanceTravelledTransform:
         self.distance_travelled = 0.0
         self.last_points = {}
 
-    def update_distances(self, instances: List[Instance]):
-        for instance in instances:
+    def update_distances(self, pose_results: Frame):
+        for instance in pose_results.instances:
             if instance.id not in self.last_points:
                 self.last_points[instance.id] = instance.points[5]
             else:

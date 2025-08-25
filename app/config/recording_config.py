@@ -1,24 +1,55 @@
-from dataclasses import dataclass
-from typing import Literal
+import uuid
+from dataclasses import dataclass, field
+from typing import Literal, Dict, ClassVar
+
+from app.config.config_base import ConfigBase
 
 
 @dataclass
-class RecordingConfig:
-    recording_id: str
-    recording_name: str
-    recording_mode: Literal['manual', 'timed'] = 'manual'
+class RecordingConfig(ConfigBase):
+    RECORDING_MODES: ClassVar[dict] = {
+        "manual": "Manual",
+        "timed": "Timed",
+    }
 
-    def to_dict(self) -> dict:
+    recording_id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    recording_name: str = 'New Group'
+    recording_mode: Literal['manual', 'timed'] = 'manual'
+    recording_duration: float = 60.0 * 10 # Default to 10 minutes
+
+    @property
+    def is_default(self) -> bool:
+        return self.recording_id == 'default'
+
+    def _extra_to_dict(self):
         return {
             "recording_id": self.recording_id,
             "recording_name": self.recording_name,
-            "recording_mode": self.recording_mode
+            "recording_mode": self.recording_mode,
+            "recording_duration": self.recording_duration
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'RecordingConfig':
-        return cls(
-            recording_id=data['recording_id'],
-            recording_name=data['recording_name'],
-            recording_mode=data['recording_mode'] if 'recording_mode' in data else 'manual'
-        )
+    def _extra_from_dict(cls, data: dict):
+        return {
+            "recording_id": data["recording_id"],
+            "recording_name": data.get("recording_name", cls.recording_name),
+            "recording_mode": data.get("recording_mode", cls.recording_mode),
+            "recording_duration": data.get("recording_duration", cls.recording_duration)
+        }
+
+
+@dataclass
+class RecordingConfigList(ConfigBase):
+    recordings: Dict[str, RecordingConfig] = field(default_factory=lambda: {'default': RecordingConfig(recording_id='default', recording_name='Default (Individual)', locked_values=["self", "recording_name"])})
+
+    def _extra_to_dict(self):
+        return {
+            "recordings": {recording_id: recording.to_dict() for recording_id, recording in self.recordings.items()}
+        }
+
+    @classmethod
+    def _extra_from_dict(cls, data: dict):
+        return {
+            "recordings": {recording_id: RecordingConfig.from_dict(recording_data) for recording_id, recording_data in data.get("recordings", {}).items()}
+        }

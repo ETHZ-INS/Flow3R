@@ -67,6 +67,20 @@ class HeatmapWidget(Ui_HeatmapWidget, QtWidgets.QDockWidget):
 
         self._sub = None
 
+    @classmethod
+    def create_widget(cls, config):
+        """
+        Factory method to create a HeatmapWidget with configuration.
+        """
+        colour_map = config.get("colour_map", "jet")
+        return cls(colour_map)
+
+    @classmethod
+    def update_widget(cls, widget, config):
+        colour_map = config.get("colour_map", "jet")
+        widget._cmap_code = _COLORMAPS.get(colour_map.lower(), cv2.COLORMAP_JET)
+        return widget
+
     # -------- public -------------------------------------------------
     def attach(self, obs):
         """
