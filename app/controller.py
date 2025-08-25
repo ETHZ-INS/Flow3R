@@ -16,7 +16,7 @@ from app.config.camera_config import CameraConfig
 from app.config.pipeline_config import PipelineConfig
 from app.config.recording_config import RecordingConfig
 from app.config.welfare_recorder_config import WelfareRecorderConfig
-from app.recording.camera_manager_3 import CameraManager
+from app.recording.camera_manager import CameraManager
 from app.recording.camera_widget_image_sink import CameraWidgetImageSink
 from app.recording.camera_widget_time_sink import CameraWidgetTimeSink
 from app.recording.fps_warning_transform import FPSWarningTransform
