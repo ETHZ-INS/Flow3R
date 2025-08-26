@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>PathEditorDialog</class>
- <widget class="QDialog" name="PathEditorDialog">
+ <class>TextEditorDialog</class>
+ <widget class="QDialog" name="TextEditorDialog">
   <property name="geometry">
    <rect>
     <x>0</x>
@@ -36,7 +36,7 @@
        <number>0</number>
       </property>
       <item>
-       <widget class="QLabel" name="label_2">
+       <widget class="QLabel" name="lbl_name">
         <property name="text">
          <string>Path:</string>
         </property>
@@ -64,12 +64,15 @@
           <number>0</number>
          </property>
          <item>
-          <widget class="QLineEdit" name="txt_path"/>
+          <widget class="QLineEdit" name="txt_value"/>
          </item>
          <item>
           <widget class="QToolButton" name="btn_select_path">
            <property name="text">
             <string>...</string>
+           </property>
+           <property name="icon">
+            <iconset theme="folder-open"/>
            </property>
           </widget>
          </item>
@@ -80,6 +83,16 @@
        <widget class="QLabel" name="label">
         <property name="text">
          <string>Variables:</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="label_2">
+        <property name="text">
+         <string>&lt;em&gt;Double click or drag &amp; drop&lt;/em&gt;</string>
+        </property>
+        <property name="textFormat">
+         <enum>Qt::MarkdownText</enum>
         </property>
        </widget>
       </item>
@@ -119,7 +132,7 @@
   <connection>
    <sender>buttonBox</sender>
    <signal>accepted()</signal>
-   <receiver>PathEditorDialog</receiver>
+   <receiver>TextEditorDialog</receiver>
    <slot>accept()</slot>
    <hints>
     <hint type="sourcelabel">
@@ -135,7 +148,7 @@
   <connection>
    <sender>buttonBox</sender>
    <signal>rejected()</signal>
-   <receiver>PathEditorDialog</receiver>
+   <receiver>TextEditorDialog</receiver>
    <slot>reject()</slot>
    <hints>
     <hint type="sourcelabel">

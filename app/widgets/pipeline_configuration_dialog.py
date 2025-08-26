@@ -84,7 +84,7 @@ class PipelineConfigurationDialog(Ui_PipelineConfigurationDialog, QDialog):
         self.update_form()
 
     def configure_save_video(self):
-        dialog = VideoFileConfigurationDialog(self.current_pipeline.save_video_config, self)
+        dialog = VideoFileConfigurationDialog(self.controller, self.current_pipeline.save_video_config, parent=self)
         if dialog.exec_():
             self.current_pipeline.save_video_config = dialog.config
             print("Video file configuration saved.")
