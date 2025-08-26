@@ -15,9 +15,9 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QFont, QFontDatabase, QGradient, QIcon,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
-from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QDialogButtonBox,
-    QFormLayout, QScrollArea, QSizePolicy, QVBoxLayout,
-    QWidget)
+from PySide6.QtWidgets import (QAbstractButton, QApplication, QCheckBox, QDialog,
+    QDialogButtonBox, QFormLayout, QScrollArea, QSizePolicy,
+    QVBoxLayout, QWidget)
 
 class Ui_VariablePreparationDialog(object):
     def setupUi(self, VariablePreparationDialog):
@@ -26,12 +26,18 @@ class Ui_VariablePreparationDialog(object):
         VariablePreparationDialog.resize(423, 414)
         self.verticalLayout = QVBoxLayout(VariablePreparationDialog)
         self.verticalLayout.setObjectName(u"verticalLayout")
+        self.chb_hide_filled = QCheckBox(VariablePreparationDialog)
+        self.chb_hide_filled.setObjectName(u"chb_hide_filled")
+        self.chb_hide_filled.setChecked(True)
+
+        self.verticalLayout.addWidget(self.chb_hide_filled)
+
         self.scrollArea = QScrollArea(VariablePreparationDialog)
         self.scrollArea.setObjectName(u"scrollArea")
         self.scrollArea.setWidgetResizable(True)
         self.frm_variables = QWidget()
         self.frm_variables.setObjectName(u"frm_variables")
-        self.frm_variables.setGeometry(QRect(0, 0, 403, 364))
+        self.frm_variables.setGeometry(QRect(0, 0, 403, 338))
         self.formLayout = QFormLayout(self.frm_variables)
         self.formLayout.setObjectName(u"formLayout")
         self.scrollArea.setWidget(self.frm_variables)
@@ -55,5 +61,6 @@ class Ui_VariablePreparationDialog(object):
 
     def retranslateUi(self, VariablePreparationDialog):
         VariablePreparationDialog.setWindowTitle(QCoreApplication.translate("VariablePreparationDialog", u"Dialog", None))
+        self.chb_hide_filled.setText(QCoreApplication.translate("VariablePreparationDialog", u"Only show missing values", None))
     # retranslateUi
 

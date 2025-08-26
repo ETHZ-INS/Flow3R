@@ -18,3 +18,5 @@ pyside6-uic "ui/CameraGroupListDialog.ui" -o "app/layout/camera_group_list_dialo
 pyside6-uic "ui/CameraGroupEditDialog.ui" -o "app/layout/camera_group_edit_dialog.py"
 pyside6-uic "ui/VariablePreparationDialog.ui" -o "app/layout/variable_preparation_dialog.py"
 pyside6-uic "ui/PathEditorDialog.ui" -o "app/layout/path_editor_dialog.py"
+pyside6-uic "ui/VariableListDialog.ui" -o "app/layout/variable_list_dialog.py"
+pyside6-uic "ui/VariableEditDialog.ui" -o "app/layout/variable_edit_dialog.py"

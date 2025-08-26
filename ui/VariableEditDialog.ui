@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>CameraGroupEditDialog</class>
- <widget class="QDialog" name="CameraGroupEditDialog">
+ <class>VariableEditDialog</class>
+ <widget class="QDialog" name="VariableEditDialog">
   <property name="geometry">
    <rect>
     <x>0</x>
     <y>0</y>
     <width>400</width>
-    <height>177</height>
+    <height>281</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -29,7 +29,7 @@
    </size>
   </property>
   <property name="windowTitle">
-   <string>Configure Recording</string>
+   <string>Configure Variable</string>
   </property>
   <property name="modal">
    <bool>false</bool>
@@ -41,7 +41,7 @@
    <item>
     <widget class="QLabel" name="label">
      <property name="text">
-      <string>### Camera Group Settings</string>
+      <string>### Variable Settings</string>
      </property>
      <property name="textFormat">
       <enum>Qt::MarkdownText</enum>
@@ -49,7 +49,7 @@
     </widget>
    </item>
    <item>
-    <widget class="QFrame" name="frm_recording_configuration">
+    <widget class="QFrame" name="frm_configuration">
      <property name="frameShape">
       <enum>QFrame::StyledPanel</enum>
      </property>
@@ -65,65 +65,83 @@
        </widget>
       </item>
       <item row="0" column="1">
-       <widget class="QLineEdit" name="txt_recording_name">
+       <widget class="QLineEdit" name="txt_name">
         <property name="text">
-         <string>Group 1</string>
+         <string>animal_id</string>
         </property>
        </widget>
       </item>
       <item row="1" column="0">
-       <widget class="QLabel" name="label_2">
+       <widget class="QLabel" name="label_4">
         <property name="text">
-         <string>Recording Mode:</string>
+         <string>Label:</string>
         </property>
        </widget>
       </item>
-      <item row="1" column="1">
-       <widget class="QComboBox" name="dpd_recording_mode">
-        <item>
-         <property name="text">
-          <string>Timed</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>Manual</string>
-         </property>
-        </item>
-       </widget>
-      </item>
       <item row="2" column="0">
-       <widget class="QLabel" name="lbl_tme_duration">
+       <widget class="QLabel" name="label_2">
         <property name="text">
-         <string>Duration:</string>
+         <string>Type:</string>
         </property>
        </widget>
       </item>
       <item row="2" column="1">
-       <widget class="QTimeEdit" name="tme_duration">
-        <property name="dateTime">
-         <datetime>
-          <hour>22</hour>
-          <minute>10</minute>
-          <second>0</second>
-          <year>2000</year>
-          <month>12</month>
-          <day>31</day>
-         </datetime>
+       <widget class="QComboBox" name="dpd_variable_type">
+        <item>
+         <property name="text">
+          <string>Text</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="label_5">
+        <property name="text">
+         <string>Description:</string>
         </property>
-        <property name="maximumTime">
-         <time>
-          <hour>23</hour>
-          <minute>59</minute>
-          <second>0</second>
-         </time>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <widget class="QTextEdit" name="txt_description">
+        <property name="maximumSize">
+         <size>
+          <width>16777215</width>
+          <height>70</height>
+         </size>
         </property>
-        <property name="currentSection">
-         <enum>QDateTimeEdit::HourSection</enum>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLineEdit" name="txt_label">
+        <property name="text">
+         <string>Animal ID</string>
         </property>
-        <property name="displayFormat">
-         <string>HH'h' mm'm' ss.zzz's'</string>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="label_6">
+        <property name="text">
+         <string>Persistence:</string>
         </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QComboBox" name="comboBox">
+        <item>
+         <property name="text">
+          <string>Clear after every recording</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>Remember until application is closed</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>Remember forever</string>
+         </property>
+        </item>
        </widget>
       </item>
      </layout>
@@ -159,7 +177,7 @@
   <connection>
    <sender>btnbox_buttons</sender>
    <signal>accepted()</signal>
-   <receiver>CameraGroupEditDialog</receiver>
+   <receiver>VariableEditDialog</receiver>
    <slot>accept()</slot>
    <hints>
     <hint type="sourcelabel">
@@ -175,7 +193,7 @@
   <connection>
    <sender>btnbox_buttons</sender>
    <signal>rejected()</signal>
-   <receiver>CameraGroupEditDialog</receiver>
+   <receiver>VariableEditDialog</receiver>
    <slot>reject()</slot>
    <hints>
     <hint type="sourcelabel">

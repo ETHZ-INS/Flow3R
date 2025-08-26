@@ -3,6 +3,7 @@ from concurrent.futures import Future
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import yaml
 from PySide6.QtCore import QObject, QThread, Signal, QTimer
@@ -15,8 +16,9 @@ from app.analysis.pose_estimation.pose_estimation_transform import PoseEstimatio
 from app.config.camera_config import CameraConfig
 from app.config.pipeline_config import PipelineConfig
 from app.config.recording_config import RecordingConfig
+from app.config.variable_config import VariableConfig, VariableValue
 from app.config.welfare_recorder_config import WelfareRecorderConfig
-from app.recording.camera_manager_3 import CameraManager
+from app.recording.camera_manager import CameraManager
 from app.recording.camera_widget_image_sink import CameraWidgetImageSink
 from app.recording.camera_widget_time_sink import CameraWidgetTimeSink
 from app.recording.fps_warning_transform import FPSWarningTransform
@@ -90,6 +92,10 @@ class Controller(QObject):
     recording_added = Signal(RecordingConfig)
     recording_removed = Signal(str)  # recording_id
     recording_updated = Signal(RecordingConfig, RecordingConfig)  # new_recording_config, old_recording_config
+
+    variable_added = Signal(VariableConfig)
+    variable_removed = Signal(str)  # variable_name
+    variable_updated = Signal(VariableConfig, VariableConfig)  # new_variable_config, old_variable_config
 
     camera_assignment_changed = Signal(str, str, str)  # camera_id, new_recording_id, old_recording_id
 
@@ -212,7 +218,6 @@ class Controller(QObject):
         if pipeline_config.camera_id not in self.config.pipeline_config_list.pipelines:
             return ConfigChangeResult(success=False, message="Pipeline not found.")
 
-
         camera_config = self.config.camera_config_list.cameras.get(pipeline_config.camera_id)
         if pipeline_config.camera_id in self.recordings or camera_config.recording_id in self.recordings:
             return ConfigChangeResult(success=False, message="Camera is currently in use.")
@@ -317,6 +322,54 @@ class Controller(QObject):
         QTimer.singleShot(0, lambda: self.camera_assignment_changed.emit(camera_id, recording_id, old_recording_id))
 
         return ConfigChangeResult(success=True, message="Camera assigned to recording successfully.")
+
+    @thread_bound(timeout_ms=2000)
+    def add_variable(self, variable_config: VariableConfig):
+        if variable_config.variable_id in self.config.variable_config_list.variables:
+            return ConfigChangeResult(success=False, message="Variable already exists.")
+
+        self.config.variable_config_list.variables[variable_config.variable_id] = variable_config
+        QTimer.singleShot(0, lambda: self.variable_added.emit(variable_config))
+        return ConfigChangeResult(success=True, message="Variable added successfully.")
+
+    @thread_bound(timeout_ms=2000)
+    def remove_variable(self, variable_id: str):
+        if variable_id not in self.config.variable_config_list.variables:
+            return ConfigChangeResult(success=False, message="Variable not found.")
+
+        del self.config.variable_config_list.variables[variable_id]
+        QTimer.singleShot(0, lambda: self.variable_removed.emit(variable_id))
+        return ConfigChangeResult(success=True, message="Variable removed successfully.")
+
+    @thread_bound(timeout_ms=2000)
+    def update_variable(self, variable_config: VariableConfig):
+        if variable_config.variable_id not in self.config.variable_config_list.variables:
+            return ConfigChangeResult(success=False, message="Variable not found.")
+
+        old_variable_config = deepcopy(self.config.variable_config_list.variables[variable_config.variable_id])
+        self.config.variable_config_list.variables[variable_config.variable_id] = variable_config
+
+        QTimer.singleShot(0, lambda: self.variable_updated.emit(variable_config, old_variable_config))
+        return ConfigChangeResult(success=True, message="Variable updated successfully.")
+
+    @thread_bound(timeout_ms=2000)
+    def attach_variable_to_app(self, variable_id: str):
+        variable_config = self.config.variable_config_list.variables.get(variable_id)
+        if not variable_config:
+            return ConfigChangeResult(success=False, message="Variable not found.")
+
+        if variable_id in self.config.variable_values:
+            return ConfigChangeResult(success=False, message="Variable already attached.")
+
+        self.config.variable_values[variable_id] = VariableValue(variable_id)
+        return ConfigChangeResult(success=True, message="Variable attached successfully.")
+
+    @thread_bound(timeout_ms=2000)
+    def set_variables_app(self, values: dict[str, Any]):
+        for variable_id, value in values.items():
+            if variable_id in self.config.variable_values:
+                self.config.variable_values[variable_id].value = value
+        return ConfigChangeResult(success=True, message="Variables updated successfully.")
 
     @thread_bound(timeout_ms=2000)
     def setup_camera(self, camera_id: str):

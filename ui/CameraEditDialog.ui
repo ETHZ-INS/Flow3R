@@ -156,6 +156,9 @@
            <property name="text">
             <string>...</string>
            </property>
+           <property name="icon">
+            <iconset theme="folder-open"/>
+           </property>
           </widget>
          </item>
         </layout>
@@ -206,6 +209,9 @@
           <widget class="QToolButton" name="btn_select_pylon_config_file">
            <property name="text">
             <string>...</string>
+           </property>
+           <property name="icon">
+            <iconset theme="folder-open"/>
            </property>
           </widget>
          </item>

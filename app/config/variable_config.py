@@ -1,5 +1,6 @@
+import uuid
 from dataclasses import field, dataclass
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Dict
 
 from app.config.config_base import ConfigBase
 
@@ -17,7 +18,9 @@ class VariableConfig(ConfigBase):
         'choice': "Choice (Dropdown)"
     }
 
-    variable_name: str
+    variable_id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    variable_name: str = 'new_variable'
+    variable_label: str = 'New Variable'
     variable_type: str = 'text'
     persistent: bool = False
     default_value: Any = None
@@ -46,8 +49,9 @@ class VariableConfig(ConfigBase):
         }
 
 
+@dataclass
 class VariableConfigList(ConfigBase):
-    variables: dict = {}
+    variables: Dict[str, VariableConfig] = field(default_factory=dict)
 
     def _extra_to_dict(self) -> dict:
         return {
@@ -58,4 +62,23 @@ class VariableConfigList(ConfigBase):
     def _extra_from_dict(cls, data: dict) -> dict:
         return {
             "variables": {var_name: VariableConfig.from_dict(var_data) for var_name, var_data in data.get("variables", {}).items()}
+        }
+
+
+@dataclass
+class VariableValue(ConfigBase):
+    variable_id: str
+    value: Any = None
+
+    def _extra_to_dict(self) -> dict:
+        return {
+            "variable_id": self.variable_id,
+            "value": self.value
+        }
+
+    @classmethod
+    def _extra_from_dict(cls, data: dict) -> dict:
+        return {
+            "variable_id": data["variable_id"],
+            "value": data.get("value", None)
         }

@@ -15,6 +15,16 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
+    <widget class="QCheckBox" name="chb_hide_filled">
+     <property name="text">
+      <string>Only show missing values</string>
+     </property>
+     <property name="checked">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
     <widget class="QScrollArea" name="scrollArea">
      <property name="widgetResizable">
       <bool>true</bool>
@@ -25,7 +35,7 @@
         <x>0</x>
         <y>0</y>
         <width>403</width>
-        <height>364</height>
+        <height>338</height>
        </rect>
       </property>
       <layout class="QFormLayout" name="formLayout"/>

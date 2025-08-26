@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>CameraListDialog</class>
- <widget class="QDialog" name="CameraListDialog">
+ <class>VariableListDialog</class>
+ <widget class="QDialog" name="VariableListDialog">
   <property name="geometry">
    <rect>
     <x>0</x>
@@ -17,7 +17,7 @@
    <item>
     <widget class="QLabel" name="label">
      <property name="text">
-      <string>### Cameras</string>
+      <string>### Variables</string>
      </property>
      <property name="textFormat">
       <enum>Qt::MarkdownText</enum>
@@ -25,7 +25,7 @@
     </widget>
    </item>
    <item>
-    <widget class="QListView" name="lst_cameras">
+    <widget class="QListView" name="lst_variables">
      <property name="editTriggers">
       <set>QAbstractItemView::NoEditTriggers</set>
      </property>
@@ -64,31 +64,24 @@
       <property name="bottomMargin">
        <number>0</number>
       </property>
-      <item row="1" column="2">
-       <widget class="QPushButton" name="btn_deactivate_camera">
+      <item row="0" column="2">
+       <widget class="QPushButton" name="btn_remove">
         <property name="text">
-         <string>Deactivate Camera</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="0">
-       <widget class="QPushButton" name="btn_edit_camera">
-        <property name="text">
-         <string>Edit Camera</string>
+         <string>Remove Variable</string>
         </property>
        </widget>
       </item>
       <item row="0" column="0">
-       <widget class="QPushButton" name="btn_add_camera">
+       <widget class="QPushButton" name="btn_add">
         <property name="text">
-         <string>Add Camera</string>
+         <string>Add Variable</string>
         </property>
        </widget>
       </item>
-      <item row="0" column="2">
-       <widget class="QPushButton" name="btn_remove_camera">
+      <item row="1" column="0">
+       <widget class="QPushButton" name="btn_edit">
         <property name="text">
-         <string>Remove Camera</string>
+         <string>Edit Variable</string>
         </property>
        </widget>
       </item>
@@ -112,7 +105,7 @@
   <connection>
    <sender>buttonBox</sender>
    <signal>accepted()</signal>
-   <receiver>CameraListDialog</receiver>
+   <receiver>VariableListDialog</receiver>
    <slot>accept()</slot>
    <hints>
     <hint type="sourcelabel">
@@ -128,7 +121,7 @@
   <connection>
    <sender>buttonBox</sender>
    <signal>rejected()</signal>
-   <receiver>CameraListDialog</receiver>
+   <receiver>VariableListDialog</receiver>
    <slot>reject()</slot>
    <hints>
     <hint type="sourcelabel">

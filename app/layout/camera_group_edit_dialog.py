@@ -24,7 +24,7 @@ class Ui_CameraGroupEditDialog(object):
     def setupUi(self, CameraGroupEditDialog):
         if not CameraGroupEditDialog.objectName():
             CameraGroupEditDialog.setObjectName(u"CameraGroupEditDialog")
-        CameraGroupEditDialog.resize(400, 171)
+        CameraGroupEditDialog.resize(400, 177)
         sizePolicy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
