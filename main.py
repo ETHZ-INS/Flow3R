@@ -2,6 +2,7 @@ import sys
 import os
 from pathlib import Path
 
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from app.widgets.main_window import WelfareRecorder
@@ -18,7 +19,10 @@ os.environ["PYLON_CAMEMU"] = "4"
 
 app = QApplication(sys.argv)
 
+app.setWindowIcon(QIcon("res/flow3r.png"))
+
 window = WelfareRecorder(config_file)
+window.setWindowTitle("Flow3R")
 window.show()
 
 sys.exit(app.exec())

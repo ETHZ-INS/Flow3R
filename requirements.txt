@@ -7,3 +7,4 @@ numpy~=2.3.2
 pypylon~=4.2.0
 torch~=2.7.1+cu118
 ultralytics~=8.3.156
+pyinstaller~=6.15.0
