@@ -5,10 +5,8 @@ from PySide6.QtGui import QIcon, QFontMetrics
 from PySide6.QtWidgets import QDialog, QLabel, QLineEdit, QSpinBox, QDoubleSpinBox, QStyle, QFrame, QHBoxLayout, \
     QSizePolicy
 
-from app.config.welfare_recorder_config import WelfareRecorderConfig
 from app.layout.variable_preparation_dialog import Ui_VariablePreparationDialog
 from app.controller import Controller
-from app.placeholder_context import PlaceholderContext
 from app.placeholder_formatter import PlaceholderFormatter
 from app.widgets.variable_text_widget import VariableTextWidget
 
