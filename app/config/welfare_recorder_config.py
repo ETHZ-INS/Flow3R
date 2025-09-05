@@ -1,3 +1,4 @@
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import ClassVar, Dict
@@ -7,6 +8,7 @@ from app.config.config_base import ConfigBase
 from app.config.pipeline_config import PipelineConfigList
 from app.config.recording_config import RecordingConfigList
 from app.config.variable_config import VariableConfigList, VariableValue
+from app.placeholder_context import PlaceholderContext
 
 
 @dataclass
@@ -41,3 +43,77 @@ class WelfareRecorderConfig(ConfigBase):
             "variable_config_list": VariableConfigList.from_dict(data.get("variable_config_list", {})),
             "variable_values": {k: VariableValue.from_dict(v) for k, v in data.get("variable_values", {}).items()}
         }
+
+    def get_required_placeholders(self, recording_id: str):
+        recording_config = self.recording_config_list.recordings.get(recording_id)
+        if recording_config:
+            camera_configs = [camera for camera in self.camera_config_list.cameras.values() if
+                              camera.activated and camera.recording_id == recording_id]
+            pipeline_configs = [self.pipeline_config_list.pipelines.get(camera.camera_id) for camera in
+                                camera_configs]
+        else:
+            camera_config = self.camera_config_list.cameras.get(recording_id)
+            if not camera_config:
+                raise ValueError(f"Recording not found: {recording_id}")
+            pipeline_configs = [self.pipeline_config_list.pipelines.get(camera_config.camera_id)]
+
+        required_placeholders = set()
+        for pipeline_config in pipeline_configs:
+            if pipeline_config:
+                required_placeholders.update(pipeline_config.get_required_variables())
+
+        return list(required_placeholders)
+
+    def get_placeholder_context(self, recording_id: str = None, preview: bool = False):
+        camera_values = {}
+        recording_values = {}
+        if recording_id:
+            recording_config = self.recording_config_list.recordings.get(recording_id)
+            if recording_config:
+                recording_values = recording_config.variable_values
+            else:
+                camera_config = self.camera_config_list.cameras.get(recording_id)
+                if not camera_config:
+                    raise ValueError(f"Recording not found: {recording_id}")
+
+                camera_values = camera_config.variable_values if camera_config else {}
+                print("Camera Values:", camera_values)
+
+                recording_config = None
+                if camera_config.recording_id:
+                    recording_config = self.recording_config_list.recordings.get(camera_config.recording_id)
+
+                if recording_config:
+                    recording_values = recording_config.variable_values
+                else:
+                    recording_values = camera_values
+
+        project_values = self.variable_values
+
+        values = {}
+        for var_id, var_config in self.variable_config_list.variables.items():
+            var_name = var_config.variable_name
+            var_value = None
+
+            print("Variable ID:", var_id)
+            print("Variable Name:", var_name)
+            print("Variable Scope:", var_config.scope)
+
+            if var_config.scope == "project":
+                var_value = project_values.get(var_id)
+            elif var_config.scope == "group":
+                var_value = recording_values.get(var_id)
+            elif var_config.scope == "camera":
+                var_value = camera_values.get(var_id)
+
+            print("Variable Value:", var_value)
+
+            if var_value is not None and var_value.value is not None:
+                values[var_config.variable_name] = var_value.value
+            elif preview:
+                values[var_config.variable_name] = var_config.example_value
+
+        print("Collected values:", values)
+
+        placeholders = deepcopy(list(self.variable_config_list.variables.values()))
+        return PlaceholderContext(values)

@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Literal, ClassVar, List, Dict, Hashable
 
 from app.config.config_base import ConfigBase
+from app.config.variable_config import VariableValue
 
 
 @dataclass
@@ -128,6 +129,8 @@ class CameraConfig(ConfigBase):
 
     activated: bool = True
 
+    variable_values: Dict[str, VariableValue] = field(default_factory=dict)
+
     def _extra_to_dict(self) -> dict:
         return {
             "camera_id": self.camera_id,
@@ -136,7 +139,9 @@ class CameraConfig(ConfigBase):
             "camera_type": self.camera_type,
             "pylon": self.pylon.to_dict() if self.pylon else None,
             "webcam": self.webcam.to_dict() if self.webcam else None,
-            "video_file": self.video_file.to_dict() if self.video_file else None
+            "video_file": self.video_file.to_dict() if self.video_file else None,
+            "activated": self.activated,
+            "variable_values": {key: value.to_dict() for key, value in self.variable_values.items()}
         }
 
     @classmethod
@@ -148,7 +153,9 @@ class CameraConfig(ConfigBase):
             "camera_type": data.get("camera_type", cls.camera_type),
             "pylon": PylonCameraConfig.from_dict(data.get("pylon", {})),
             "webcam": WebcamCameraConfig.from_dict(data.get("webcam", {})),
-            "video_file": VideoFileCameraConfig.from_dict(data.get("video_file", {}))
+            "video_file": VideoFileCameraConfig.from_dict(data.get("video_file", {})),
+            "activated": data.get("activated", cls.activated),
+            "variable_values": {key: VariableValue.from_dict(value) for key, value in data.get("variable_values", {}).items()}
         }
 
     @property
