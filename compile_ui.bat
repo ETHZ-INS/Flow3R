@@ -7,6 +7,7 @@ pyside6-uic "ui/CameraWidget.ui" -o "app/layout/camera_widget.py"
 pyside6-uic "ui/HeatmapWidget.ui" -o "app/layout/heatmap_widget.py"
 pyside6-uic "ui/WelfareAnalysisWidget.ui" -o "app/layout/welfare_analysis_widget.py"
 pyside6-uic "ui/RecordingControlsWidget.ui" -o "app/layout/recording_controls_widget.py"
+pyside6-uic "ui/VariableTextWidget.ui" -o "app/layout/variable_text_widget.py"
 echo Compiling Dialogs...
 pyside6-uic "ui/CameraPreviewDialog.ui" -o "app/layout/camera_preview_dialog.py"
 pyside6-uic "ui/PipelineConfigurationDialog.ui" -o "app/layout/pipeline_configuration_dialog.py"

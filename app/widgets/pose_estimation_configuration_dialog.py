@@ -44,6 +44,9 @@ class PoseEstimationConfigurationDialog(Ui_PoseEstimationConfigurationDialog, QD
         self.btn_add_model.clicked.connect(self.add_model)
         self.btn_remove_model.clicked.connect(self.remove_model)
 
+        self.chb_save_file.stateChanged.connect(self.save_to_file_changed)
+        self.txt_save_file.textChanged.connect(self.save_file_changed)
+
         self.current_model_changed()
         self.update_form()
 
@@ -96,10 +99,10 @@ class PoseEstimationConfigurationDialog(Ui_PoseEstimationConfigurationDialog, QD
         self.current_model_changed()
 
     def save_to_file_changed(self):
-        self.current_model.save_to_file = self.chb_save_file.isChecked()
+        self.config.save_to_file = self.chb_save_file.isChecked()
 
     def save_file_changed(self):
-        self.current_model.save_file_template = self.txt_save_file.text()
+        self.config.save_file = self.txt_save_file.text()
 
     def get_tracked_instances(self):
         instance_type_names = []

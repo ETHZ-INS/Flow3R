@@ -1,5 +1,7 @@
 from concurrent.futures import Future
+from copy import deepcopy
 from pathlib import Path
+from typing import List
 
 from PySide6 import QtWidgets
 from PySide6.QtCore import QByteArray
@@ -132,7 +134,12 @@ class WelfareRecorder(Ui_WelfareRecorder, QMainWindow):
         dialog.setWindowTitle("Configure Variables")
         dialog.exec()
 
-        dialog = VariablePreparationDialog(self.controller, app=self.controller.config, parent=self)
+        dialog = VariablePreparationDialog(self.controller, recording_id=list(self.controller.config.recording_config_list.recordings.values())[1].recording_id, parent=self)
+        dialog.setWindowTitle("Prepare Variables")
+        dialog.exec()
+
+    def fill_variables_recording(self, recording_id: str):
+        dialog = VariablePreparationDialog(self.controller, recording_id=recording_id, parent=self)
         dialog.setWindowTitle("Prepare Variables")
         dialog.exec()
 

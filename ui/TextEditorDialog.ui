@@ -43,6 +43,9 @@
        </widget>
       </item>
       <item>
+       <widget class="VariableTextWidget" name="txt_value"/>
+      </item>
+      <item>
        <widget class="QFrame" name="frame_2">
         <property name="frameShape">
          <enum>QFrame::NoFrame</enum>
@@ -63,19 +66,6 @@
          <property name="bottomMargin">
           <number>0</number>
          </property>
-         <item>
-          <widget class="QLineEdit" name="txt_value"/>
-         </item>
-         <item>
-          <widget class="QToolButton" name="btn_select_path">
-           <property name="text">
-            <string>...</string>
-           </property>
-           <property name="icon">
-            <iconset theme="folder-open"/>
-           </property>
-          </widget>
-         </item>
         </layout>
        </widget>
       </item>
@@ -127,6 +117,13 @@
    </item>
   </layout>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>VariableTextWidget</class>
+   <extends>QLineEdit</extends>
+   <header>app/widgets/variable_text_widget.h</header>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections>
   <connection>

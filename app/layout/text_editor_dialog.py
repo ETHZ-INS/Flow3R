@@ -17,8 +17,9 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QPalette, QPixmap, QRadialGradient, QTransform)
 from PySide6.QtWidgets import (QAbstractButton, QAbstractItemView, QApplication, QDialog,
     QDialogButtonBox, QFrame, QHBoxLayout, QLabel,
-    QLineEdit, QListView, QSizePolicy, QToolButton,
-    QVBoxLayout, QWidget)
+    QListView, QSizePolicy, QVBoxLayout, QWidget)
+
+from app.widgets.variable_text_widget import VariableTextWidget
 
 class Ui_TextEditorDialog(object):
     def setupUi(self, TextEditorDialog):
@@ -39,6 +40,11 @@ class Ui_TextEditorDialog(object):
 
         self.verticalLayout_2.addWidget(self.lbl_name)
 
+        self.txt_value = VariableTextWidget(self.frame)
+        self.txt_value.setObjectName(u"txt_value")
+
+        self.verticalLayout_2.addWidget(self.txt_value)
+
         self.frame_2 = QFrame(self.frame)
         self.frame_2.setObjectName(u"frame_2")
         self.frame_2.setFrameShape(QFrame.NoFrame)
@@ -46,18 +52,6 @@ class Ui_TextEditorDialog(object):
         self.horizontalLayout = QHBoxLayout(self.frame_2)
         self.horizontalLayout.setObjectName(u"horizontalLayout")
         self.horizontalLayout.setContentsMargins(0, 0, 0, 0)
-        self.txt_value = QLineEdit(self.frame_2)
-        self.txt_value.setObjectName(u"txt_value")
-
-        self.horizontalLayout.addWidget(self.txt_value)
-
-        self.btn_select_path = QToolButton(self.frame_2)
-        self.btn_select_path.setObjectName(u"btn_select_path")
-        icon = QIcon(QIcon.fromTheme(u"folder-open"))
-        self.btn_select_path.setIcon(icon)
-
-        self.horizontalLayout.addWidget(self.btn_select_path)
-
 
         self.verticalLayout_2.addWidget(self.frame_2)
 
@@ -102,7 +96,6 @@ class Ui_TextEditorDialog(object):
     def retranslateUi(self, TextEditorDialog):
         TextEditorDialog.setWindowTitle(QCoreApplication.translate("TextEditorDialog", u"Edit Path", None))
         self.lbl_name.setText(QCoreApplication.translate("TextEditorDialog", u"Path:", None))
-        self.btn_select_path.setText(QCoreApplication.translate("TextEditorDialog", u"...", None))
         self.label.setText(QCoreApplication.translate("TextEditorDialog", u"Variables:", None))
         self.label_2.setText(QCoreApplication.translate("TextEditorDialog", u"<em>Double click or drag & drop</em>", None))
     # retranslateUi

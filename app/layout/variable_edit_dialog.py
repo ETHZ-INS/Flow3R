@@ -24,7 +24,7 @@ class Ui_VariableEditDialog(object):
     def setupUi(self, VariableEditDialog):
         if not VariableEditDialog.objectName():
             VariableEditDialog.setObjectName(u"VariableEditDialog")
-        VariableEditDialog.resize(400, 281)
+        VariableEditDialog.resize(400, 337)
         sizePolicy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -63,6 +63,11 @@ class Ui_VariableEditDialog(object):
 
         self.formLayout.setWidget(1, QFormLayout.LabelRole, self.label_4)
 
+        self.txt_label = QLineEdit(self.frm_configuration)
+        self.txt_label.setObjectName(u"txt_label")
+
+        self.formLayout.setWidget(1, QFormLayout.FieldRole, self.txt_label)
+
         self.label_2 = QLabel(self.frm_configuration)
         self.label_2.setObjectName(u"label_2")
 
@@ -74,34 +79,52 @@ class Ui_VariableEditDialog(object):
 
         self.formLayout.setWidget(2, QFormLayout.FieldRole, self.dpd_variable_type)
 
+        self.label_8 = QLabel(self.frm_configuration)
+        self.label_8.setObjectName(u"label_8")
+
+        self.formLayout.setWidget(3, QFormLayout.LabelRole, self.label_8)
+
+        self.dpd_scope = QComboBox(self.frm_configuration)
+        self.dpd_scope.addItem("")
+        self.dpd_scope.addItem("")
+        self.dpd_scope.addItem("")
+        self.dpd_scope.setObjectName(u"dpd_scope")
+
+        self.formLayout.setWidget(3, QFormLayout.FieldRole, self.dpd_scope)
+
+        self.label_6 = QLabel(self.frm_configuration)
+        self.label_6.setObjectName(u"label_6")
+
+        self.formLayout.setWidget(4, QFormLayout.LabelRole, self.label_6)
+
+        self.dpd_persistence = QComboBox(self.frm_configuration)
+        self.dpd_persistence.addItem("")
+        self.dpd_persistence.addItem("")
+        self.dpd_persistence.addItem("")
+        self.dpd_persistence.setObjectName(u"dpd_persistence")
+
+        self.formLayout.setWidget(4, QFormLayout.FieldRole, self.dpd_persistence)
+
         self.label_5 = QLabel(self.frm_configuration)
         self.label_5.setObjectName(u"label_5")
 
-        self.formLayout.setWidget(4, QFormLayout.LabelRole, self.label_5)
+        self.formLayout.setWidget(5, QFormLayout.LabelRole, self.label_5)
 
         self.txt_description = QTextEdit(self.frm_configuration)
         self.txt_description.setObjectName(u"txt_description")
         self.txt_description.setMaximumSize(QSize(16777215, 70))
 
-        self.formLayout.setWidget(4, QFormLayout.FieldRole, self.txt_description)
+        self.formLayout.setWidget(5, QFormLayout.FieldRole, self.txt_description)
 
-        self.txt_label = QLineEdit(self.frm_configuration)
-        self.txt_label.setObjectName(u"txt_label")
+        self.label_7 = QLabel(self.frm_configuration)
+        self.label_7.setObjectName(u"label_7")
 
-        self.formLayout.setWidget(1, QFormLayout.FieldRole, self.txt_label)
+        self.formLayout.setWidget(6, QFormLayout.LabelRole, self.label_7)
 
-        self.label_6 = QLabel(self.frm_configuration)
-        self.label_6.setObjectName(u"label_6")
+        self.txt_example_value = QLineEdit(self.frm_configuration)
+        self.txt_example_value.setObjectName(u"txt_example_value")
 
-        self.formLayout.setWidget(3, QFormLayout.LabelRole, self.label_6)
-
-        self.comboBox = QComboBox(self.frm_configuration)
-        self.comboBox.addItem("")
-        self.comboBox.addItem("")
-        self.comboBox.addItem("")
-        self.comboBox.setObjectName(u"comboBox")
-
-        self.formLayout.setWidget(3, QFormLayout.FieldRole, self.comboBox)
+        self.formLayout.setWidget(6, QFormLayout.FieldRole, self.txt_example_value)
 
 
         self.verticalLayout.addWidget(self.frm_configuration)
@@ -131,15 +154,22 @@ class Ui_VariableEditDialog(object):
         self.label_3.setText(QCoreApplication.translate("VariableEditDialog", u"Name:", None))
         self.txt_name.setText(QCoreApplication.translate("VariableEditDialog", u"animal_id", None))
         self.label_4.setText(QCoreApplication.translate("VariableEditDialog", u"Label:", None))
+        self.txt_label.setText(QCoreApplication.translate("VariableEditDialog", u"Animal ID", None))
         self.label_2.setText(QCoreApplication.translate("VariableEditDialog", u"Type:", None))
         self.dpd_variable_type.setItemText(0, QCoreApplication.translate("VariableEditDialog", u"Text", None))
 
-        self.label_5.setText(QCoreApplication.translate("VariableEditDialog", u"Description:", None))
-        self.txt_label.setText(QCoreApplication.translate("VariableEditDialog", u"Animal ID", None))
-        self.label_6.setText(QCoreApplication.translate("VariableEditDialog", u"Persistence:", None))
-        self.comboBox.setItemText(0, QCoreApplication.translate("VariableEditDialog", u"Clear after every recording", None))
-        self.comboBox.setItemText(1, QCoreApplication.translate("VariableEditDialog", u"Remember until application is closed", None))
-        self.comboBox.setItemText(2, QCoreApplication.translate("VariableEditDialog", u"Remember forever", None))
+        self.label_8.setText(QCoreApplication.translate("VariableEditDialog", u"Scope:", None))
+        self.dpd_scope.setItemText(0, QCoreApplication.translate("VariableEditDialog", u"Per Camera", None))
+        self.dpd_scope.setItemText(1, QCoreApplication.translate("VariableEditDialog", u"Per Group", None))
+        self.dpd_scope.setItemText(2, QCoreApplication.translate("VariableEditDialog", u"Global", None))
 
+        self.label_6.setText(QCoreApplication.translate("VariableEditDialog", u"Persistence:", None))
+        self.dpd_persistence.setItemText(0, QCoreApplication.translate("VariableEditDialog", u"Clear after every recording", None))
+        self.dpd_persistence.setItemText(1, QCoreApplication.translate("VariableEditDialog", u"Remember until application is closed", None))
+        self.dpd_persistence.setItemText(2, QCoreApplication.translate("VariableEditDialog", u"Remember forever", None))
+
+        self.label_5.setText(QCoreApplication.translate("VariableEditDialog", u"Description:", None))
+        self.label_7.setText(QCoreApplication.translate("VariableEditDialog", u"Example Value:", None))
+        self.txt_example_value.setText(QCoreApplication.translate("VariableEditDialog", u"a3001", None))
     # retranslateUi
 

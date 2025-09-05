@@ -17,14 +17,16 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QPalette, QPixmap, QRadialGradient, QTransform)
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QComboBox, QDialog,
     QDialogButtonBox, QFormLayout, QFrame, QHBoxLayout,
-    QLabel, QLineEdit, QSizePolicy, QToolButton,
-    QVBoxLayout, QWidget)
+    QLabel, QSizePolicy, QSpacerItem, QVBoxLayout,
+    QWidget)
+
+from app.widgets.variable_text_widget import VariableTextWidget
 
 class Ui_VideoFileConfigurationDialog(object):
     def setupUi(self, VideoFileConfigurationDialog):
         if not VideoFileConfigurationDialog.objectName():
             VideoFileConfigurationDialog.setObjectName(u"VideoFileConfigurationDialog")
-        VideoFileConfigurationDialog.resize(453, 148)
+        VideoFileConfigurationDialog.resize(453, 124)
         self.verticalLayout = QVBoxLayout(VideoFileConfigurationDialog)
         self.verticalLayout.setObjectName(u"verticalLayout")
         self.frame = QFrame(VideoFileConfigurationDialog)
@@ -45,49 +47,31 @@ class Ui_VideoFileConfigurationDialog(object):
         self.horizontalLayout = QHBoxLayout(self.frame_2)
         self.horizontalLayout.setObjectName(u"horizontalLayout")
         self.horizontalLayout.setContentsMargins(0, 0, 0, 0)
-        self.txt_filename = QLineEdit(self.frame_2)
+        self.txt_filename = VariableTextWidget(self.frame_2)
         self.txt_filename.setObjectName(u"txt_filename")
 
         self.horizontalLayout.addWidget(self.txt_filename)
 
-        self.btn_select_file = QToolButton(self.frame_2)
-        self.btn_select_file.setObjectName(u"btn_select_file")
-        icon = QIcon(QIcon.fromTheme(u"folder-open"))
-        self.btn_select_file.setIcon(icon)
-
-        self.horizontalLayout.addWidget(self.btn_select_file)
-
-        self.btn_editor = QToolButton(self.frame_2)
-        self.btn_editor.setObjectName(u"btn_editor")
-
-        self.horizontalLayout.addWidget(self.btn_editor)
-
 
         self.formLayout.setWidget(0, QFormLayout.FieldRole, self.frame_2)
-
-        self.label_3 = QLabel(self.frame)
-        self.label_3.setObjectName(u"label_3")
-
-        self.formLayout.setWidget(1, QFormLayout.LabelRole, self.label_3)
-
-        self.lbl_filename_preview = QLabel(self.frame)
-        self.lbl_filename_preview.setObjectName(u"lbl_filename_preview")
-
-        self.formLayout.setWidget(1, QFormLayout.FieldRole, self.lbl_filename_preview)
 
         self.label_2 = QLabel(self.frame)
         self.label_2.setObjectName(u"label_2")
 
-        self.formLayout.setWidget(2, QFormLayout.LabelRole, self.label_2)
+        self.formLayout.setWidget(1, QFormLayout.LabelRole, self.label_2)
 
         self.dpd_codec = QComboBox(self.frame)
         self.dpd_codec.addItem("")
         self.dpd_codec.setObjectName(u"dpd_codec")
 
-        self.formLayout.setWidget(2, QFormLayout.FieldRole, self.dpd_codec)
+        self.formLayout.setWidget(1, QFormLayout.FieldRole, self.dpd_codec)
 
 
         self.verticalLayout.addWidget(self.frame)
+
+        self.verticalSpacer = QSpacerItem(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
+
+        self.verticalLayout.addItem(self.verticalSpacer)
 
         self.buttonbox = QDialogButtonBox(VideoFileConfigurationDialog)
         self.buttonbox.setObjectName(u"buttonbox")
@@ -107,11 +91,6 @@ class Ui_VideoFileConfigurationDialog(object):
     def retranslateUi(self, VideoFileConfigurationDialog):
         VideoFileConfigurationDialog.setWindowTitle(QCoreApplication.translate("VideoFileConfigurationDialog", u"Configure Video File", None))
         self.label.setText(QCoreApplication.translate("VideoFileConfigurationDialog", u"Filename:", None))
-        self.txt_filename.setText(QCoreApplication.translate("VideoFileConfigurationDialog", u"{base_folder}/{recording_name}/{camera_name}.mp4", None))
-        self.btn_select_file.setText(QCoreApplication.translate("VideoFileConfigurationDialog", u"...", None))
-        self.btn_editor.setText(QCoreApplication.translate("VideoFileConfigurationDialog", u"{v}", None))
-        self.label_3.setText(QCoreApplication.translate("VideoFileConfigurationDialog", u"Preview:", None))
-        self.lbl_filename_preview.setText(QCoreApplication.translate("VideoFileConfigurationDialog", u"C:/Users/Me/Recordings/recording_1/Camera 1.mp4", None))
         self.label_2.setText(QCoreApplication.translate("VideoFileConfigurationDialog", u"Video Codec:", None))
         self.dpd_codec.setItemText(0, QCoreApplication.translate("VideoFileConfigurationDialog", u"FMP4", None))
 

@@ -31,12 +31,16 @@ class CameraWidgetFactory:
 
         widget.recording_controls.recording_start.connect(lambda rid: self.controller.start_recording.future(rid))
         widget.recording_controls.recording_stop.connect(lambda rid: self.controller.stop_recording.future(rid))
+        widget.recording_controls.fill_variables.connect(lambda rid: self.ui.fill_variables_recording(recording_id=rid))
         widget.retry.connect(lambda cid: self.controller.setup_camera.future(cid))
+
         widget.edit_camera.connect(self.ui.edit_camera)
         widget.edit_recording.connect(self.ui.edit_camera_group)
 
         self.controller.recording_state_changed.connect(widget.recording_controls._recording_state_changed)
         self.controller.recording_name_changed.connect(widget.recording_controls._recording_name_changed)
+
+        self.controller.check_recording_state.future(recording_id if recording_id is not None else camera_id)
 
         return widget
 
