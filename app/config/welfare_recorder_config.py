@@ -44,18 +44,19 @@ class WelfareRecorderConfig(ConfigBase):
             "variable_values": {k: VariableValue.from_dict(v) for k, v in data.get("variable_values", {}).items()}
         }
 
-    def get_required_placeholders(self, recording_id: str):
-        recording_config = self.recording_config_list.recordings.get(recording_id)
-        if recording_config:
-            camera_configs = [camera for camera in self.camera_config_list.cameras.values() if
-                              camera.activated and camera.recording_id == recording_id]
-            pipeline_configs = [self.pipeline_config_list.pipelines.get(camera.camera_id) for camera in
-                                camera_configs]
-        else:
-            camera_config = self.camera_config_list.cameras.get(recording_id)
-            if not camera_config:
-                raise ValueError(f"Recording not found: {recording_id}")
-            pipeline_configs = [self.pipeline_config_list.pipelines.get(camera_config.camera_id)]
+    def get_required_placeholders(self, recording_id: str = None):
+        pipeline_configs = list(self.pipeline_config_list.pipelines.values())
+
+        if recording_id:
+            recording_config = self.recording_config_list.recordings.get(recording_id)
+            if recording_config:
+                camera_ids = [c.camera_id for c in self.camera_config_list.cameras.values() if c.activated and c.recording_id == recording_id]
+                pipeline_configs = [p for p in pipeline_configs if p.camera_id in camera_ids]
+            else:
+                camera_config = self.camera_config_list.cameras.get(recording_id)
+                if not camera_config:
+                    raise ValueError(f"Recording not found: {recording_id}")
+                pipeline_configs = [self.pipeline_config_list.pipelines.get(camera_config.camera_id)]
 
         required_placeholders = set()
         for pipeline_config in pipeline_configs:
