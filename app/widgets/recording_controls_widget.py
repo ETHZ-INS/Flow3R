@@ -30,7 +30,7 @@ class RecordingControlsWidgetFactory:
         widget.recording_stop.connect(lambda rid: self.controller.stop_recording.future(rid))
 
         widget.edit_recording.connect(self.ui.edit_camera_group)
-        widget.fill_variables.connect(lambda rid, missing_placeholders: self.ui.fill_variables_recording(recording_id=rid, missing_placeholders=missing_placeholders))
+        widget.fill_variables.connect(lambda rid: self.ui.fill_variables_recording(recording_id=rid))
 
         widget.request_recording_state.connect(lambda rid: self.controller.check_recording_state.future(rid))
 
@@ -50,7 +50,7 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QtWidgets.QFrame):
     recording_stop = Signal(str)   # Signal to stop recording
 
     edit_recording = Signal(str)  # Signal to configure recording
-    fill_variables = Signal(str, list)  # recording_id, missing_placeholder_names
+    fill_variables = Signal(str)  # recording_id, missing_placeholder_names
 
     request_recording_state = Signal(str)  # Signal to request recording state update
 
@@ -150,8 +150,7 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QtWidgets.QFrame):
 
     def _status_link_clicked(self, link: str):
         if link == "fill_variables":
-            missing_placeholders = self.recording_state.missing_placeholders if isinstance(self.recording_state, RecordingState.MissingInfo) else []
-            self.fill_variables.emit(self.recording_id, missing_placeholders)
+            self.fill_variables.emit(self.recording_id)
 
     def _recording_name_changed(self, recording_id: str, recording_name: str):
         if self.recording_id != recording_id:
