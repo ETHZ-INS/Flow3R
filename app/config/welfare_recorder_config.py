@@ -1,13 +1,13 @@
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import ClassVar, Dict
+from typing import ClassVar, Dict, List
 
-from app.config.camera_config import CameraConfigList
+from app.config.camera_config import CameraConfigList, CameraConfig
 from app.config.config_base import ConfigBase
-from app.config.pipeline_config import PipelineConfigList
-from app.config.recording_config import RecordingConfigList
-from app.config.variable_config import VariableConfigList, VariableValue
+from app.config.pipeline_config import PipelineConfigList, PipelineConfig
+from app.config.recording_config import RecordingConfigList, RecordingConfig
+from app.config.variable_config import VariableConfigList, VariableValue, VariableConfig
 from app.placeholder_context import PlaceholderContext
 
 
@@ -15,7 +15,7 @@ from app.placeholder_context import PlaceholderContext
 class WelfareRecorderConfig(ConfigBase):
     camera_config_list: CameraConfigList = field(default_factory=CameraConfigList)
     recording_config_list: RecordingConfigList = field(default_factory=RecordingConfigList)
-    pipeline_config_list: PipelineConfigList = field(default_factory=PipelineConfigList)  # TODO: Make sure every camera has a pipeline config
+    pipeline_config_list: PipelineConfigList = field(default_factory=PipelineConfigList)
     variable_config_list: VariableConfigList = field(default_factory=VariableConfigList)
 
     variable_values: Dict[str, VariableValue] = field(default_factory=dict)
@@ -44,77 +44,101 @@ class WelfareRecorderConfig(ConfigBase):
             "variable_values": {k: VariableValue.from_dict(v) for k, v in data.get("variable_values", {}).items()}
         }
 
-    def get_required_placeholders(self, recording_id: str = None):
-        pipeline_configs = list(self.pipeline_config_list.pipelines.values())
+    def _get_virtual_recording_config(self, camera_id: str):
+        # Create a virtual recording config for the given camera based on the default recording config
+        camera_config = self.camera_config_list.cameras.get(camera_id)
+        if not camera_config:
+            raise ValueError(f"Camera not found: {camera_id}")
 
-        if recording_id:
-            recording_config = self.recording_config_list.recordings.get(recording_id)
-            if recording_config:
-                camera_ids = [c.camera_id for c in self.camera_config_list.cameras.values() if c.activated and c.recording_id == recording_id]
-                pipeline_configs = [p for p in pipeline_configs if p.camera_id in camera_ids]
-            else:
-                camera_config = self.camera_config_list.cameras.get(recording_id)
-                if not camera_config:
-                    raise ValueError(f"Recording not found: {recording_id}")
-                pipeline_configs = [self.pipeline_config_list.pipelines.get(camera_config.camera_id)]
+        recording_config = deepcopy(self.recording_config_list.default_recording)
+        recording_config.recording_id = camera_id
+        recording_config.variable_values = deepcopy(camera_config.variable_values)
 
-        required_placeholders = set()
-        for pipeline_config in pipeline_configs:
-            if pipeline_config:
-                required_placeholders.update(pipeline_config.get_required_variables())
+        return recording_config
 
-        return list(required_placeholders)
+    def get_camera_view(self, camera_id: str):
+        # Gets a narrowed view of the config for the given camera (Useful for placeholder resolution)
+        camera_config = self.camera_config_list.cameras.get(camera_id)
+        if not camera_config:
+            raise ValueError(f"Camera not found: {camera_id}")
 
-    def get_placeholder_context(self, recording_id: str = None, preview: bool = False):
-        camera_values = {}
-        recording_values = {}
-        if recording_id:
-            recording_config = self.recording_config_list.recordings.get(recording_id)
-            if recording_config:
-                recording_values = recording_config.variable_values
-            else:
-                camera_config = self.camera_config_list.cameras.get(recording_id)
-                if not camera_config:
-                    raise ValueError(f"Recording not found: {recording_id}")
+        if camera_config.recording_id:
+            recording_config = self.recording_config_list.recordings.get(camera_config.recording_id)
+            if not recording_config:
+                raise ValueError(f"Recording not found: {camera_config.recording_id}")
+        else:
+            recording_config = self._get_virtual_recording_config(camera_id)
 
-                camera_values = camera_config.variable_values if camera_config else {}
-                print("Camera Values:", camera_values)
+        pipeline_config = self.pipeline_config_list.pipelines.get(camera_id)
+        if not pipeline_config:
+            raise ValueError(f"Pipeline not found for camera: {camera_id}")
 
-                recording_config = None
-                if camera_config.recording_id:
-                    recording_config = self.recording_config_list.recordings.get(camera_config.recording_id)
+        placeholders = list(self.variable_config_list.variables.values())
 
-                if recording_config:
-                    recording_values = recording_config.variable_values
-                else:
-                    recording_values = camera_values
+        return CameraConfigView(
+            project=self,
+            camera=camera_config,
+            recording=recording_config,
+            pipeline=pipeline_config,
+            placeholders=placeholders
+        )
 
-        project_values = self.variable_values
+    def get_recording_view(self, recording_id: str):
+        # Gets a narrowed view of the config for the given recording (Useful for placeholder resolution)
+        recording_config = self.recording_config_list.recordings.get(recording_id)
+        if recording_config:
+            camera_configs = [c for c in self.camera_config_list.cameras.values() if c.activated and c.recording_id == recording_id]
+        else:
+            camera_config = self.camera_config_list.cameras.get(recording_id)
+            if not camera_config:
+                raise ValueError(f"Recording not found: {recording_id}")
+            recording_config = self._get_virtual_recording_config(recording_id)
+            camera_configs = [camera_config]
 
+        camera_views = [self.get_camera_view(c.camera_id) for c in camera_configs]
+        placeholders = list(self.variable_config_list.variables.values())
+
+        return RecordingConfigView(
+            project=self,
+            recording=recording_config,
+            camera_views=camera_views,
+            placeholders=placeholders
+        )
+
+
+@dataclass
+class CameraConfigView:
+    project: WelfareRecorderConfig
+    camera: CameraConfig
+    recording: RecordingConfig  # Associated recording config if recording_id is set, otherwise a virtual recording config with default recording settings
+    pipeline: PipelineConfig
+    placeholders: List[VariableConfig] = field(default_factory=list)
+
+    def get_required_placeholders(self):
+        return self.pipeline.get_required_variables()
+
+    def get_placeholder_context(self, preview: bool = False):
         values = {}
-        for var_id, var_config in self.variable_config_list.variables.items():
-            var_name = var_config.variable_name
-            var_value = None
+        for placeholder in self.placeholders:
+            value = None
+            if placeholder.scope == "project":
+                value = self.project.variable_values.get(placeholder.variable_id)
+            elif placeholder.scope == "group":
+                value = self.recording.variable_values.get(placeholder.variable_id)
+            elif placeholder.scope == "camera":
+                value = self.camera.variable_values.get(placeholder.variable_id)
 
-            print("Variable ID:", var_id)
-            print("Variable Name:", var_name)
-            print("Variable Scope:", var_config.scope)
-
-            if var_config.scope == "project":
-                var_value = project_values.get(var_id)
-            elif var_config.scope == "group":
-                var_value = recording_values.get(var_id)
-            elif var_config.scope == "camera":
-                var_value = camera_values.get(var_id)
-
-            print("Variable Value:", var_value)
-
-            if var_value is not None and var_value.value is not None:
-                values[var_config.variable_name] = var_value.value
+            if value is not None and value.value is not None:
+                values[placeholder.variable_name] = value.value
             elif preview:
-                values[var_config.variable_name] = var_config.example_value
+                values[placeholder.variable_name] = placeholder.example_value
 
-        print("Collected values:", values)
-
-        placeholders = deepcopy(list(self.variable_config_list.variables.values()))
         return PlaceholderContext(values)
+
+
+@dataclass
+class RecordingConfigView:
+    project: WelfareRecorderConfig
+    recording: RecordingConfig
+    camera_views: List[CameraConfigView] = field(default_factory=list)
+    placeholders: List[VariableConfig] = field(default_factory=list)

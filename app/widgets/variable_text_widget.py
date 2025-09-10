@@ -3,11 +3,11 @@ from typing import List, Literal
 from PySide6.QtWidgets import QFrame, QFileDialog
 
 from app.config.variable_config import VariableConfig
-from app.config.welfare_recorder_config import WelfareRecorderConfig
+from app.config.welfare_recorder_config import WelfareRecorderConfig, CameraConfigView
 from app.layout.variable_text_widget import Ui_VariableTextWidget
 from app.placeholder_context import PlaceholderContext
 from app.placeholder_formatter import PlaceholderFormatter
-from app.widgets.placeholder_line_edit import VariableHighlighter
+from app.widgets.placeholder_line_edit import PlaceholderHighlighter
 
 
 class VariableTextWidget(Ui_VariableTextWidget, QFrame):
@@ -23,7 +23,7 @@ class VariableTextWidget(Ui_VariableTextWidget, QFrame):
         self.placeholders = []
         self.placeholder_context = None
 
-        self.variable_highlighter = VariableHighlighter(self.txt_value.document(), [])
+        self.variable_highlighter = PlaceholderHighlighter(self.txt_value.document(), [])
 
         self.txt_value.setText(text)
 
@@ -79,10 +79,9 @@ class VariableTextWidget(Ui_VariableTextWidget, QFrame):
         self.placeholder_context = context
         self.update_lbl_preview()
 
-    def set_config(self, config: WelfareRecorderConfig):
-        self.set_placeholders(list(config.variable_config_list.variables.values()))
-        placeholder_context = config.get_placeholder_context(preview=True)
-        self.set_placeholder_context(placeholder_context)
+    def set_config_view(self, config: CameraConfigView):
+        self.set_placeholders(config.placeholders)
+        self.set_placeholder_context(config.get_placeholder_context(preview=True))
 
     def select_file(self):
         if self.mode == "folder":

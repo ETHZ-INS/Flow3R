@@ -199,3 +199,13 @@ class CameraConfigList(ConfigBase):
         return {
             "cameras": {camera_id: CameraConfig.from_dict(camera_data) for camera_id, camera_data in data.get("cameras", {}).items()}
         }
+
+    def get(self, camera_id: str) -> CameraConfig | None:
+        return self.cameras.get(camera_id)
+
+    def set(self, camera_config: CameraConfig):
+        self.cameras[camera_config.camera_id] = camera_config
+
+    def remove(self, camera_id: str):
+        if camera_id in self.cameras:
+            del self.cameras[camera_id]

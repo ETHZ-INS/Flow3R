@@ -1,10 +1,12 @@
 import time
 from typing import TYPE_CHECKING
 
-from PySide6 import QtWidgets
+from PySide6 import QtWidgets, QtCore
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QMenu
+from PySide6.QtWidgets import QMenu, QLabel
 
+from app.config.welfare_recorder_config import RecordingConfigView
+from app.flow_layout import FlowLayout
 from app.layout.recording_controls_widget import Ui_RecordingControlsWidget
 from app.recording_state import RecordingStateBase, RecordingState
 from app.thread_bound_callable import thread_bound
@@ -34,9 +36,10 @@ class RecordingControlsWidgetFactory:
 
         widget.request_recording_state.connect(lambda rid: self.controller.check_recording_state.future(rid))
 
-        self.controller.recording_name_changed.connect(widget._recording_name_changed)
-        self.controller.recording_state_changed.connect(widget._recording_state_changed)
+        self.controller.recording_view_changed.connect(widget.recording_view_changed)
+        self.controller.recording_state_changed.connect(widget.recording_state_changed)
 
+        self.controller.refresh_recording_view.future(recording_id)
         self.controller.check_recording_state.future(recording_id)
 
         return widget
@@ -58,12 +61,17 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QtWidgets.QFrame):
         super().__init__(parent)
         self.setupUi(self)
 
+        preview_layout = FlowLayout(self.frm_preview)
+        self.frm_preview.setLayout(preview_layout)
+
         print("Initializing RecordingControlsWidget with recording_id:", recording_id)
 
         self.recording_id = recording_id
         self.recording_name = recording_name
         self.show_recording_name = show_recording_name
         self.show_context_menu = show_context_menu
+
+        self.recording_view = None
 
         self.context_menu = QMenu(self)
         self.action_configure_recording = self.context_menu.addAction("Configure Recording")
@@ -134,10 +142,55 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QtWidgets.QFrame):
             self.lbl_status.setText("")
             self.lbl_status.setStyleSheet("QLabel { color: black; }")
 
+    def update_frm_preview(self):
+        self.frm_preview.layout().clear()
+
+        if self.recording_view is None or not any(placeholder.show_in_controls for placeholder in self.recording_view.placeholders):
+            self.frm_preview.hide()
+            return
+
+        self.frm_preview.show()
+
+        for placeholder in self.recording_view.placeholders:
+            if not placeholder.show_in_controls:
+                continue
+
+            if placeholder.scope == "camera" and len(self.recording_view.camera_views) > 1:
+                for camera_view in self.recording_view.camera_views:
+                    placeholder_context = camera_view.get_placeholder_context()
+                    value = placeholder_context.resolve(placeholder.variable_name)
+                    if value.missing_dependencies:
+                        continue
+
+                    if value.is_set:
+                        value = value.value
+                    else:
+                        value = "(not set)"
+                    lbl = QLabel(f"{placeholder.variable_label} ({camera_view.camera.camera_name}) - {value}")
+                    lbl.setTextFormat(QtCore.Qt.TextFormat.RichText)
+                    lbl.setStyleSheet("background: lightblue; padding: 5px; border: 1px solid gray; border-radius: 5px;")
+                    self.frm_preview.layout().addWidget(lbl)
+            else:
+                camera_view = self.recording_view.camera_views[0]
+                placeholder_context = camera_view.get_placeholder_context()
+                value = placeholder_context.resolve(placeholder.variable_name)
+                if value.missing_dependencies:
+                    continue
+
+                if value.is_set and not value.missing_dependencies:
+                    value = value.value
+                else:
+                    value = "(not set)"
+                lbl = QLabel(f"{placeholder.variable_label} - {value}")
+                lbl.setTextFormat(QtCore.Qt.TextFormat.RichText)
+                lbl.setStyleSheet("background: lightblue; padding: 5px; border: 1px solid gray; border-radius: 5px;")
+                self.frm_preview.layout().addWidget(lbl)
+
     def update_all(self):
         self.update_lbl_recording_name()
         self.update_btn_start()
         self.update_lbl_status()
+        self.update_frm_preview()
 
     def _start_recording(self):
         if isinstance(self.recording_state, RecordingState.Running):
@@ -152,20 +205,27 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QtWidgets.QFrame):
         if link == "fill_variables":
             self.fill_variables.emit(self.recording_id)
 
-    def _recording_name_changed(self, recording_id: str, recording_name: str):
+    def recording_view_changed(self, recording_id: str, recording_view: RecordingConfigView):
         if self.recording_id != recording_id:
             return
 
-        self.recording_name = recording_name
-        self.update_lbl_recording_name()
+        self.recording_view = recording_view
 
-    def _recording_state_changed(self, recording_id: str, recording_state: RecordingStateBase):
+        if recording_view.recording.recording_name != self.recording_name:
+            self.recording_name = recording_view.recording.recording_name
+            self.update_lbl_recording_name()
+
+        #if recording_view.placeholders != self.recording_view.placeholders:
+        #    self.update_frm_preview()
+        self.update_frm_preview()
+
+    def recording_state_changed(self, recording_id: str, recording_state: RecordingStateBase):
         if self.recording_id != recording_id:
             return
 
-        self.recording_state = recording_state
-
-        self.update_all()
+        if self.recording_state != recording_state:
+            self.recording_state = recording_state
+            self.update_all()
 
     def contextMenuEvent(self, event):
         if not self.show_context_menu:

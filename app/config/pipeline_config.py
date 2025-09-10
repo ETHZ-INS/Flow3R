@@ -57,3 +57,13 @@ class PipelineConfigList(ConfigBase):
         return {
             "pipelines": {camera_id: PipelineConfig.from_dict(pipeline_data) for camera_id, pipeline_data in data.get("pipelines", {}).items()}
         }
+
+    def get(self, camera_id: str) -> PipelineConfig:
+        return self.pipelines.get(camera_id)
+
+    def set(self, config: PipelineConfig):
+        self.pipelines[config.camera_id] = config
+
+    def remove(self, camera_id: str):
+        if camera_id in self.pipelines:
+            del self.pipelines[camera_id]

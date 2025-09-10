@@ -37,8 +37,8 @@ class CameraWidgetFactory:
         widget.edit_camera.connect(self.ui.edit_camera)
         widget.edit_recording.connect(self.ui.edit_camera_group)
 
-        self.controller.recording_state_changed.connect(widget.recording_controls._recording_state_changed)
-        self.controller.recording_name_changed.connect(widget.recording_controls._recording_name_changed)
+        self.controller.recording_view_changed.connect(widget.recording_controls.recording_view_changed)
+        self.controller.recording_state_changed.connect(widget.recording_controls.recording_state_changed)
 
         self.controller.check_recording_state.future(recording_id if recording_id is not None else camera_id)
 
@@ -77,8 +77,8 @@ class CameraWidget(Ui_CameraWidget, QDockWidget):
         print(self.recording_id)
 
         self.recording_controls = RecordingControlsWidget(self.recording_id, self.recording_name, show_recording_name=False, show_context_menu=False)
-        self.recording_controls_frame = self.recording_controls.frm_controls
-        self.frm_content.layout().addWidget(self.recording_controls_frame)
+        #self.recording_controls_frame = self.recording_controls.frm_controls
+        self.frm_content.layout().addWidget(self.recording_controls)
 
         self.context_menu = QMenu(self)
         self.action_configure_camera = self.context_menu.addAction("Configure Camera")
@@ -100,15 +100,15 @@ class CameraWidget(Ui_CameraWidget, QDockWidget):
 
         self.recording_running = False
 
-        # Move widget to ui thread
-        self.moveToThread(QtCore.QCoreApplication.instance().thread())
+        self.set_show_controls(False)
 
         self._update()
 
     @thread_bound()
     def set_show_controls(self, show: bool):
+        print(f"[CameraWidget] set_show_controls: {show}")
         """Enable or disable the controls in the widget."""
-        self.recording_controls_frame.setVisible(show)
+        self.recording_controls.setVisible(show)
 
     def _update(self):
         title = f"{self.camera_name}"

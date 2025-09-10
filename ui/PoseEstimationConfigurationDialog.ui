@@ -168,16 +168,9 @@
           <number>0</number>
          </property>
          <item>
-          <widget class="QLineEdit" name="txt_save_file">
+          <widget class="VariableTextWidget" name="txt_save_file">
            <property name="text">
             <string>{base_folder}/{recording_name}/{camera_name}_pose_results.csv</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QToolButton" name="btn_select_save_file">
-           <property name="text">
-            <string>...</string>
            </property>
           </widget>
          </item>
@@ -219,6 +212,13 @@
    </item>
   </layout>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>VariableTextWidget</class>
+   <extends>QLineEdit</extends>
+   <header>app/widgets/variable_text_widget.h</header>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections>
   <connection>

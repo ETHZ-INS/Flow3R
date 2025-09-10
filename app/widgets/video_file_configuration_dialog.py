@@ -3,22 +3,20 @@ from copy import deepcopy
 from PySide6.QtWidgets import QDialog
 
 from app.config.save_video_config import SaveVideoConfig
-from app.controller import Controller
+from app.config.welfare_recorder_config import CameraConfigView
 from app.layout.video_file_configuration_dialog import Ui_VideoFileConfigurationDialog
 
 
 class VideoFileConfigurationDialog(Ui_VideoFileConfigurationDialog, QDialog):
-    def __init__(self, controller: Controller, config: SaveVideoConfig, recording_id: str = None, parent=None):
+    def __init__(self, config_view: CameraConfigView, parent=None):
         super().__init__(parent)
         self.setupUi(self)
 
-        self.controller = controller
-        self.config = deepcopy(config)
-        self.recording_id = recording_id
+        self.config = deepcopy(config_view.pipeline.save_video_config)
 
         self.txt_filename.set_mode("file")
         self.txt_filename.setText(self.config.file_path)
-        self.txt_filename.set_config(self.controller.get_config())
+        self.txt_filename.set_config_view(config_view)
 
         self.dpd_codec.clear()
         for codec_name, codec_text in SaveVideoConfig.CODECS.items():

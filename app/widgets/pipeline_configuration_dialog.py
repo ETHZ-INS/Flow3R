@@ -20,7 +20,7 @@ class PipelineConfigurationDialog(Ui_PipelineConfigurationDialog, QDialog):
             raise Exception("No cameras found in configuration.")
 
         self.controller = controller
-        self.pipeline_config_list = deepcopy(controller.config.pipeline_config_list)
+        self.config = controller.get_config()
 
         self.chb_live_heatmap.setVisible(False)
         self.btn_configure_live_heatmap.setVisible(False)
@@ -33,13 +33,13 @@ class PipelineConfigurationDialog(Ui_PipelineConfigurationDialog, QDialog):
 
         self.dpd_camera.clear()
         for camera_id, camera in self.controller.config.camera_config_list.cameras.items():
-            if camera_id not in self.pipeline_config_list.pipelines:
-                self.pipeline_config_list.pipelines[camera_id] = PipelineConfig(camera_id)
+            if camera_id not in self.config.pipeline_config_list.pipelines:
+                self.config.pipeline_config_list.pipelines[camera_id] = PipelineConfig(camera_id)
             self.dpd_camera.addItem(camera.camera_name, userData=camera_id)
         self.dpd_camera.setCurrentIndex(0)
 
         self.current_camera_id = self.dpd_camera.currentData()
-        self.current_pipeline = self.pipeline_config_list.pipelines[self.current_camera_id]
+        self.current_pipeline = self.config.pipeline_config_list.pipelines[self.current_camera_id]
 
         self.dpd_camera.currentIndexChanged.connect(self.current_camera_changed)
 
@@ -72,7 +72,7 @@ class PipelineConfigurationDialog(Ui_PipelineConfigurationDialog, QDialog):
             return
 
         self.current_camera_id = camera_id
-        self.current_pipeline = self.pipeline_config_list.pipelines[self.current_camera_id]
+        self.current_pipeline = self.config.pipeline_config_list.pipelines[self.current_camera_id]
         self.update_form()
 
     def save_video_changed(self):
@@ -84,14 +84,16 @@ class PipelineConfigurationDialog(Ui_PipelineConfigurationDialog, QDialog):
         self.update_form()
 
     def configure_save_video(self):
-        dialog = VideoFileConfigurationDialog(self.controller, self.current_pipeline.save_video_config, recording_id=self.current_camera_id, parent=self)
+        config_view = self.config.get_camera_view(self.current_camera_id)
+        dialog = VideoFileConfigurationDialog(config_view, parent=self)
         if dialog.exec_():
             self.current_pipeline.save_video_config = dialog.config
             print("Video file configuration saved.")
         self.update_form()
 
     def configure_pose_estimation(self):
-        dialog = PoseEstimationConfigurationDialog(self.controller, self.current_pipeline.pose_estimation_config, self)
+        config_view = self.config.get_camera_view(self.current_camera_id)
+        dialog = PoseEstimationConfigurationDialog(config_view, parent=self)
         if dialog.exec_():
             self.current_pipeline.pose_estimation_config = dialog.config
             print("Pose estimation configuration saved.")
@@ -101,11 +103,13 @@ class PipelineConfigurationDialog(Ui_PipelineConfigurationDialog, QDialog):
         self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
         self.buttonBox.button(QDialogButtonBox.StandardButton.Cancel).setEnabled(False)
 
+        old_config = self.controller.get_config()
+
         futures = []
-        for pipeline_config in self.pipeline_config_list.pipelines.values():
-            if pipeline_config.camera_id not in self.controller.config.pipeline_config_list.pipelines:
+        for pipeline_config in self.config.pipeline_config_list.pipelines.values():
+            if pipeline_config.camera_id not in old_config.pipeline_config_list.pipelines:
                 raise Exception(f"Camera {pipeline_config.camera_id} not found in pipeline configuration list.")
-            elif pipeline_config != self.controller.config.pipeline_config_list.pipelines[pipeline_config.camera_id]:
+            elif pipeline_config != old_config.pipeline_config_list.pipelines[pipeline_config.camera_id]:
                 futures.append(self.controller.update_pipeline.future(pipeline_config))
 
         if not futures:

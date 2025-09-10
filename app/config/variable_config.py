@@ -37,6 +37,7 @@ class VariableConfig(ConfigBase):
     example_value: str = "Hello World"
     scope: str = 'project'
     persistence: str = 'recording'
+    show_in_controls: bool = False
     description: str = ''
     choice_values: list = field(default_factory=list)
 
@@ -49,6 +50,7 @@ class VariableConfig(ConfigBase):
             "example_value": self.example_value,
             "scope": self.scope,
             "persistence": self.persistence,
+            "show_in_controls": self.show_in_controls,
             "description": self.description,
             "choice_values": self.choice_values
         }
@@ -63,6 +65,7 @@ class VariableConfig(ConfigBase):
             "example_value": data.get("example_value", cls.example_value),
             "scope": data.get("scope", cls.scope),
             "persistence": data.get("persistence", cls.persistence),
+            "show_in_controls": data.get("show_in_controls", cls.show_in_controls),
             "description": data.get("description", cls.description),
             "choice_values": data.get("choice_values") or []
         }

@@ -19,8 +19,6 @@ class VariablePreparationDialog(Ui_VariablePreparationDialog, QDialog):
         self.controller = controller
         self.config = self.controller.get_config()
 
-        self.required_placeholders = set(self.config.get_required_placeholders(recording_id))
-
         project_placeholders = [v for v in self.config.variable_config_list.variables.values() if v.scope == "project"]
         group_placeholders = [v for v in self.config.variable_config_list.variables.values() if v.scope == "group"]
         camera_placeholders = [v for v in self.config.variable_config_list.variables.values() if v.scope == "camera"]
@@ -37,6 +35,8 @@ class VariablePreparationDialog(Ui_VariablePreparationDialog, QDialog):
             },
         }
 
+        self.required_placeholders = set()
+
         if recording_id:
             recording_config = self.config.recording_config_list.recordings.get(recording_id)
             if recording_config:
@@ -49,6 +49,9 @@ class VariablePreparationDialog(Ui_VariablePreparationDialog, QDialog):
                 }
                 camera_configs = [c for c in self.config.camera_config_list.cameras.values() if c.activated and c.recording_id == recording_id]
                 for camera_config in camera_configs:
+                    config_view = self.config.get_camera_view(camera_config.camera_id)
+                    self.required_placeholders.update(config_view.get_required_placeholders())
+
                     self.scopes[("camera", camera_config.camera_id)] = {
                         "placeholders": camera_placeholders,
                         "old_values": {v.variable_id: v.value for v in camera_config.variable_values.values() if v.value is not None},
@@ -59,6 +62,9 @@ class VariablePreparationDialog(Ui_VariablePreparationDialog, QDialog):
             else:
                 camera_config = self.config.camera_config_list.cameras.get(recording_id)
                 if camera_config:
+                    config_view = self.config.get_camera_view(camera_config.camera_id)
+                    self.required_placeholders.update(config_view.get_required_placeholders())
+
                     self.scopes[("camera", camera_config.camera_id)] = {
                         "placeholders": group_placeholders + camera_placeholders,
                         "old_values": {v.variable_id: v.value for v in camera_config.variable_values.values() if v.value is not None},
@@ -183,7 +189,10 @@ class VariablePreparationDialog(Ui_VariablePreparationDialog, QDialog):
         scope_data = self.scopes.get(scope)
         widget = scope_data["widgets"].get(variable_id)
         if widget and isinstance(widget, (QLineEdit, VariableTextWidget)):
-            scope_data["changed_values"][variable_id] = widget.text()
+            value = widget.text()
+            if value == "":
+                value = None
+            scope_data["changed_values"][variable_id] = value
             self.hide_filled_changed()
 
     def value_changed_int(self, scope, variable_id: str):

@@ -48,6 +48,10 @@ class RecordingConfig(ConfigBase):
 class RecordingConfigList(ConfigBase):
     recordings: Dict[str, RecordingConfig] = field(default_factory=lambda: {'default': RecordingConfig(recording_id='default', recording_name='Default (Individual)', locked_values=["self", "recording_name"])})
 
+    @property
+    def default_recording(self) -> RecordingConfig:
+        return self.recordings['default']
+
     def _extra_to_dict(self):
         return {
             "recordings": {recording_id: recording.to_dict() for recording_id, recording in self.recordings.items()}
@@ -58,3 +62,13 @@ class RecordingConfigList(ConfigBase):
         return {
             "recordings": {recording_id: RecordingConfig.from_dict(recording_data) for recording_id, recording_data in data.get("recordings", {}).items()}
         }
+
+    def get(self, recording_id: str) -> RecordingConfig:
+        return self.recordings.get(recording_id, self.default_recording)
+
+    def set(self, recording_config: RecordingConfig):
+        self.recordings[recording_config.recording_id] = recording_config
+
+    def remove(self, recording_id: str):
+        if recording_id in self.recordings and recording_id != 'default':
+            del self.recordings[recording_id]
