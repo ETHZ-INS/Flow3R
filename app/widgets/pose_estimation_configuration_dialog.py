@@ -4,6 +4,7 @@ from PySide6.QtWidgets import QDialog
 
 from app.analysis.pose_estimation.yolo_pose_model import YoloPoseModel
 from app.config.pose_estimation_config import PoseEstimationConfig, PoseEstimationModelConfig
+from app.config.welfare_recorder_config import CameraConfigView
 from app.layout.pose_estimation_configuration_dialog import Ui_PoseEstimationConfigurationDialog
 from app.controller import Controller
 
@@ -11,16 +12,20 @@ from app.controller import Controller
 # TODO: I need a way to globally add external models and use them in multiple PoseEstimation nodes. Or do i?
 
 class PoseEstimationConfigurationDialog(Ui_PoseEstimationConfigurationDialog, QDialog):
-    def __init__(self, controller: Controller, config: PoseEstimationConfig, parent=None):
+    def __init__(self, config_view: CameraConfigView, parent=None):
         super().__init__(parent)
         self.setupUi(self)
 
-        self.controller = controller
-        self.config = deepcopy(config)
+        self.config_view = config_view
+        self.config = deepcopy(config_view.pipeline.pose_estimation_config)
 
         if len(self.config.models) < 1:
             model = PoseEstimationModelConfig()
             self.config.models[model.model_id] = model
+
+        self.txt_save_file.set_mode("file")
+        self.txt_save_file.setText(self.config.save_file)
+        self.txt_save_file.set_config_view(config_view)
 
         self.dpd_model.clear()
         for model_id, model in self.config.models.items():
@@ -28,7 +33,7 @@ class PoseEstimationConfigurationDialog(Ui_PoseEstimationConfigurationDialog, QD
         self.dpd_model.setCurrentIndex(0)
 
         self.dpd_select_model.clear()
-        for model_name in self.controller.config.INTERNAL_MODELS:
+        for model_name in config_view.project.INTERNAL_MODELS:
             self.dpd_select_model.addItem(model_name)
         self.dpd_select_model.setCurrentIndex(0)
 
@@ -43,6 +48,9 @@ class PoseEstimationConfigurationDialog(Ui_PoseEstimationConfigurationDialog, QD
         self.dpd_device.currentIndexChanged.connect(self.device_changed)
         self.btn_add_model.clicked.connect(self.add_model)
         self.btn_remove_model.clicked.connect(self.remove_model)
+
+        self.chb_save_file.stateChanged.connect(self.save_to_file_changed)
+        self.txt_save_file.textChanged.connect(self.save_file_changed)
 
         self.current_model_changed()
         self.update_form()
@@ -68,7 +76,7 @@ class PoseEstimationConfigurationDialog(Ui_PoseEstimationConfigurationDialog, QD
 
     def selected_model_changed(self):
         self.current_model.internal_model_name = self.dpd_select_model.currentText()
-        self.current_model.model_folder = self.controller.config.INTERNAL_MODELS.get(self.current_model.internal_model_name, None)
+        self.current_model.model_folder = self.config_view.project.INTERNAL_MODELS.get(self.current_model.internal_model_name)
         self.dpd_model.setItemText(self.dpd_model.currentIndex(), self.current_model.name)
         self.update_form()
 
@@ -96,10 +104,10 @@ class PoseEstimationConfigurationDialog(Ui_PoseEstimationConfigurationDialog, QD
         self.current_model_changed()
 
     def save_to_file_changed(self):
-        self.current_model.save_to_file = self.chb_save_file.isChecked()
+        self.config.save_to_file = self.chb_save_file.isChecked()
 
     def save_file_changed(self):
-        self.current_model.save_file_template = self.txt_save_file.text()
+        self.config.save_file = self.txt_save_file.text()
 
     def get_tracked_instances(self):
         instance_type_names = []

@@ -161,10 +161,18 @@
     </property>
     <addaction name="action_configure_pipelines"/>
    </widget>
+   <widget class="QMenu" name="menuVariables">
+    <property name="title">
+     <string>Variables</string>
+    </property>
+    <addaction name="action_add_variable"/>
+    <addaction name="action_configure_variables"/>
+   </widget>
    <addaction name="menuFile"/>
    <addaction name="menuCameras"/>
    <addaction name="menuRecording"/>
    <addaction name="menuProcessing"/>
+   <addaction name="menuVariables"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
   <action name="action_configure_recordings">
@@ -210,6 +218,16 @@
   <action name="action_configure_camera_groups">
    <property name="text">
     <string>Configure Camera Groups</string>
+   </property>
+  </action>
+  <action name="action_add_variable">
+   <property name="text">
+    <string>Add Variable</string>
+   </property>
+  </action>
+  <action name="action_configure_variables">
+   <property name="text">
+    <string>Configure Variables</string>
    </property>
   </action>
  </widget>

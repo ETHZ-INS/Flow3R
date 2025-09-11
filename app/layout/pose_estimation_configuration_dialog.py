@@ -17,8 +17,10 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QPalette, QPixmap, QRadialGradient, QTransform)
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QCheckBox, QComboBox,
     QDialog, QDialogButtonBox, QFormLayout, QFrame,
-    QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QSizePolicy, QToolButton, QVBoxLayout, QWidget)
+    QHBoxLayout, QLabel, QPushButton, QSizePolicy,
+    QVBoxLayout, QWidget)
+
+from app.widgets.variable_text_widget import VariableTextWidget
 
 class Ui_PoseEstimationConfigurationDialog(object):
     def setupUi(self, PoseEstimationConfigurationDialog):
@@ -129,15 +131,10 @@ class Ui_PoseEstimationConfigurationDialog(object):
         self.horizontalLayout_4 = QHBoxLayout(self.frm_pylon_config_file_2)
         self.horizontalLayout_4.setObjectName(u"horizontalLayout_4")
         self.horizontalLayout_4.setContentsMargins(0, 0, 0, 0)
-        self.txt_save_file = QLineEdit(self.frm_pylon_config_file_2)
+        self.txt_save_file = VariableTextWidget(self.frm_pylon_config_file_2)
         self.txt_save_file.setObjectName(u"txt_save_file")
 
         self.horizontalLayout_4.addWidget(self.txt_save_file)
-
-        self.btn_select_save_file = QToolButton(self.frm_pylon_config_file_2)
-        self.btn_select_save_file.setObjectName(u"btn_select_save_file")
-
-        self.horizontalLayout_4.addWidget(self.btn_select_save_file)
 
 
         self.formLayout_2.setWidget(0, QFormLayout.FieldRole, self.frm_pylon_config_file_2)
@@ -189,7 +186,6 @@ class Ui_PoseEstimationConfigurationDialog(object):
         self.label_5.setText(QCoreApplication.translate("PoseEstimationConfigurationDialog", u"Results", None))
         self.chb_save_file.setText(QCoreApplication.translate("PoseEstimationConfigurationDialog", u"Save to file:", None))
         self.txt_save_file.setText(QCoreApplication.translate("PoseEstimationConfigurationDialog", u"{base_folder}/{recording_name}/{camera_name}_pose_results.csv", None))
-        self.btn_select_save_file.setText(QCoreApplication.translate("PoseEstimationConfigurationDialog", u"...", None))
         self.label_3.setText(QCoreApplication.translate("PoseEstimationConfigurationDialog", u"Tracked Instance Types:", None))
         self.lbl_tracked_instance_types.setText(QCoreApplication.translate("PoseEstimationConfigurationDialog", u"mouse_top", None))
     # retranslateUi

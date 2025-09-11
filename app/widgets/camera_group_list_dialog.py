@@ -6,7 +6,7 @@ from PySide6.QtCore import QAbstractListModel, Qt, QModelIndex, QSize, QRect
 from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QDialog, QStyledItemDelegate, QStyle, QMessageBox
 
-from app.config.recording_config import RecordingConfig
+from app.config.recording_config import GroupConfig
 from app.layout.camera_group_list_dialog import Ui_CameraGroupListDialog
 from app.controller import Controller
 from app.thread_bound_callable import thread_bound
@@ -25,8 +25,8 @@ class CameraGroupListModel(QAbstractListModel):
         self.controller.recording_updated.connect(self._camera_group_updated)
         self.controller.recording_removed.connect(self._camera_group_removed)
 
-        self.camera_group_config_list = deepcopy(self.controller.config.recording_config_list)
-        self.camera_groups = sorted(self.camera_group_config_list.recordings.values(), key=lambda x: (not x.is_default, x.recording_name))
+        self.config = self.controller.get_config()
+        self.camera_groups = sorted(self.config.groups.values(), key=lambda x: (not x.is_default, x.recording_name))
 
     def rowCount(self, parent=None):
         return len(self.camera_groups)
@@ -52,12 +52,12 @@ class CameraGroupListModel(QAbstractListModel):
                 return row
         return None
 
-    def _camera_group_added(self, camera_group_config: RecordingConfig):
+    def _camera_group_added(self, camera_group_config: GroupConfig):
         self.beginInsertRows(QModelIndex(), self.rowCount(), self.rowCount())
         self.camera_groups.append(camera_group_config)
         self.endInsertRows()
 
-    def _camera_group_updated(self, camera_group_config: RecordingConfig):
+    def _camera_group_updated(self, camera_group_config: GroupConfig):
         row = self.find_row_by_recording_id(camera_group_config.recording_id)
         if row is None:
             self._camera_group_added(camera_group_config)
@@ -79,8 +79,8 @@ class CameraGroupListModel(QAbstractListModel):
 
     def refresh(self):
         self.beginResetModel()
-        self.camera_group_config_list = deepcopy(self.controller.config.recording_config_list)
-        self.camera_groups = sorted(self.camera_group_config_list.recordings.values(), key=lambda x: (not x.is_default, x.recording_name))
+        self.config = self.controller.get_config()
+        self.camera_groups = sorted(self.config.groups.values(), key=lambda x: (not x.is_default, x.recording_name))
         self.endResetModel()
 
     def roleNames(self):
@@ -198,11 +198,11 @@ class CameraGroupListDialog(Ui_CameraGroupListDialog, QDialog):
         self.selected_camera_changed()
 
     def update_btn_add(self):
-        if self.camera_group_list_model.camera_group_config_list.is_locked("recordings"):
+        if self.camera_group_list_model.config.is_locked("groups"):
             self.btn_add.setVisible(False)
 
     def update_btn_remove(self):
-        if self.camera_group_list_model.camera_group_config_list.is_locked("recordings"):
+        if self.camera_group_list_model.config.is_locked("groups"):
             self.btn_remove.setVisible(False)
 
         index = self.lst_groups.currentIndex()
@@ -240,7 +240,7 @@ class CameraGroupListDialog(Ui_CameraGroupListDialog, QDialog):
         camera_group = self.camera_group_list_model.camera_groups[row]
 
         if self._confirm_remove_group(camera_group.recording_name):
-            fut = self.controller.remove_recording.future(camera_group.recording_id)
+            fut = self.controller.remove_group.future(camera_group.recording_id)
             fut.add_done_callback(self._remove_group_result.future)
 
     def _confirm_remove_group(self, group_name: str) -> bool:
@@ -274,6 +274,6 @@ class CameraGroupListDialog(Ui_CameraGroupListDialog, QDialog):
         row = index.row()
         group_config = self.camera_group_list_model.camera_groups[row]
 
-        dialog = CameraGroupEditDialog(self.controller, camera_group_config=group_config)
+        dialog = CameraGroupEditDialog(self.controller, group_config=group_config)
         dialog.setWindowTitle("Edit Camera Group")
         dialog.exec()

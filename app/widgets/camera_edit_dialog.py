@@ -44,7 +44,7 @@ class CameraEditDialog(Ui_CameraEditDialog, QDialog):
         self.su_mode = False
 
         self.dpd_group.clear()
-        for recording_id, recording_config in self.controller.config.recording_config_list.recordings.items():
+        for recording_id, recording_config in self.controller.config.groups.items():
             self.dpd_group.addItem(recording_config.recording_name, recording_id)
 
         self.dpd_camera_type.clear()
@@ -91,7 +91,7 @@ class CameraEditDialog(Ui_CameraEditDialog, QDialog):
     def _validate(self) -> str | None:
         # Check if same device is used in other cameras
         conflict_camera_name = None
-        for camera_config in self.controller.config.camera_config_list.cameras.values():
+        for camera_config in self.controller.config.cameras.values():
             if camera_config.camera_id == self.camera_config.camera_id:
                 continue
             if camera_config.device_key == self.camera_config.device_key:
@@ -180,7 +180,7 @@ class CameraEditDialog(Ui_CameraEditDialog, QDialog):
         old_camera_name = self.camera_config.camera_name
         camera_name = self.txt_camera_name.text().strip()
 
-        camera_names_in_use = [c.camera_name for c in self.controller.config.camera_config_list.cameras.values()
+        camera_names_in_use = [c.camera_name for c in self.controller.config.cameras.values()
                                if c.camera_id != self.camera_config.camera_id]
 
         if not camera_name or camera_name in camera_names_in_use:
@@ -191,7 +191,7 @@ class CameraEditDialog(Ui_CameraEditDialog, QDialog):
 
     def recording_changed(self):
         recording_id = self.dpd_group.currentData()
-        if recording_id is not None and not self.controller.config.recording_config_list.recordings[recording_id].is_default:
+        if recording_id is not None and not self.controller.config.groups[recording_id].is_default:
             self.camera_config.recording_id = recording_id
         else:
             self.camera_config.recording_id = None

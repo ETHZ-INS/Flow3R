@@ -34,6 +34,14 @@ class PipelineConfig(ConfigBase):
             "pose_estimation_config": PoseEstimationConfig.from_dict(data.get('pose_estimation_config', {}))
         }
 
+    def get_required_placeholders(self) -> set:
+        vars = set()
+        if self.save_video:
+            vars.update(self.save_video_config.get_required_variables())
+        if self.pose_estimation:
+            vars.update(self.pose_estimation_config.get_required_variables())
+        return vars
+
 
 @dataclass
 class PipelineConfigList(ConfigBase):
@@ -49,3 +57,13 @@ class PipelineConfigList(ConfigBase):
         return {
             "pipelines": {camera_id: PipelineConfig.from_dict(pipeline_data) for camera_id, pipeline_data in data.get("pipelines", {}).items()}
         }
+
+    def get(self, camera_id: str) -> PipelineConfig:
+        return self.pipelines.get(camera_id)
+
+    def set(self, config: PipelineConfig):
+        self.pipelines[config.camera_id] = config
+
+    def remove(self, camera_id: str):
+        if camera_id in self.pipelines:
+            del self.pipelines[camera_id]

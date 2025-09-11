@@ -22,7 +22,7 @@ class Ui_RecordingControlsWidget(object):
     def setupUi(self, RecordingControlsWidget):
         if not RecordingControlsWidget.objectName():
             RecordingControlsWidget.setObjectName(u"RecordingControlsWidget")
-        RecordingControlsWidget.resize(400, 65)
+        RecordingControlsWidget.resize(519, 81)
         sizePolicy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -37,6 +37,15 @@ class Ui_RecordingControlsWidget(object):
         self.lbl_recording_name.setSizePolicy(sizePolicy)
 
         self.verticalLayout.addWidget(self.lbl_recording_name)
+
+        self.frm_preview = QFrame(RecordingControlsWidget)
+        self.frm_preview.setObjectName(u"frm_preview")
+        sizePolicy.setHeightForWidth(self.frm_preview.sizePolicy().hasHeightForWidth())
+        self.frm_preview.setSizePolicy(sizePolicy)
+        self.frm_preview.setFrameShape(QFrame.NoFrame)
+        self.frm_preview.setFrameShadow(QFrame.Raised)
+
+        self.verticalLayout.addWidget(self.frm_preview)
 
         self.frm_controls = QFrame(RecordingControlsWidget)
         self.frm_controls.setObjectName(u"frm_controls")

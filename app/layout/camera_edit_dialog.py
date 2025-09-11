@@ -115,6 +115,8 @@ class Ui_CameraEditDialog(object):
 
         self.btn_select_video_file = QToolButton(self.frm_video_file)
         self.btn_select_video_file.setObjectName(u"btn_select_video_file")
+        icon = QIcon(QIcon.fromTheme(u"folder-open"))
+        self.btn_select_video_file.setIcon(icon)
 
         self.horizontalLayout_2.addWidget(self.btn_select_video_file)
 
@@ -142,6 +144,7 @@ class Ui_CameraEditDialog(object):
 
         self.btn_select_pylon_config_file = QToolButton(self.frm_pylon_config_file)
         self.btn_select_pylon_config_file.setObjectName(u"btn_select_pylon_config_file")
+        self.btn_select_pylon_config_file.setIcon(icon)
 
         self.horizontalLayout_4.addWidget(self.btn_select_pylon_config_file)
 

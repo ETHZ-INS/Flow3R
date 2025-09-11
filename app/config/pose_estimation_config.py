@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Dict
 
 from app.config.config_base import ConfigBase
+from app.placeholder_formatter import PlaceholderFormatter
 
 
 @dataclass
@@ -13,8 +14,6 @@ class PoseEstimationModelConfig(ConfigBase):
     internal_model_name: str = None
     model_folder: Path = None
     device: str = "cuda"
-    save_to_file: bool = True
-    save_file_template: str = "{base_folder}/{recording_name}/{camera_name}_pose_results.csv"
 
     @property
     def name(self) -> str:
@@ -30,9 +29,7 @@ class PoseEstimationModelConfig(ConfigBase):
             'external': self.external,
             'internal_model_name': self.internal_model_name,
             'model_folder': str(self.model_folder) if self.model_folder else None,
-            'device': self.device,
-            'save_to_file': self.save_to_file,
-            'save_file_template': self.save_file_template
+            'device': self.device
         }
 
     @classmethod
@@ -42,9 +39,7 @@ class PoseEstimationModelConfig(ConfigBase):
             "external": data.get('external', cls.external),
             "internal_model_name": data.get('internal_model_name', cls.internal_model_name),
             "model_folder": Path(data['model_folder']) if data.get('model_folder') else cls.model_folder,
-            "device": data.get('device', cls.device),
-            "save_to_file": data.get('save_to_file', cls.save_to_file),
-            "save_file_template": data.get('save_file_template', cls.save_file_template)
+            "device": data.get('device', cls.device)
         }
 
 
@@ -52,13 +47,23 @@ class PoseEstimationModelConfig(ConfigBase):
 class PoseEstimationConfig(ConfigBase):
     models: Dict[str, PoseEstimationModelConfig] = field(default_factory=dict)
 
+    save_to_file: bool = True
+    save_file: str = "{recording_folder}/{camera_name}_pose_results.csv"
+
     def _extra_to_dict(self) -> dict:
         return {
-            "models": {model_id: model.to_dict() for model_id, model in self.models.items()}
+            "models": {model_id: model.to_dict() for model_id, model in self.models.items()},
+            "save_to_file": self.save_to_file,
+            "save_file": self.save_file
         }
 
     @classmethod
     def _extra_from_dict(cls, data: dict) -> dict:
         return {
-            "models": {model_id: PoseEstimationModelConfig.from_dict(model_data) for model_id, model_data in data.get("models", {}).items()}
+            "models": {model_id: PoseEstimationModelConfig.from_dict(model_data) for model_id, model_data in data.get("models", {}).items()},
+            "save_to_file": data.get("save_to_file", cls.save_to_file),
+            "save_file": data.get("save_file", cls.save_file)
         }
+
+    def get_required_variables(self) -> set:
+        return PlaceholderFormatter(self.save_file).get_placeholders()

@@ -1,5 +1,7 @@
 from concurrent.futures import Future
+from copy import deepcopy
 from pathlib import Path
+from typing import List
 
 from PySide6 import QtWidgets
 from PySide6.QtCore import QByteArray
@@ -16,6 +18,9 @@ from app.widgets.camera_list_dialog import CameraListDialog
 from app.widgets.camera_widget import CameraWidgetFactory
 from app.widgets.pipeline_configuration_dialog import PipelineConfigurationDialog
 from app.widgets.recording_controls_widget import RecordingControlsWidgetFactory
+from app.widgets.variable_edit_dialog import VariableEditDialog
+from app.widgets.variable_list_dialog import VariableListDialog
+from app.widgets.variable_preparation_dialog import VariablePreparationDialog
 
 
 class WelfareRecorder(Ui_WelfareRecorder, QMainWindow):
@@ -59,6 +64,9 @@ class WelfareRecorder(Ui_WelfareRecorder, QMainWindow):
         self.action_add_camera_group.triggered.connect(self.add_camera_group)
         self.action_configure_camera_groups.triggered.connect(self.configure_camera_groups)
 
+        self.action_add_variable.triggered.connect(self.add_variable)
+        self.action_configure_variables.triggered.connect(self.configure_variables)
+
         self.action_configure_pipelines.triggered.connect(self.configure_pipelines)
 
         if self.config_file:
@@ -70,7 +78,7 @@ class WelfareRecorder(Ui_WelfareRecorder, QMainWindow):
         dialog.exec()
 
     def edit_camera(self, camera_id: str):
-        camera_config = self.controller.config.camera_config_list.cameras.get(camera_id)
+        camera_config = self.controller.config.cameras.get(camera_id)
         if camera_config is None:
             return
 
@@ -84,30 +92,55 @@ class WelfareRecorder(Ui_WelfareRecorder, QMainWindow):
         dialog.exec()
 
     def edit_camera_group(self, recording_id: str):
-        group_config = self.controller.config.recording_config_list.recordings.get(recording_id)
+        group_config = self.controller.config.groups.get(recording_id)
         if group_config is None:
             return
 
-        dialog = CameraGroupEditDialog(self.controller, camera_group_config=group_config)
+        dialog = CameraGroupEditDialog(self.controller, group_config=group_config)
         dialog.setWindowTitle("Edit Camera Group")
         dialog.exec()
 
     def configure_cameras(self):
         dialog = CameraListDialog(self.controller, parent=self)
         dialog.setWindowTitle("Configure Cameras")
-        dialog.setModal(True)
         dialog.exec()
 
     def configure_camera_groups(self):
         dialog = CameraGroupListDialog(self.controller, parent=self)
         dialog.setWindowTitle("Configure Camera Groups")
-        dialog.setModal(True)
         dialog.exec()
 
     def configure_pipelines(self, camera_id: str = None):
         dialog = PipelineConfigurationDialog(self.controller, selected_camera_id=camera_id, parent=self)
         dialog.setWindowTitle("Configure Pipelines")
-        dialog.setModal(True)
+        dialog.exec()
+
+    def add_variable(self):
+        dialog = VariableEditDialog(self.controller)
+        dialog.setWindowTitle("Add Variable")
+        dialog.exec()
+
+    def edit_variable(self, variable_id: str):
+        variable_config = self.controller.config.variables.get(variable_id)
+        if variable_config is None:
+            return
+
+        dialog = VariableEditDialog(self.controller, variable_config=variable_config)
+        dialog.setWindowTitle("Edit Variable")
+        dialog.exec()
+
+    def configure_variables(self):
+        dialog = VariableListDialog(self.controller, parent=self)
+        dialog.setWindowTitle("Configure Variables")
+        dialog.exec()
+
+        dialog = VariablePreparationDialog(self.controller, recording_id=list(self.controller.config.groups.values())[1].recording_id, parent=self)
+        dialog.setWindowTitle("Prepare Variables")
+        dialog.exec()
+
+    def fill_variables_recording(self, recording_id: str):
+        dialog = VariablePreparationDialog(self.controller, recording_id=recording_id, parent=self)
+        dialog.setWindowTitle("Prepare Variables")
         dialog.exec()
 
     def _select_save_file(self):

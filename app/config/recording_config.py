@@ -3,10 +3,11 @@ from dataclasses import dataclass, field
 from typing import Literal, Dict, ClassVar
 
 from app.config.config_base import ConfigBase
+from app.config.variable_config import VariableValue
 
 
 @dataclass
-class RecordingConfig(ConfigBase):
+class GroupConfig(ConfigBase):
     RECORDING_MODES: ClassVar[dict] = {
         "manual": "Manual",
         "timed": "Timed",
@@ -17,6 +18,8 @@ class RecordingConfig(ConfigBase):
     recording_mode: Literal['manual', 'timed'] = 'manual'
     recording_duration: float = 60.0 * 10 # Default to 10 minutes
 
+    variable_values: Dict[str, VariableValue] = field(default_factory=dict)
+
     @property
     def is_default(self) -> bool:
         return self.recording_id == 'default'
@@ -26,7 +29,8 @@ class RecordingConfig(ConfigBase):
             "recording_id": self.recording_id,
             "recording_name": self.recording_name,
             "recording_mode": self.recording_mode,
-            "recording_duration": self.recording_duration
+            "recording_duration": self.recording_duration,
+            "variable_values": {var_id: var_value.to_dict() for var_id, var_value in self.variable_values.items()}
         }
 
     @classmethod
@@ -35,13 +39,18 @@ class RecordingConfig(ConfigBase):
             "recording_id": data["recording_id"],
             "recording_name": data.get("recording_name", cls.recording_name),
             "recording_mode": data.get("recording_mode", cls.recording_mode),
-            "recording_duration": data.get("recording_duration", cls.recording_duration)
+            "recording_duration": data.get("recording_duration", cls.recording_duration),
+            "variable_values": {var_id: VariableValue.from_dict(var_value_data) for var_id, var_value_data in data.get("variable_values", {}).items()}
         }
 
 
 @dataclass
 class RecordingConfigList(ConfigBase):
-    recordings: Dict[str, RecordingConfig] = field(default_factory=lambda: {'default': RecordingConfig(recording_id='default', recording_name='Default (Individual)', locked_values=["self", "recording_name"])})
+    recordings: Dict[str, GroupConfig] = field(default_factory=lambda: {'default': GroupConfig(recording_id='default', recording_name='Default (Individual)', locked_values=["self", "recording_name"])})
+
+    @property
+    def default_recording(self) -> GroupConfig:
+        return self.recordings['default']
 
     def _extra_to_dict(self):
         return {
@@ -51,5 +60,15 @@ class RecordingConfigList(ConfigBase):
     @classmethod
     def _extra_from_dict(cls, data: dict):
         return {
-            "recordings": {recording_id: RecordingConfig.from_dict(recording_data) for recording_id, recording_data in data.get("recordings", {}).items()}
+            "recordings": {recording_id: GroupConfig.from_dict(recording_data) for recording_id, recording_data in data.get("recordings", {}).items()}
         }
+
+    def get(self, recording_id: str) -> GroupConfig:
+        return self.recordings.get(recording_id, self.default_recording)
+
+    def set(self, recording_config: GroupConfig):
+        self.recordings[recording_config.recording_id] = recording_config
+
+    def remove(self, recording_id: str):
+        if recording_id in self.recordings and recording_id != 'default':
+            del self.recordings[recording_id]
