@@ -1,6 +1,6 @@
 from __future__ import annotations
-from dataclasses import dataclass, field, fields
-from typing import ClassVar, List, Final, Dict, Any, Type, TypeVar, Iterable
+from dataclasses import dataclass, field, fields, replace
+from typing import ClassVar, Final, Dict, Any, Type, TypeVar, Iterable, Set
 
 LOCK_SELF: Final[str] = "self"
 LOCK_ALL:  Final[str] = "all"
@@ -17,8 +17,8 @@ class ConfigBase:
     * write protection via __setattr__
     """
 
-    locked_values: List[str] = field(
-        default_factory=list,
+    locked_values: Set[str] = field(
+        default_factory=set,
         kw_only=True,          # keeps it out of the positional args
         repr=False,            # hide from __repr__ if you prefer
     )
@@ -33,13 +33,15 @@ class ConfigBase:
             raise ValueError(f"Unknown lock targets for {type(self).__name__}: {unknown}")
 
     # ---------- helper API ----------
-    def lock(self, *names: str) -> None:
+    def lock(self, *names: str) -> T:
         self._verify_lock_names(names)
-        self.locked_values.extend(n for n in names if n not in self.locked_values)
+        locked_values = self.locked_values | {n for n in names}
+        return replace(self, locked_values=locked_values)
 
-    def unlock(self, *names: str) -> None:
+    def unlock(self, *names: str) -> T:
         self._verify_lock_names(names)
-        self.locked_values[:] = [n for n in self.locked_values if n not in names]
+        locked_values = self.locked_values - {n for n in names}
+        return replace(self, locked_values=locked_values)
 
     def is_locked(self, name: str) -> bool:
         self._verify_lock_names([name])

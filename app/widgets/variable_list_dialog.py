@@ -13,7 +13,7 @@ from app.thread_bound_callable import thread_bound
 from app.widgets.variable_edit_dialog import VariableEditDialog
 
 
-class VariableListModel(QAbstractListModel):
+class PlaceholderListModel(QAbstractListModel):
     def __init__(self, controller: Controller):
         super().__init__()
         self.controller = controller
@@ -22,17 +22,17 @@ class VariableListModel(QAbstractListModel):
         self.controller.variable_updated.connect(self._variable_updated)
         self.controller.variable_removed.connect(self._variable_removed)
 
-        self.variable_config_list = deepcopy(self.controller.config.variable_config_list)
-        self.variable_configs = sorted(self.variable_config_list.variables.values(), key=lambda x: x.variable_label)
+        self.config = self.controller.get_config()
+        self.placeholder_configs = list(self.config.placeholders.values())
 
     def rowCount(self, parent=None):
-        return len(self.variable_configs)
+        return len(self.placeholder_configs)
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
-        if not index.isValid() or index.row() < 0 or index.row() >= len(self.variable_configs):
+        if not index.isValid() or index.row() < 0 or index.row() >= len(self.placeholder_configs):
             return None
 
-        variable_config = self.variable_configs[index.row()]
+        variable_config = self.placeholder_configs[index.row()]
 
         if role == Qt.ItemDataRole.DisplayRole:
             return variable_config.variable_label
@@ -40,14 +40,14 @@ class VariableListModel(QAbstractListModel):
         return None
 
     def find_row_by_variable_id(self, variable_id: str) -> int | None:
-        for row, variable_config in enumerate(self.variable_configs):
+        for row, variable_config in enumerate(self.placeholder_configs):
             if variable_config.variable_id == variable_id:
                 return row
         return None
 
     def _variable_added(self, variable_config: VariableConfig):
         self.beginInsertRows(QModelIndex(), self.rowCount(), self.rowCount())
-        self.variable_configs.append(variable_config)
+        self.placeholder_configs.append(variable_config)
         self.endInsertRows()
 
     def _variable_updated(self, variable_config: VariableConfig):
@@ -58,7 +58,7 @@ class VariableListModel(QAbstractListModel):
 
         index = self.createIndex(row, 0)
 
-        self.variable_configs[row] = variable_config
+        self.placeholder_configs[row] = variable_config
         self.dataChanged.emit(index, index)
 
     def _variable_removed(self, variable_id: str):
@@ -67,13 +67,13 @@ class VariableListModel(QAbstractListModel):
             return
 
         self.beginRemoveRows(QModelIndex(), row, row)
-        del self.variable_configs[row]
+        del self.placeholder_configs[row]
         self.endRemoveRows()
 
     def refresh(self):
         self.beginResetModel()
-        self.variable_config_list = deepcopy(self.controller.config.variable_config_list)
-        self.variable_configs = sorted(self.variable_config_list.variables.values(), key=lambda x: x.variable_label)
+        self.config = self.controller.get_config()
+        self.placeholder_configs = list(self.config.placeholders.values())
         self.endResetModel()
 
 
@@ -122,7 +122,7 @@ class VariableListDialog(Ui_VariableListDialog, QDialog):
         self.setupUi(self)
 
         self.controller = controller
-        self.list_model = VariableListModel(controller)
+        self.list_model = PlaceholderListModel(controller)
         self.lst_variables.setModel(self.list_model)
         self.lst_variables.setItemDelegate(VariableDelegate())
 
@@ -136,11 +136,11 @@ class VariableListDialog(Ui_VariableListDialog, QDialog):
         self.selected_variable_changed()
 
     def update_btn_add(self):
-        if self.list_model.variable_config_list.is_locked("variables"):
+        if self.list_model.config.is_locked("placeholders"):
             self.btn_add.setVisible(False)
 
     def update_btn_remove(self):
-        if self.list_model.variable_config_list.is_locked("variables"):
+        if self.list_model.config.is_locked("placeholders"):
             self.btn_remove.setVisible(False)
 
         index = self.lst_variables.currentIndex()
@@ -149,7 +149,7 @@ class VariableListDialog(Ui_VariableListDialog, QDialog):
             return
 
         row = index.row()
-        variable_config = self.list_model.variable_configs[row]
+        variable_config = self.list_model.placeholder_configs[row]
 
         if variable_config.is_locked("self"):
             self.btn_remove.setEnabled(False)
@@ -175,10 +175,10 @@ class VariableListDialog(Ui_VariableListDialog, QDialog):
             return
 
         row = index.row()
-        variable_config = self.list_model.variable_configs[row]
+        variable_config = self.list_model.placeholder_configs[row]
 
         if self._confirm_remove_variable(variable_config.variable_label):
-            fut = self.controller.remove_variable.future(variable_config.variable_id)
+            fut = self.controller.remove_placeholder.future(variable_config.variable_id)
             fut.add_done_callback(self._remove_variable_result.future)
 
     def _confirm_remove_variable(self, variable_label: str) -> bool:
@@ -210,7 +210,7 @@ class VariableListDialog(Ui_VariableListDialog, QDialog):
             return
 
         row = index.row()
-        variable_config = self.list_model.variable_configs[row]
+        variable_config = self.list_model.placeholder_configs[row]
 
         dialog = VariableEditDialog(self.controller, variable_config=variable_config)
         dialog.setWindowTitle("Edit Variable")

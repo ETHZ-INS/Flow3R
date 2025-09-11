@@ -18,6 +18,9 @@ class PlaceholderContext:
         self._values = values
         self._resolved = {}
 
+        for var_name in values:
+            self.resolve(var_name)
+
     def dependencies(self, var_name: str, path: List[str] = None) -> set[str]:
         if path is None:
             path = []
@@ -40,7 +43,7 @@ class PlaceholderContext:
 
         return dependencies
 
-    def resolve(self, var_name: str, path: List[str] = None):
+    def resolve(self, var_name: str, path: List[str] = None) -> ResolvedValue:
         if path is None:
             path = []
 

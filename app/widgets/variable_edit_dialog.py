@@ -21,7 +21,9 @@ class VariableEditDialog(Ui_VariableEditDialog, QDialog):
 
         self.controller = controller
         self.new = variable_config is None
-        self.variable_config_list = deepcopy(self.controller.config.variable_config_list)
+
+        self.config = controller.get_config()
+        self.variable_configs = deepcopy(self.config.placeholders)
         self.variable_config = deepcopy(variable_config) if variable_config else VariableConfig()
         self.su_mode = su_mode
 
@@ -113,7 +115,7 @@ class VariableEditDialog(Ui_VariableEditDialog, QDialog):
         if new_name == old_name:
             return
 
-        existing_names = [var.variable_name for var in self.variable_config_list.variables.values()]
+        existing_names = [var.variable_name for var in self.variable_configs.values()]
 
         if new_name in existing_names:
             QMessageBox.critical(self, "Error", f"A variable with the name '{new_name}' already exists. Please choose a different name.")
@@ -151,9 +153,9 @@ class VariableEditDialog(Ui_VariableEditDialog, QDialog):
 
     def accept(self):
         if self.new:
-            fut = self.controller.add_variable.future(self.variable_config)
+            fut = self.controller.add_placeholder.future(self.variable_config)
         else:
-            fut = self.controller.update_variable.future(self.variable_config)
+            fut = self.controller.update_placeholder.future(self.variable_config)
 
         fut.add_done_callback(self._config_change_result.future)
 

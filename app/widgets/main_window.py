@@ -78,7 +78,7 @@ class WelfareRecorder(Ui_WelfareRecorder, QMainWindow):
         dialog.exec()
 
     def edit_camera(self, camera_id: str):
-        camera_config = self.controller.config.camera_config_list.cameras.get(camera_id)
+        camera_config = self.controller.config.cameras.get(camera_id)
         if camera_config is None:
             return
 
@@ -92,11 +92,11 @@ class WelfareRecorder(Ui_WelfareRecorder, QMainWindow):
         dialog.exec()
 
     def edit_camera_group(self, recording_id: str):
-        group_config = self.controller.config.recording_config_list.recordings.get(recording_id)
+        group_config = self.controller.config.groups.get(recording_id)
         if group_config is None:
             return
 
-        dialog = CameraGroupEditDialog(self.controller, camera_group_config=group_config)
+        dialog = CameraGroupEditDialog(self.controller, group_config=group_config)
         dialog.setWindowTitle("Edit Camera Group")
         dialog.exec()
 
@@ -121,7 +121,7 @@ class WelfareRecorder(Ui_WelfareRecorder, QMainWindow):
         dialog.exec()
 
     def edit_variable(self, variable_id: str):
-        variable_config = self.controller.config.variable_config_list.variables.get(variable_id)
+        variable_config = self.controller.config.variables.get(variable_id)
         if variable_config is None:
             return
 
@@ -134,7 +134,7 @@ class WelfareRecorder(Ui_WelfareRecorder, QMainWindow):
         dialog.setWindowTitle("Configure Variables")
         dialog.exec()
 
-        dialog = VariablePreparationDialog(self.controller, recording_id=list(self.controller.config.recording_config_list.recordings.values())[1].recording_id, parent=self)
+        dialog = VariablePreparationDialog(self.controller, recording_id=list(self.controller.config.groups.values())[1].recording_id, parent=self)
         dialog.setWindowTitle("Prepare Variables")
         dialog.exec()
 

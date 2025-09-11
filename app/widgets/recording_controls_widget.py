@@ -1,11 +1,12 @@
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6 import QtWidgets, QtCore
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QMenu, QLabel
 
-from app.config.welfare_recorder_config import RecordingConfigView
+from app.config.welfare_recorder_config import GroupConfigView
 from app.flow_layout import FlowLayout
 from app.layout.recording_controls_widget import Ui_RecordingControlsWidget
 from app.recording_state import RecordingStateBase, RecordingState
@@ -14,6 +15,14 @@ from app.thread_bound_callable import thread_bound
 if TYPE_CHECKING:
     from app.controller import Controller
     from app.widgets.main_window import WelfareRecorder
+
+
+def _goto_file(file_path: str):
+    import subprocess
+    file_path = Path(file_path).resolve()
+    print(
+        f"[RecordingControlsWidget] _goto_file: {file_path}")
+    subprocess.Popen(rf'explorer /select,"{file_path}"')
 
 
 class RecordingControlsWidgetFactory:
@@ -36,10 +45,10 @@ class RecordingControlsWidgetFactory:
 
         widget.request_recording_state.connect(lambda rid: self.controller.check_recording_state.future(rid))
 
-        self.controller.recording_view_changed.connect(widget.recording_view_changed)
+        self.controller.group_view_changed.connect(widget.recording_view_changed)
         self.controller.recording_state_changed.connect(widget.recording_state_changed)
 
-        self.controller.refresh_recording_view.future(recording_id)
+        self.controller.refresh_group_view.future(recording_id)
         self.controller.check_recording_state.future(recording_id)
 
         return widget
@@ -155,9 +164,9 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QtWidgets.QFrame):
             if not placeholder.show_in_controls:
                 continue
 
-            if placeholder.scope == "camera" and len(self.recording_view.camera_views) > 1:
+            if placeholder.scope == "camera" and len(self.recording_view.cameras) > 1:
                 for camera_view in self.recording_view.camera_views:
-                    placeholder_context = camera_view.get_placeholder_context()
+                    placeholder_context = camera_view.placeholder_context
                     value = placeholder_context.resolve(placeholder.variable_name)
                     if value.missing_dependencies:
                         continue
@@ -165,14 +174,17 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QtWidgets.QFrame):
                     if value.is_set:
                         value = value.value
                     else:
-                        value = "(not set)"
-                    lbl = QLabel(f"{placeholder.variable_label} ({camera_view.camera.camera_name}) - {value}")
+                        value = "<span style='color: red; font-style: italic'>(not set)</span>"
+
+                    lbl = QLabel(f"({camera_view.camera.camera_name}) {placeholder.variable_label} - {value}")
                     lbl.setTextFormat(QtCore.Qt.TextFormat.RichText)
                     lbl.setStyleSheet("background: lightblue; padding: 5px; border: 1px solid gray; border-radius: 5px;")
                     self.frm_preview.layout().addWidget(lbl)
+
+                    lbl.linkActivated.connect(lambda link, path=value: _goto_file(path) if link == "open_explorer" else None)
             else:
-                camera_view = self.recording_view.camera_views[0]
-                placeholder_context = camera_view.get_placeholder_context()
+                camera_view = self.recording_view.cameras[0]
+                placeholder_context = camera_view.placeholder_context
                 value = placeholder_context.resolve(placeholder.variable_name)
                 if value.missing_dependencies:
                     continue
@@ -180,11 +192,14 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QtWidgets.QFrame):
                 if value.is_set and not value.missing_dependencies:
                     value = value.value
                 else:
-                    value = "(not set)"
+                    value = "<span style='color: red; font-style: italic'>(not set)</span>"
+
                 lbl = QLabel(f"{placeholder.variable_label} - {value}")
                 lbl.setTextFormat(QtCore.Qt.TextFormat.RichText)
                 lbl.setStyleSheet("background: lightblue; padding: 5px; border: 1px solid gray; border-radius: 5px;")
                 self.frm_preview.layout().addWidget(lbl)
+
+                lbl.linkActivated.connect(lambda link, path=value: _goto_file(path) if link == "open_explorer" else None)
 
     def update_all(self):
         self.update_lbl_recording_name()
@@ -205,14 +220,14 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QtWidgets.QFrame):
         if link == "fill_variables":
             self.fill_variables.emit(self.recording_id)
 
-    def recording_view_changed(self, recording_id: str, recording_view: RecordingConfigView):
+    def recording_view_changed(self, recording_id: str, recording_view: GroupConfigView):
         if self.recording_id != recording_id:
             return
 
         self.recording_view = recording_view
 
-        if recording_view.recording.recording_name != self.recording_name:
-            self.recording_name = recording_view.recording.recording_name
+        if recording_view.group.recording_name != self.recording_name:
+            self.recording_name = recording_view.group.recording_name
             self.update_lbl_recording_name()
 
         #if recording_view.placeholders != self.recording_view.placeholders:

@@ -15,8 +15,7 @@ class PipelineConfigurationDialog(Ui_PipelineConfigurationDialog, QDialog):
         super().__init__(parent)
         self.setupUi(self)
 
-        print(controller.config.camera_config_list.cameras)
-        if len(controller.config.camera_config_list.cameras) == 0:
+        if len(controller.config.cameras) == 0:
             raise Exception("No cameras found in configuration.")
 
         self.controller = controller
@@ -32,14 +31,14 @@ class PipelineConfigurationDialog(Ui_PipelineConfigurationDialog, QDialog):
         self.btn_configure_grimace.setVisible(False)
 
         self.dpd_camera.clear()
-        for camera_id, camera in self.controller.config.camera_config_list.cameras.items():
-            if camera_id not in self.config.pipeline_config_list.pipelines:
-                self.config.pipeline_config_list.pipelines[camera_id] = PipelineConfig(camera_id)
+        for camera_id, camera in self.controller.config.cameras.items():
+            if camera_id not in self.config.pipelines:
+                self.config.pipelines[camera_id] = PipelineConfig(camera_id)
             self.dpd_camera.addItem(camera.camera_name, userData=camera_id)
         self.dpd_camera.setCurrentIndex(0)
 
         self.current_camera_id = self.dpd_camera.currentData()
-        self.current_pipeline = self.config.pipeline_config_list.pipelines[self.current_camera_id]
+        self.current_pipeline = self.config.pipelines[self.current_camera_id]
 
         self.dpd_camera.currentIndexChanged.connect(self.current_camera_changed)
 
@@ -50,7 +49,7 @@ class PipelineConfigurationDialog(Ui_PipelineConfigurationDialog, QDialog):
         self.btn_configure_pose_estimation.clicked.connect(self.configure_pose_estimation)
 
         self.dpd_camera.blockSignals(True)
-        if selected_camera_id and selected_camera_id in self.controller.config.camera_config_list.cameras:
+        if selected_camera_id and selected_camera_id in self.controller.config.cameras:
             self.dpd_camera.setCurrentIndex(self.dpd_camera.findData(selected_camera_id))
         else:
             self.dpd_camera.setCurrentIndex(0)
@@ -72,7 +71,7 @@ class PipelineConfigurationDialog(Ui_PipelineConfigurationDialog, QDialog):
             return
 
         self.current_camera_id = camera_id
-        self.current_pipeline = self.config.pipeline_config_list.pipelines[self.current_camera_id]
+        self.current_pipeline = self.config.pipelines[self.current_camera_id]
         self.update_form()
 
     def save_video_changed(self):
@@ -106,10 +105,10 @@ class PipelineConfigurationDialog(Ui_PipelineConfigurationDialog, QDialog):
         old_config = self.controller.get_config()
 
         futures = []
-        for pipeline_config in self.config.pipeline_config_list.pipelines.values():
-            if pipeline_config.camera_id not in old_config.pipeline_config_list.pipelines:
+        for pipeline_config in self.config.pipelines.values():
+            if pipeline_config.camera_id not in old_config.pipelines:
                 raise Exception(f"Camera {pipeline_config.camera_id} not found in pipeline configuration list.")
-            elif pipeline_config != old_config.pipeline_config_list.pipelines[pipeline_config.camera_id]:
+            elif pipeline_config != old_config.pipelines[pipeline_config.camera_id]:
                 futures.append(self.controller.update_pipeline.future(pipeline_config))
 
         if not futures:

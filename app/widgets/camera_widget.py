@@ -37,7 +37,7 @@ class CameraWidgetFactory:
         widget.edit_camera.connect(self.ui.edit_camera)
         widget.edit_recording.connect(self.ui.edit_camera_group)
 
-        self.controller.recording_view_changed.connect(widget.recording_controls.recording_view_changed)
+        self.controller.group_view_changed.connect(widget.recording_controls.recording_view_changed)
         self.controller.recording_state_changed.connect(widget.recording_controls.recording_state_changed)
 
         self.controller.check_recording_state.future(recording_id if recording_id is not None else camera_id)
