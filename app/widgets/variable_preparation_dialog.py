@@ -19,16 +19,16 @@ class VariablePreparationDialog(Ui_VariablePreparationDialog, QDialog):
         self.controller = controller
         self.config = self.controller.get_config()
 
-        project_placeholders = [v for v in self.config.variable_config_list.variables.values() if v.scope == "project"]
-        group_placeholders = [v for v in self.config.variable_config_list.variables.values() if v.scope == "group"]
-        camera_placeholders = [v for v in self.config.variable_config_list.variables.values() if v.scope == "camera"]
+        project_placeholders = [v for v in self.config.placeholders.values() if v.scope == "project"]
+        group_placeholders = [v for v in self.config.placeholders.values() if v.scope == "group"]
+        camera_placeholders = [v for v in self.config.placeholders.values() if v.scope == "camera"]
 
         self.old_values = {}
 
         self.scopes: Dict[str|tuple, dict] = {
             "project": {
                 "placeholders": project_placeholders,
-                "old_values": {v.variable_id: v.value for v in self.config.variable_values.values() if v.value is not None},
+                "old_values": {v.variable_id: v.value for v in self.config.values.values() if v.value is not None},
                 "changed_values": {},
                 "widgets": {},
                 "title_widget": None
@@ -38,7 +38,7 @@ class VariablePreparationDialog(Ui_VariablePreparationDialog, QDialog):
         self.required_placeholders = set()
 
         if recording_id:
-            recording_config = self.config.recording_config_list.recordings.get(recording_id)
+            recording_config = self.config.groups.get(recording_id)
             if recording_config:
                 self.scopes[("group", recording_config.recording_id)] = {
                     "placeholders": group_placeholders,
@@ -47,7 +47,7 @@ class VariablePreparationDialog(Ui_VariablePreparationDialog, QDialog):
                     "widgets": {},
                     "title_widget": None
                 }
-                camera_configs = [c for c in self.config.camera_config_list.cameras.values() if c.activated and c.recording_id == recording_id]
+                camera_configs = [c for c in self.config.cameras.values() if c.activated and c.recording_id == recording_id]
                 for camera_config in camera_configs:
                     config_view = self.config.get_camera_view(camera_config.camera_id)
                     self.required_placeholders.update(config_view.get_required_placeholders())
@@ -60,7 +60,7 @@ class VariablePreparationDialog(Ui_VariablePreparationDialog, QDialog):
                         "title_widget": None
                     }
             else:
-                camera_config = self.config.camera_config_list.cameras.get(recording_id)
+                camera_config = self.config.cameras.get(recording_id)
                 if camera_config:
                     config_view = self.config.get_camera_view(camera_config.camera_id)
                     self.required_placeholders.update(config_view.get_required_placeholders())
@@ -106,11 +106,11 @@ class VariablePreparationDialog(Ui_VariablePreparationDialog, QDialog):
                 scope_type, scope_id = scope
                 if scope_type == "group":
                     icon = QIcon(QIcon.fromTheme(u"folder-open"))
-                    group = self.config.recording_config_list.recordings.get(scope_id)
+                    group = self.config.groups.get(scope_id)
                     title = f"{group.recording_name if group else scope_id}"
                 elif scope_type == "camera":
                     icon = QIcon(QIcon.fromTheme(u"camera-photo"))
-                    camera = self.config.camera_config_list.cameras.get(scope_id)
+                    camera = self.config.cameras.get(scope_id)
                     title = f"{camera.camera_name if camera else scope_id}"
                 else:
                     title = str(scope_id)
@@ -142,7 +142,7 @@ class VariablePreparationDialog(Ui_VariablePreparationDialog, QDialog):
                 if placeholder.variable_type in ["text", "file", "folder"]:
                     widget = VariableTextWidget(show_preview=False)
                     widget.set_mode(placeholder.variable_type)
-                    widget.set_placeholders(list(self.config.variable_config_list.variables.values()))
+                    widget.set_placeholders(list(self.config.placeholders.values()))
                     #widget.set_placeholder_context(self.config.get_placeholder_context(first_camera_id))
                     if value is not None:
                         widget.setText(str(value))
@@ -162,6 +162,8 @@ class VariablePreparationDialog(Ui_VariablePreparationDialog, QDialog):
                     widget.valueChanged.connect(lambda _, s=scope, vid=placeholder.variable_id: self.value_changed_decimal(s, vid))
                 else:
                     continue
+                if placeholder.description:
+                    widget.setToolTip(placeholder.description)
                 self.frm_variables.layout().addRow(f"{placeholder.variable_label}:", widget)
                 scope_data["widgets"][placeholder.variable_id] = widget
 

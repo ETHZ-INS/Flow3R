@@ -15,10 +15,9 @@ from app.analysis.pose_estimation.composite_pose_model import CompositePoseModel
 from app.analysis.pose_estimation.pose_estimation_transform import PoseEstimationTransform
 from app.config.camera_config import CameraConfig
 from app.config.pipeline_config import PipelineConfig
-from app.config.recording_config import RecordingConfig
+from app.config.recording_config import GroupConfig
 from app.config.variable_config import VariableConfig, VariableValue
-from app.config.welfare_recorder_config import WelfareRecorderConfig, CameraConfigView, RecordingConfigView
-from app.placeholder_context import PlaceholderContext
+from app.config.welfare_recorder_config import WelfareRecorderConfig, CameraConfigView, GroupConfigView
 from app.recording.camera_manager import CameraManager
 from app.recording.camera_widget_image_sink import CameraWidgetImageSink
 from app.recording.camera_widget_time_sink import CameraWidgetTimeSink
@@ -97,16 +96,16 @@ class Controller(QObject):
     camera_updated = Signal(CameraConfig, CameraConfig)  # new_camera_config, old_camera_config
     camera_activated = Signal(str, bool)
 
-    recording_added = Signal(RecordingConfig)
+    recording_added = Signal(GroupConfig)
     recording_removed = Signal(str)  # recording_id
-    recording_updated = Signal(RecordingConfig, RecordingConfig)  # new_recording_config, old_recording_config
+    recording_updated = Signal(GroupConfig, GroupConfig)  # new_recording_config, old_recording_config
 
     variable_added = Signal(VariableConfig)
     variable_removed = Signal(str)  # variable_name
     variable_updated = Signal(VariableConfig, VariableConfig)  # new_variable_config, old_variable_config
 
     camera_view_changed = Signal(str, CameraConfigView)  # camera_id, new_view
-    recording_view_changed = Signal(str, RecordingConfigView)  # recording_id, new_view
+    group_view_changed = Signal(str, GroupConfigView)  # recording_id, new_view
 
     camera_assignment_changed = Signal(str, str, str)  # camera_id, new_recording_id, old_recording_id
 
@@ -145,17 +144,17 @@ class Controller(QObject):
         return deepcopy(self.config.get_camera_view(camera_id))
 
     @thread_bound(timeout_ms=2000)
-    def get_recording_view(self, recording_id: str):
-        return deepcopy(self.config.get_recording_view(recording_id))
+    def get_group_view(self, group_id: str):
+        return deepcopy(self.config.get_group_view(group_id))
 
     @thread_bound(timeout_ms=2000)
     def add_camera(self, camera_config: CameraConfig):
-        if self.config.camera_config_list.get(camera_config.camera_id):
+        if self.config.cameras.get(camera_config.camera_id):
             return ConfigChangeResult(success=False, message="Camera already exists.")
 
-        self.config.camera_config_list.set(camera_config)
-        if not self.config.pipeline_config_list.get(camera_config.camera_id):
-            self.config.pipeline_config_list.set(PipelineConfig(camera_config.camera_id))
+        self.config.cameras[camera_config.camera_id] = camera_config
+        if not self.config.pipelines.get(camera_config.camera_id):
+            self.config.pipelines[camera_config.camera_id] = PipelineConfig(camera_config.camera_id)
 
         self.setup_camera.future(camera_config.camera_id)
         self.setup_recording_controls.future()
@@ -171,15 +170,15 @@ class Controller(QObject):
         if not camera_view:
             return ConfigChangeResult(success=False, message="Camera not found.")
 
-        if camera_view.recording.recording_id in self.recordings:
+        if camera_view.group_id in self.recordings:
             return ConfigChangeResult(success=False, message="Camera is currently in use.")
 
         try:
             self.teardown_camera(camera_id)  # Synchronously, because we need to ensure the camera is removed before deleting the config
-            if camera_id in self.config.camera_config_list.cameras:
-                del self.config.camera_config_list.cameras[camera_id]
+            if camera_id in self.config.cameras:
+                del self.config.cameras[camera_id]
             self.setup_recording_controls()
-            self.check_recording_state(camera_view.recording.recording_id)
+            self.check_recording_state(camera_view.group_id)
         except Exception as e:
             print(f"Error removing camera: {e}")
             return ConfigChangeResult(success=False, message=str(e))
@@ -193,14 +192,14 @@ class Controller(QObject):
         if not camera_view:
             return ConfigChangeResult(success=False, message="Camera not found.")
 
-        if camera_view.recording.recording_id in self.recordings:
+        if camera_view.group_id in self.recordings:
             return ConfigChangeResult(success=False, message="Camera is currently in use.")
 
         if camera_config.recording_id and camera_config.recording_id in self.recordings:
             return ConfigChangeResult(success=False, message="Cannot assign camera to group that is currently running.")
 
         old_config = camera_view.camera
-        self.config.camera_config_list.cameras[camera_config.camera_id] = camera_config
+        self.config.cameras[camera_config.camera_id] = camera_config
 
         camera = self.camera_manager.get_camera(camera_config.camera_id)
         if not camera or old_config.active_config != camera_config.active_config:
@@ -224,7 +223,7 @@ class Controller(QObject):
 
     @thread_bound(timeout_ms=2000)
     def set_camera_activated(self, camera_id: str, activated: bool):
-        camera_config = self.config.camera_config_list.cameras.get(camera_id)
+        camera_config = self.config.cameras.get(camera_id)
         if not camera_config:
             return ConfigChangeResult(success=False, message="Camera not found.")
         camera_config.activated = activated
@@ -232,7 +231,7 @@ class Controller(QObject):
 
     @thread_bound(timeout_ms=2000)
     def assign_camera_to_recording(self, camera_id: str, recording_id: str):
-        camera_config = self.config.camera_config_list.cameras.get(camera_id)
+        camera_config = self.config.cameras.get(camera_id)
         if not camera_config:
             return ConfigChangeResult(success=False, message="Camera not found.")
         camera_config.recording_id = recording_id if recording_id != "default" else None
@@ -240,23 +239,23 @@ class Controller(QObject):
 
     @thread_bound(timeout_ms=2000)
     def update_pipeline(self, pipeline_config: PipelineConfig):
-        if pipeline_config.camera_id not in self.config.pipeline_config_list.pipelines:
+        if pipeline_config.camera_id not in self.config.pipelines:
             return ConfigChangeResult(success=False, message="Pipeline not found.")
 
         camera_view = self.config.get_camera_view(pipeline_config.camera_id)
-        if camera_view.recording.recording_id in self.recordings:
+        if camera_view.group_id in self.recordings:
             return ConfigChangeResult(success=False, message="Camera is currently in use.")
 
-        self.config.pipeline_config_list.set(pipeline_config)
+        self.config.pipelines[pipeline_config.camera_id] = pipeline_config
 
         self.update_model_leases.future()
-        self.check_recording_state.future(camera_view.recording.recording_id)
+        self.check_recording_state.future(camera_view.group_id)
         return ConfigChangeResult(success=True, message="Pipeline updated successfully.")
 
     @thread_bound(timeout_ms=2000)
     def update_model_leases(self):
         pose_models_in_use = set()
-        for pipeline_config in self.config.pipeline_config_list.pipelines.values():
+        for pipeline_config in self.config.pipelines.values():
             if pipeline_config.pose_estimation:
                 for pose_model_config in pipeline_config.pose_estimation_config.models.values():
                     pose_models_in_use.add((pose_model_config.internal_model_name, pose_model_config.device))
@@ -274,146 +273,142 @@ class Controller(QObject):
                 self.pose_model_leases[pose_model_key] = lease
 
     @thread_bound(timeout_ms=2000)
-    def add_recording(self, recording_config: RecordingConfig):
-        if self.config.recording_config_list.get(recording_config.recording_id):
-            return ConfigChangeResult(success=False, message="Recording already exists.")
+    def add_group(self, group_config: GroupConfig):
+        if self.config.groups.get(group_config.recording_id):
+            return ConfigChangeResult(success=False, message="Group already exists.")
 
-        self.config.recording_config_list.set(recording_config)
+        self.config.groups[group_config.recording_id] = group_config
 
-        self.check_recording_state.future(recording_config.recording_id)
-        QTimer.singleShot(0, lambda: self.recording_added.emit(recording_config))
-        return ConfigChangeResult(success=True, message="Recording added successfully.")
+        self.check_recording_state.future(group_config.recording_id)
+        QTimer.singleShot(0, lambda: self.recording_added.emit(group_config))
+        return ConfigChangeResult(success=True, message="Group added successfully.")
 
     @thread_bound(timeout_ms=2000)
-    def remove_recording(self, recording_id: str):
-        if recording_id == "default":
+    def remove_group(self, group_id: str):
+        if group_id == "default":
             return ConfigChangeResult(success=False, message="Cannot remove default group.")
 
-        recording_view = self.config.get_recording_view(recording_id)
-        if not recording_view:
+        group_view = self.config.get_group_view(group_id)
+        if not group_view:
             return ConfigChangeResult(success=False, message="Group not found.")
 
-        if recording_id in self.recordings:
+        if group_id in self.recordings:
             return ConfigChangeResult(success=False, message="Recording is currently running or prepared to run.")
 
-        if len(recording_view.camera_views) > 0:
+        if len(group_view.cameras) > 0:
             return ConfigChangeResult(success=False, message="Group is not empty, remove cameras first.")
 
-        self.config.recording_config_list.remove(recording_id)
+        del self.config.groups[group_id]
 
-        self.check_recording_state.future(recording_id)
-        QTimer.singleShot(0, lambda: self.recording_removed.emit(recording_id))
+        self.check_recording_state.future(group_id)
+        QTimer.singleShot(0, lambda: self.recording_removed.emit(group_id))
         return ConfigChangeResult(success=True, message="Recording removed successfully.")
 
     @thread_bound(timeout_ms=2000)
-    def update_recording(self, recording_config: RecordingConfig):
-        recording_view = self.config.get_recording_view(recording_config.recording_id)
-        if not recording_view:
-            return ConfigChangeResult(success=False, message="Recording not found.")
+    def update_recording(self, group_config: GroupConfig):
+        group_view = self.config.get_group_view(group_config.recording_id)
+        if not group_view:
+            return ConfigChangeResult(success=False, message="Group not found.")
 
-        if recording_config.recording_id == "default":
+        if group_config.recording_id == "default":
             # TODO: Save a snapshot of the recording config when starting a recording so the default can be changed while recording
-            if any(camera.camera_id in self.recordings for camera in self.config.camera_config_list.cameras.values()):
+            if any(camera.camera_id in self.recordings for camera in self.config.cameras.values()):
                 return ConfigChangeResult(success=False, message="Recording is currently running or prepared to run.")
         else:
-            if recording_config.recording_id in self.recordings:
+            if group_config.recording_id in self.recordings:
                 return ConfigChangeResult(success=False, message="Recording is currently running or prepared to run.")
 
-        old_config = deepcopy(recording_view.recording)
-        self.config.recording_config_list.set(recording_config)
+        old_config = deepcopy(group_view.group)
+        self.config.groups[group_config.recording_id] = group_config
 
-        self.check_recording_state.future(recording_config.recording_id)
+        self.check_recording_state.future(group_config.recording_id)
 
-        QTimer.singleShot(0, lambda: self.recording_updated.emit(recording_config, old_config))
+        QTimer.singleShot(0, lambda: self.recording_updated.emit(group_config, old_config))
         return ConfigChangeResult(success=True, message="Recording updated successfully.")
 
     @thread_bound(timeout_ms=2000)
-    def add_variable(self, variable_config: VariableConfig):
-        if variable_config.variable_id in self.config.variable_config_list.variables:
-            return ConfigChangeResult(success=False, message="Variable already exists.")
+    def add_placeholder(self, placeholder_config: VariableConfig):
+        if placeholder_config.variable_id in self.config.placeholders:
+            return ConfigChangeResult(success=False, message="Placeholder already exists.")
 
-        self.config.variable_config_list.variables[variable_config.variable_id] = variable_config
-        QTimer.singleShot(0, lambda: self.variable_added.emit(variable_config))
-        self.refresh_all_recording_views.future()
-        return ConfigChangeResult(success=True, message="Variable added successfully.")
+        self.config.placeholders[placeholder_config.variable_id] = placeholder_config
+        QTimer.singleShot(0, lambda: self.variable_added.emit(placeholder_config))
+        self.refresh_all_group_views.future()
+        return ConfigChangeResult(success=True, message="Placeholder added successfully.")
 
     @thread_bound(timeout_ms=2000)
-    def remove_variable(self, variable_id: str):
-        if variable_id not in self.config.variable_config_list.variables:
-            return ConfigChangeResult(success=False, message="Variable not found.")
+    def remove_placeholder(self, variable_id: str):
+        if variable_id not in self.config.placeholders:
+            return ConfigChangeResult(success=False, message="Placeholder not found.")
 
-        del self.config.variable_config_list.variables[variable_id]
+        del self.config.placeholders[variable_id]
         # TODO: check recording state if needed
         QTimer.singleShot(0, lambda: self.variable_removed.emit(variable_id))
-        self.refresh_all_recording_views.future()
-        return ConfigChangeResult(success=True, message="Variable removed successfully.")
+        self.refresh_all_group_views.future()
+        return ConfigChangeResult(success=True, message="Placeholder removed successfully.")
 
     @thread_bound(timeout_ms=2000)
-    def update_variable(self, variable_config: VariableConfig):
-        if variable_config.variable_id not in self.config.variable_config_list.variables:
-            return ConfigChangeResult(success=False, message="Variable not found.")
+    def update_placeholder(self, placeholder_config: VariableConfig):
+        old_placeholder_config = self.config.placeholders.get(placeholder_config.variable_id)
+        if not old_placeholder_config:
+            return ConfigChangeResult(success=False, message="Placeholder not found.")
 
-        old_variable_config = deepcopy(self.config.variable_config_list.variables[variable_config.variable_id])
-        self.config.variable_config_list.variables[variable_config.variable_id] = variable_config
+        self.config.placeholders[placeholder_config.variable_id] = placeholder_config
 
         # TODO: check recording state if needed
-        QTimer.singleShot(0, lambda: self.variable_updated.emit(variable_config, old_variable_config))
-        self.refresh_all_recording_views.future()
+        QTimer.singleShot(0, lambda: self.variable_updated.emit(placeholder_config, old_placeholder_config))
+        self.refresh_all_group_views.future()
         return ConfigChangeResult(success=True, message="Variable updated successfully.")
 
     @thread_bound(timeout_ms=2000)
     def set_variables_project(self, values: dict[str, Any]):
         print(f"Setting project variables: {values}")
         for variable_id, value in values.items():
-            if variable_id not in self.config.variable_values:
-                self.config.variable_values[variable_id] = VariableValue(variable_id)
-            self.config.variable_values[variable_id].value = value
+            if variable_id not in self.config.values:
+                self.config.values[variable_id] = VariableValue(variable_id)
+            self.config.values[variable_id].value = value
 
         self.check_all_recording_states.future()
-        self.refresh_all_recording_views.future()
+        self.refresh_all_group_views.future()
         return ConfigChangeResult(success=True, message="Variables updated successfully.")
 
     @thread_bound(timeout_ms=2000)
-    def set_variables_group(self, recording_id: str, values: dict[str, Any]):
+    def set_variables_group(self, group_id: str, values: dict[str, Any]):
         print(f"Setting group variables: {values}")
-        recording_config = self.config.recording_config_list.get(recording_id)
-        if recording_config is None:
-            return ConfigChangeResult(success=False, message="Recording not found.")
-
-        if recording_id in self.recordings:
-            return ConfigChangeResult(success=False, message="Group is currently in use.")
+        group_config = self.config.groups.get(group_id)
+        if group_config is None:
+            camera_config = self.config.cameras.get(group_id)
+            if camera_config is None:
+                return ConfigChangeResult(success=False, message="Group not found.")
+            target_values = camera_config.variable_values
+        else:
+            target_values = group_config.variable_values
 
         for variable_id, value in values.items():
-            if variable_id not in recording_config.variable_values:
-                recording_config.variable_values[variable_id] = VariableValue(variable_id)
-            recording_config.variable_values[variable_id].value = value
+            if variable_id not in target_values:
+                target_values[variable_id] = VariableValue(variable_id)
+            target_values[variable_id].value = value
 
-        # Not really necessary since we're modifying the object in place, but for consistency:
-        self.config.recording_config_list.set(recording_config)
-
-        self.check_recording_state.future(recording_id)
-        self.refresh_recording_view.future(recording_id)
+        self.check_recording_state.future(group_id)
+        self.refresh_group_view.future(group_id)
         return ConfigChangeResult(success=True, message="Variables updated successfully.")
 
     @thread_bound(timeout_ms=2000)
     def set_variables_camera(self, camera_id: str, values: dict[str, Any]):
         print(f"Setting camera variables: {values}")
-        camera_view = self.config.get_camera_view(camera_id)
-        if camera_view is None:
+        camera_config = self.config.cameras.get(camera_id)
+        if camera_config is None:
             return ConfigChangeResult(success=False, message="Camera not found.")
 
-        if camera_view.recording.recording_id in self.recordings:
-            return ConfigChangeResult(success=False, message="Camera is currently in use.")
-
         for variable_id, value in values.items():
-            if variable_id not in camera_view.camera.variable_values:
-                camera_view.camera.variable_values[variable_id] = VariableValue(variable_id)
-            camera_view.camera.variable_values[variable_id].value = value
+            if variable_id not in camera_config.variable_values:
+                camera_config.variable_values[variable_id] = VariableValue(variable_id)
+            camera_config.variable_values[variable_id].value = value
 
-        self.config.camera_config_list.set(camera_view.camera)
+        camera_view = self.config.get_camera_view(camera_id)
 
-        self.check_recording_state.future(camera_view.recording.recording_id)
-        self.refresh_recording_view.future(camera_view.recording.recording_id)
+        self.check_recording_state.future(camera_view.group_id)
+        self.refresh_group_view.future(camera_view.group_id)
         return ConfigChangeResult(success=True, message="Variables updated successfully.")
 
     @thread_bound(timeout_ms=2000)
@@ -423,7 +418,7 @@ class Controller(QObject):
             print(f"Camera view not found for camera {camera_id}.")
             return ConfigChangeResult(success=False, message="Camera view not found.")
 
-        if camera_view.recording.recording_id in self.recordings:
+        if camera_view.group_id in self.recordings:
             print(f"Camera {camera_id} is currently in use, cannot set up.")
             return ConfigChangeResult(success=False, message="Camera is currently in use.")
 
@@ -457,7 +452,7 @@ class Controller(QObject):
             print(f"Camera view not found for camera {camera_id}.")
             return ConfigChangeResult(success=False, message="Camera view not found.")
 
-        if camera_view.recording.recording_id in self.recordings:
+        if camera_view.group_id in self.recordings:
             print(f"Camera {camera_id} is currently in use, cannot set up.")
             return ConfigChangeResult(success=False, message="Camera is currently in use.")
 
@@ -489,40 +484,41 @@ class Controller(QObject):
     @thread_bound(timeout_ms=2000)
     def setup_recording_controls(self):
         groups_with_controls = set()
-        for recording_config in self.config.recording_config_list.recordings.values():
-            recording_view = self.config.get_recording_view(recording_config.recording_id)
-            if len(recording_view.camera_views) >= 2:
-                groups_with_controls.add(recording_config.recording_id)
+        for group_config in self.config.groups.values():
+            group_view = self.config.get_group_view(group_config.recording_id)
+            if len(group_view.cameras) >= 2:
+                groups_with_controls.add(group_config.recording_id)
 
         cameras_with_controls = set()
-        for camera_config in self.config.camera_config_list.cameras.values():
+        for camera_config in self.config.cameras.values():
             if not camera_config.activated:
                 print(f"Camera {camera_config.camera_id} is not activated, skipping.")
                 continue
             if not camera_config.recording_id or camera_config.recording_id not in groups_with_controls:
                 cameras_with_controls.add(camera_config.camera_id)
 
-        for recording_id in list(self.groups_with_controls):
-            if recording_id not in groups_with_controls:
-                self.remove_recording_controls_widget(recording_id)
-                self.groups_with_controls.remove(recording_id)
+        for group_id in self.groups_with_controls:
+            if group_id not in groups_with_controls:
+                self.remove_recording_controls_widget(group_id)
+                self.groups_with_controls.remove(group_id)
 
         for camera_id in list(self.cameras_with_controls):
             if camera_id not in cameras_with_controls:
-                camera_config = self.config.camera_config_list.cameras.get(camera_id)
+                camera_config = self.config.cameras.get(camera_id)
                 if camera_config:
                     camera_widget = self.get_camera_widget(camera_config)
                     if camera_widget is not None:
                         camera_widget.set_show_controls(False)
                 self.cameras_with_controls.remove(camera_id)
 
-        for recording_id in groups_with_controls:
-            recording_controls_widget = self.get_recording_controls_widget(self.config.recording_config_list.recordings[recording_id])
+        for group_id in groups_with_controls:
+            group_config = self.config.groups[group_id]
+            recording_controls_widget = self.get_recording_controls_widget(group_config)
             if recording_controls_widget is not None:
-                self.groups_with_controls.add(recording_id)
+                self.groups_with_controls.add(group_id)
 
         for camera_id in cameras_with_controls:
-            camera_config = self.config.camera_config_list.cameras.get(camera_id)
+            camera_config = self.config.cameras.get(camera_id)
             camera_widget = self.get_camera_widget(camera_config)
             if camera_widget is not None:
                 camera_widget.set_show_controls(True)
@@ -530,46 +526,46 @@ class Controller(QObject):
 
     @thread_bound(timeout_ms=2000)
     def reset_non_persistent_variables(self):
-        recording_configs = list(self.config.recording_config_list.recordings.values())
-        camera_configs = list(self.config.camera_config_list.cameras.values())
+        group_configs = list(self.config.groups.values())
+        camera_configs = list(self.config.cameras.values())
 
-        for placeholder in self.config.variable_config_list.variables.values():
+        value_dicts = [self.config.values] + [c.variable_values for c in group_configs] + [c.variable_values for c in camera_configs]
+
+        for placeholder in self.config.placeholders.values():
             if placeholder.persistence != "forever":
-                for c in [self.config] + recording_configs + camera_configs:
-                    if placeholder.variable_id in c.variable_values:
-                        del c.variable_values[placeholder.variable_id]
+                for target_values in value_dicts:
+                    if placeholder.variable_id in target_values:
+                        del target_values[placeholder.variable_id]
 
     @thread_bound(timeout_ms=2000)
-    def reset_recording_variables(self, recording_id: str):
-        recording_config = self.config.recording_config_list.recordings.get(recording_id)
+    def reset_recording_variables(self, group_id: str):
+        group_view = self.config.get_group_view(group_id)
+        if not group_view:
+            raise ValueError(f"No recording view found for {group_id}")
 
-        # TODO: Make this compatible with virtual recording configs
-        if recording_config:
-            camera_configs = [camera for camera in self.config.camera_config_list.cameras.values() if camera.activated if camera.recording_id == recording_id]
-            recording_configs = [recording_config]
+        group_config = self.config.groups.get(group_id)
+        camera_configs = [self.config.cameras[c.camera.camera_id] for c in group_view.cameras if c.camera.camera_id in self.config.cameras]
+        if group_config:
+            value_dicts = [self.config.values] + [group_config.variable_values] + [c.variable_values for c in camera_configs]
         else:
-            camera_config = self.config.camera_config_list.cameras.get(recording_id)
-            if not camera_config:
-                raise ValueError(f"No recording configuration found for {recording_id}")
-            camera_configs = [camera_config]
-            recording_configs = []
+            value_dicts = [self.config.values] + [c.variable_values for c in camera_configs]
 
-        for placeholder in self.config.variable_config_list.variables.values():
+        for placeholder in self.config.placeholders.values():
             if placeholder.persistence == "recording":
-                for c in [self.config] + recording_configs + camera_configs:
-                    if placeholder.variable_id in c.variable_values:
-                        del c.variable_values[placeholder.variable_id]
+                for target_values in value_dicts:
+                    if placeholder.variable_id in target_values:
+                        del target_values[placeholder.variable_id]
 
-        self.refresh_recording_view.future(recording_id)
-        self.check_recording_state.future(recording_id)
+        self.refresh_group_view.future(group_id)
+        self.check_recording_state.future(group_id)
 
     @thread_bound(timeout_ms=10000)
-    def prepare_recording(self, recording_id: str):
-        recording_view = self.config.get_recording_view(recording_id)
-        if not recording_view:
+    def prepare_recording(self, group_id: str):
+        group_view = self.config.get_group_view(group_id)
+        if not group_view:
             return ConfigChangeResult(success=False, message="Recording not found.")
 
-        cameras = [self.camera_manager.get_camera(cv.camera.camera_id) for cv in recording_view.camera_views]
+        cameras = [self.camera_manager.get_camera(cv.camera.camera_id) for cv in group_view.cameras]
         if any(camera is None or not camera.ready for camera in cameras):
             raise ValueError(f"Not all cameras are ready for recording")
 
@@ -578,12 +574,12 @@ class Controller(QObject):
         disposable = CompositeDisposable()
         drains = []
 
-        for camera_index, (view, camera) in enumerate(zip(recording_view.camera_views, cameras)):
-            camera_config = view.camera
-            recording_config = view.recording
-            pipeline_config = view.pipeline
+        group_config = group_view.group
+        for camera_index, (camera_view, camera) in enumerate(zip(group_view.cameras, cameras)):
+            camera_config = camera_view.camera
+            pipeline_config = camera_view.pipeline
 
-            placeholder_context = view.get_placeholder_context()
+            placeholder_context = camera_view.placeholder_context
             camera_widget = self.get_camera_widget(camera_config)
 
             relative_time_transform = RelativeTimeTransform()
@@ -598,10 +594,10 @@ class Controller(QObject):
                 relative_time_transform
             ]
 
-            if camera_index == 0 and recording_config.recording_mode == "timed":
+            if camera_index == 0 and group_config.recording_mode == "timed":
                 frame_ops.append(TimedActionTransform(
-                    duration=recording_config.recording_duration,
-                    action=lambda: self.stop_recording.future(recording_id)
+                    duration=group_config.recording_duration,
+                    action=lambda: self.stop_recording.future(group_id)
                 ))
 
             frame_ops.append(ops.share())
@@ -634,7 +630,7 @@ class Controller(QObject):
 
             if camera_index == 0:
                 if len(cameras) > 1:
-                    time_widget = self.get_recording_controls_widget(recording_config)
+                    time_widget = self.get_recording_controls_widget(group_config)
                 else:
                     time_widget = camera_widget.recording_controls
 
@@ -658,93 +654,97 @@ class Controller(QObject):
             drains=drains
         )
 
-        recording.result.add_done_callback(lambda result, rid=recording_id: self.recording_done(rid, result))
+        recording.result.add_done_callback(lambda result, rid=group_id: self.recording_done(rid, result))
 
-        self.recordings[recording_id] = recording
+        self.recordings[group_id] = recording
         return ConfigChangeResult(success=True, message="Recording prepared")
 
     @thread_bound(timeout_ms=10000)
-    def start_recording(self, recording_id: str):
-        print(f"Starting recording {recording_id}")
-        if recording_id not in self.recordings:
+    def start_recording(self, group_id: str):
+        print(f"Starting recording {group_id}")
+        if group_id not in self.recordings:
             try:
-                self.prepare_recording(recording_id)
+                self.prepare_recording(group_id)
             except Exception as e:
                 import traceback
-                print(f"Error preparing recording {recording_id}: {e}")
+                print(f"Error preparing recording {group_id}: {e}")
                 traceback.print_exc()
                 return ConfigChangeResult(success=False, message=str(e))
 
-        recording = self.recordings[recording_id]
+        recording = self.recordings[group_id]
         if recording.started or recording.stopped:
-            print(f"Recording {recording_id} is already started or stopped.")
+            print(f"Recording {group_id} is already started or stopped.")
             return ConfigChangeResult(success=False, message="Recording already started or stopped.")
 
         try:
             recording.start()
-            self.check_recording_state.future(recording_id)
+            self.check_recording_state.future(group_id)
             return ConfigChangeResult(success=True, message="Recording started successfully.")
         except Exception as e:
-            print(f"Error starting recording {recording_id}: {e}")
+            print(f"Error starting recording {group_id}: {e}")
             return ConfigChangeResult(success=False, message=str(e))
 
     @thread_bound(timeout_ms=2000)
-    def stop_recording(self, recording_id: str):
-        if recording_id not in self.recordings:
+    def stop_recording(self, group_id: str):
+        if group_id not in self.recordings:
             return ConfigChangeResult(success=True, message="Recording not found.")
 
-        recording = self.recordings[recording_id]
+        recording = self.recordings[group_id]
         if not recording.started or recording.stopped:
-            del self.recordings[recording_id]
+            del self.recordings[group_id]
             return ConfigChangeResult(success=True, message="Recording not started or already stopped.")
 
         try:
             recording.stop()
             # TODO: Find a way to only delete the recording when all drains are finished
-            del self.recordings[recording_id]
-            self.reset_recording_variables(recording_id)
-            self.check_recording_state.future(recording_id)
+            del self.recordings[group_id]
+            self.reset_recording_variables(group_id)
+            self.check_recording_state.future(group_id)
             return ConfigChangeResult(success=True, message="Recording stopped successfully.")
         except Exception as e:
-            print(f"Error stopping recording {recording_id}: {e}")
+            print(f"Error stopping recording {group_id}: {e}")
             return ConfigChangeResult(success=False, message=str(e))
 
     @thread_bound(timeout_ms=10000)
-    def recording_done(self, recording_id: str, result: Future):
+    def recording_done(self, group_id: str, result: Future):
         exc = result.exception()
         if exc is None:
-            print(f"Recording {recording_id} completed successfully.")
+            print(f"Recording {group_id} completed successfully.")
             return
 
-        camera_configs = [camera for camera in self.config.camera_config_list.cameras.values() if camera.recording_id == recording_id or camera.camera_id == recording_id]
+        # TODO: Add event log
+        group_view = self.config.get_group_view(group_id)
+        camera_configs = [self.config.cameras[c.camera.camera_id] for c in group_view.cameras if c.camera.camera_id in self.config.cameras]
+
         for camera_config in camera_configs:
             camera_widget = self.get_camera_widget(camera_config)
             camera_widget.set_status_message(f"Recording stopped: {exc}", status_type="error")
 
-        self.stop_recording.future(recording_id)
+        self.stop_recording.future(group_id)
 
     @thread_bound(timeout_ms=2000)
-    def get_recording_state(self, recording_id: str):
-        print(f"Getting recording state for {recording_id}")
-        if recording_id in self.recordings:
-            print(f"Recording {recording_id} is already started")
+    def get_recording_state(self, group_id: str):
+        print(f"Getting recording state for {group_id}")
+        if group_id in self.recordings:
+            print(f"Recording {group_id} is already started")
             return RecordingState.Running()
 
-        recording_view = self.config.get_recording_view(recording_id)
-        if not recording_view:
-            print(f"Recording {recording_id} not found")
+        group_view = self.config.get_group_view(group_id)
+        if not group_view:
+            print(f"Recording {group_id} not found")
             return RecordingState.NotReady("Recording not found")
 
-        cameras = [self.camera_manager.get_camera(cv.camera.camera_id) for cv in recording_view.camera_views]
+        cameras = [self.camera_manager.get_camera(cv.camera.camera_id) for cv in group_view.cameras]
         if any(camera is None or not camera.ready for camera in cameras):
-            print(f"One or more cameras are not ready for recording {recording_id}")
+            print(f"One or more cameras are not ready for recording {group_id}")
             return RecordingState.NotReady("One or more cameras are not ready")
 
         missing_placeholders = set()
 
-        for camera_view in recording_view.camera_views:
+        for camera_view in group_view.cameras:
             required_variables = camera_view.get_required_placeholders()
-            placeholder_context = camera_view.get_placeholder_context()
+            print(f"Required placeholders for {camera_view.camera.camera_id}: {required_variables}")
+            placeholder_context = camera_view.placeholder_context
 
             for variable_name in list(required_variables):
                 value = placeholder_context.resolve(variable_name)
@@ -755,11 +755,11 @@ class Controller(QObject):
                 if value.missing_dependencies:
                     missing_placeholders.update(value.missing_dependencies)
 
-        available_placeholders = [var.variable_name for var in self.config.variable_config_list.variables.values()]
+        available_placeholders = [p.variable_name for p in self.config.placeholders.values()]
         invalid_placeholders = missing_placeholders - set(available_placeholders)
 
         if invalid_placeholders:
-            print(f"Recording {recording_id} has invalid placeholders: {invalid_placeholders}")
+            print(f"Recording {group_id} has invalid placeholders: {invalid_placeholders}")
             return RecordingState.InvalidPlaceholders(invalid_placeholders=list(invalid_placeholders))
 
         if missing_placeholders:
@@ -770,30 +770,28 @@ class Controller(QObject):
         return RecordingState.Ready()
 
     @thread_bound(timeout_ms=2000)
-    def check_recording_state(self, recording_id: str):
-        recording_state = self.get_recording_state(recording_id)
-        self.recording_state_changed.emit(recording_id, recording_state)
+    def check_recording_state(self, group_id: str):
+        recording_state = self.get_recording_state(group_id)
+        self.recording_state_changed.emit(group_id, recording_state)
 
     @thread_bound(timeout_ms=2000)
     def check_all_recording_states(self):
-        for recording_config in self.config.recording_config_list.recordings.values():
-            self.check_recording_state(recording_config.recording_id)
-        for camera_config in self.config.camera_config_list.cameras.values():
-            if camera_config.recording_id is None:
-                self.check_recording_state(camera_config.camera_id)
+        for group_view in self.config.get_all_group_views():
+            self.check_recording_state(group_view.group_id)
 
     @thread_bound(timeout_ms=2000)
-    def refresh_recording_view(self, recording_id: str):
-        self.recording_view_changed.emit(recording_id, deepcopy(self.config.get_recording_view(recording_id)))
-        self.check_recording_state(recording_id)
+    def refresh_group_view(self, group_id: str):
+        group_view = self.config.get_group_view(group_id)
+        if not group_view:
+            raise ValueError(f"Group view not found for {group_id}")
+
+        self.group_view_changed.emit(group_id, deepcopy(group_view))
+        self.check_recording_state(group_id)
 
     @thread_bound(timeout_ms=2000)
-    def refresh_all_recording_views(self):
-        for recording_config in self.config.recording_config_list.recordings.values():
-            self.recording_view_changed.emit(recording_config.recording_id, deepcopy(self.config.get_recording_view(recording_config.recording_id)))
-        for camera_config in self.config.camera_config_list.cameras.values():
-            if camera_config.recording_id is None:
-                self.recording_view_changed.emit(camera_config.camera_id, deepcopy(self.config.get_recording_view(camera_config.camera_id)))
+    def refresh_all_group_views(self):
+        for group_view in self.config.get_all_group_views():
+            self.group_view_changed.emit(group_view.group_id, deepcopy(group_view))
         self.check_all_recording_states()
 
     def start_preview(self, camera_id: str):
@@ -823,14 +821,14 @@ class Controller(QObject):
         del self.preview_subs[camera_id]
 
     def get_camera_widget(self, camera_config: CameraConfig):
-        recording_config = self.config.recording_config_list.recordings.get(camera_config.recording_id)
+        group_config = self.config.groups.get(camera_config.recording_id)
 
         conf = {
             "type": "camera",
             "camera_id": camera_config.camera_id,
             "recording_id": camera_config.recording_id,
             "camera_name": camera_config.camera_name,
-            "recording_name": recording_config.recording_name if recording_config else None
+            "recording_name": group_config.recording_name if group_config else None
         }
 
         return self.widget_manager.get_widget("camera_"+camera_config.camera_id, conf)
@@ -838,7 +836,7 @@ class Controller(QObject):
     def remove_camera_widget(self, camera_id: str):
         self.widget_manager.remove_widget("camera_"+camera_id)
 
-    def get_recording_controls_widget(self, recording_config: RecordingConfig):
+    def get_recording_controls_widget(self, recording_config: GroupConfig):
         conf = {
             "type": "recording_controls",
             "recording_id": recording_config.recording_id,
@@ -866,13 +864,8 @@ class Controller(QObject):
                 config_dict = config_data.get("config", {})
                 config = WelfareRecorderConfig.from_dict(config_dict)
 
-            for camera_id in list(self.config.camera_config_list.cameras.keys()):
+            for camera_id in list(self.config.cameras.keys()):
                 self.teardown_camera(camera_id)
-
-            # Remove camera configs then setup recording controls to make sure old widgets are removed
-            # There is definitely a better way to do this, but this works for now
-            self.config.camera_config_list.cameras.clear()
-            self.setup_recording_controls()
 
             self.config = config
 
@@ -880,13 +873,13 @@ class Controller(QObject):
 
             # Apply changes synchronously, because we need to ensure the cameras are set up before restoring the UI state
             # I guess we could also implement the layout restoration in the widget manager, but this is simpler for now
-            for camera_config in self.config.camera_config_list.cameras.values():
+            for camera_config in self.config.cameras.values():
                 self.setup_camera(camera_config.camera_id)
 
             self.update_model_leases()
             self.setup_recording_controls()
 
-            self.refresh_all_recording_views()
+            self.refresh_all_group_views()
 
             return ConfigChangeResult(success=True, message=ui_state)
         except Exception as e:

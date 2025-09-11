@@ -28,18 +28,17 @@ class CameraListModel(QAbstractListModel):
         self.controller.camera_updated.connect(self._camera_updated)
         self.controller.camera_removed.connect(self._camera_removed)
 
-        self.camera_config_list = deepcopy(self.controller.config.camera_config_list)
-        self.recording_config_list = deepcopy(self.controller.config.recording_config_list)
+        self.config = deepcopy(self.controller.config)
 
     def rowCount(self, parent=None):
-        return len(self.camera_config_list.cameras)
+        return len(self.config.cameras)
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
-        if not index.isValid() or index.row() < 0 or index.row() >= len(self.camera_config_list.cameras):
+        if not index.isValid() or index.row() < 0 or index.row() >= len(self.config.cameras):
             return None
 
-        camera_id = list(self.camera_config_list.cameras.keys())[index.row()]
-        camera = self.camera_config_list.cameras[camera_id]
+        camera_id = list(self.config.cameras.keys())[index.row()]
+        camera = self.config.cameras[camera_id]
 
         if role == Qt.ItemDataRole.DisplayRole:
             return camera.camera_name
@@ -57,8 +56,7 @@ class CameraListModel(QAbstractListModel):
         elif role == self.RecordingIDRole:
             return camera.recording_id if camera.recording_id else None
         elif role == self.RecordingNameRole:
-            recording_id = camera.recording_id
-            recording = self.controller.config.recording_config_list.recordings.get(recording_id) if recording_id else None
+            recording = self.config.groups[camera.recording_id] if camera.recording_id else None
             if recording:
                 return recording.recording_name
             else:
@@ -68,33 +66,32 @@ class CameraListModel(QAbstractListModel):
 
     def _camera_added(self, camera_config: CameraConfig):
         self.beginInsertRows(QModelIndex(), self.rowCount(), self.rowCount())
-        self.camera_config_list.cameras[camera_config.camera_id] = camera_config
+        self.config.cameras[camera_config.camera_id] = camera_config
         self.endInsertRows()
 
     def _camera_updated(self, camera_config: CameraConfig):
-        if camera_config.camera_id not in self.camera_config_list.cameras:
+        if camera_config.camera_id not in self.config.cameras:
             self._camera_added(camera_config)
             return
 
-        row = list(self.camera_config_list.cameras.keys()).index(camera_config.camera_id)
+        row = list(self.config.cameras.keys()).index(camera_config.camera_id)
         index = self.createIndex(row, 0)
 
-        self.camera_config_list.cameras[camera_config.camera_id] = camera_config
+        self.config.cameras[camera_config.camera_id] = camera_config
         self.dataChanged.emit(index, index)
 
     def _camera_removed(self, camera_id: str):
-        if camera_id not in self.camera_config_list.cameras:
+        if camera_id not in self.config.cameras:
             return
 
-        row = list(self.camera_config_list.cameras.keys()).index(camera_id)
+        row = list(self.config.cameras.keys()).index(camera_id)
         self.beginRemoveRows(QModelIndex(), row, row)
-        del self.camera_config_list.cameras[camera_id]
+        del self.config.cameras[camera_id]
         self.endRemoveRows()
 
     def refresh(self):
         self.beginResetModel()
-        self.camera_config_list = deepcopy(self.controller.config.camera_config_list.cameras)
-        self.recording_config_list = deepcopy(self.controller.config.recording_config_list)
+        self.config = deepcopy(self.controller.config)
         self.endResetModel()
 
     def roleNames(self):
@@ -181,7 +178,7 @@ class CameraListDialog(Ui_CameraListDialog, QDialog):
             if not camera.is_locked("recording_id"):
                 act_add_group = menu.addMenu("Assign to group")
 
-                camera_groups = sorted(self.controller.config.recording_config_list.recordings.values(),
+                camera_groups = sorted(self.controller.config.groups.values(),
                                         key=lambda x: (not x.is_default, x.recording_name))
                 for camera_group in camera_groups:
                     act = act_add_group.addAction(camera_group.recording_name)
@@ -200,7 +197,7 @@ class CameraListDialog(Ui_CameraListDialog, QDialog):
                 print("Assigning to group")
                 recording_id = chosen.data()
                 print(f"Recording ID: {recording_id}")
-                camera_id = list(self.controller.config.camera_config_list.cameras.keys())[row]
+                camera_id = list(self.controller.config.cameras.keys())[row]
                 self.assign_camera_to_group(camera_id, recording_id)
 
         self.lst_cameras.customContextMenuRequested.connect(show_menu)
@@ -217,11 +214,11 @@ class CameraListDialog(Ui_CameraListDialog, QDialog):
         self.selected_camera_changed()
 
     def update_btn_add_camera(self):
-        if self.camera_list_model.camera_config_list.is_locked("cameras"):
+        if self.camera_list_model.config.is_locked("cameras"):
             self.btn_add_camera.setVisible(False)
 
     def update_btn_remove_camera(self):
-        if self.camera_list_model.camera_config_list.is_locked("cameras"):
+        if self.camera_list_model.config.is_locked("cameras"):
             self.btn_remove_camera.setVisible(False)
 
         index = self.lst_cameras.currentIndex()
@@ -230,8 +227,8 @@ class CameraListDialog(Ui_CameraListDialog, QDialog):
             return
 
         row = index.row()
-        camera_id = list(self.camera_list_model.camera_config_list.cameras.keys())[row]
-        camera = self.camera_list_model.camera_config_list.cameras[camera_id]
+        camera_id = list(self.camera_list_model.config.cameras.keys())[row]
+        camera = self.camera_list_model.config.cameras[camera_id]
 
         if camera.is_locked("self"):
             self.btn_remove_camera.setEnabled(False)
@@ -253,8 +250,8 @@ class CameraListDialog(Ui_CameraListDialog, QDialog):
             return
 
         row = index.row()
-        camera_id = list(self.camera_list_model.camera_config_list.cameras.keys())[row]
-        camera = self.camera_list_model.camera_config_list.cameras[camera_id]
+        camera_id = list(self.camera_list_model.config.cameras.keys())[row]
+        camera = self.camera_list_model.config.cameras[camera_id]
 
         if camera.is_locked("activated"):
             self.btn_deactivate_camera.setEnabled(False)
@@ -279,8 +276,8 @@ class CameraListDialog(Ui_CameraListDialog, QDialog):
 
         row = index.row()
 
-        camera_id = list(self.controller.config.camera_config_list.cameras.keys())[row]
-        camera = self.controller.config.camera_config_list.cameras[camera_id]
+        camera_id = list(self.controller.config.cameras.keys())[row]
+        camera = self.controller.config.cameras[camera_id]
 
         self.controller.set_camera_activated.future(camera_id, not camera.activated)
 
@@ -290,8 +287,8 @@ class CameraListDialog(Ui_CameraListDialog, QDialog):
             return
 
         row = index.row()
-        camera_id = list(self.controller.config.camera_config_list.cameras.keys())[row]
-        camera = self.controller.config.camera_config_list.cameras[camera_id]
+        camera_id = list(self.controller.config.cameras.keys())[row]
+        camera = self.controller.config.cameras[camera_id]
 
         if self._confirm_remove_camera(camera.camera_name):
             fut = self.controller.remove_camera.future(camera_id)
@@ -327,8 +324,8 @@ class CameraListDialog(Ui_CameraListDialog, QDialog):
             return
 
         row = index.row()
-        camera_id = list(self.controller.config.camera_config_list.cameras.keys())[row]
-        camera_config = self.controller.config.camera_config_list.cameras[camera_id]
+        camera_id = list(self.controller.config.cameras.keys())[row]
+        camera_config = self.controller.config.cameras[camera_id]
 
         dialog = CameraEditDialog(self.controller, camera_config=camera_config)
         dialog.setWindowTitle("Edit Camera")

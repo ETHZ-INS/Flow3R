@@ -80,8 +80,9 @@ class VariableTextWidget(Ui_VariableTextWidget, QFrame):
         self.update_lbl_preview()
 
     def set_config_view(self, config: CameraConfigView):
+        print(config.placeholders)
         self.set_placeholders(config.placeholders)
-        self.set_placeholder_context(config.get_placeholder_context(preview=True))
+        self.set_placeholder_context(config.preview_placeholder_context)
 
     def select_file(self):
         if self.mode == "folder":

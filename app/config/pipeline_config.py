@@ -34,7 +34,7 @@ class PipelineConfig(ConfigBase):
             "pose_estimation_config": PoseEstimationConfig.from_dict(data.get('pose_estimation_config', {}))
         }
 
-    def get_required_variables(self) -> set:
+    def get_required_placeholders(self) -> set:
         vars = set()
         if self.save_video:
             vars.update(self.save_video_config.get_required_variables())
