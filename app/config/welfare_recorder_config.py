@@ -1,7 +1,7 @@
 from collections import OrderedDict
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import ClassVar, Dict, Tuple, List
+from typing import ClassVar, Dict, List
 
 from app.config.camera_config import CameraConfig
 from app.config.config_base import ConfigBase
@@ -32,6 +32,7 @@ class CameraConfigView:
 @dataclass
 class GroupConfigView:
     group_id: str
+    project: "WelfareRecorderConfig"
     group: GroupConfig
     cameras: List[CameraConfigView]
     placeholders: List[VariableConfig]
@@ -114,7 +115,7 @@ class WelfareRecorderConfig(ConfigBase):
             cameras = [self.get_camera_view(camera.camera_id) for camera in self.cameras.values() if camera.recording_id == group_id]
 
         placeholders = list(self.placeholders.values())
-        return GroupConfigView(group_id, group, cameras, placeholders)
+        return GroupConfigView(group_id, self, group, cameras, placeholders)
 
     def get_all_group_views(self) -> List[GroupConfigView]:
         group_views = []
