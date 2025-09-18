@@ -2,9 +2,9 @@ from concurrent.futures import Future
 from copy import deepcopy
 
 from PySide6 import QtWidgets
-from PySide6.QtCore import QAbstractListModel, Qt, QModelIndex, QThread, QSize, QRect
-from PySide6.QtGui import QFont, QPainter, QColor
-from PySide6.QtWidgets import QDialog, QStyledItemDelegate, QStyle, QComboBox, QMenu, QMessageBox
+from PySide6.QtCore import QAbstractListModel, Qt, QModelIndex, QSize, QRect
+from PySide6.QtGui import QFont, QPainter
+from PySide6.QtWidgets import QDialog, QStyledItemDelegate, QStyle, QMenu, QMessageBox
 
 from app.config.camera_config import CameraConfig
 from app.layout.camera_list_dialog import Ui_CameraListDialog
@@ -18,7 +18,9 @@ class CameraListModel(QAbstractListModel):
     NameRole = Qt.ItemDataRole.UserRole + 2
     ActiveRole = Qt.ItemDataRole.UserRole + 3
     RecordingIDRole = Qt.ItemDataRole.UserRole + 4
-    RecordingNameRole = Qt.ItemDataRole.UserRole + 5
+    GroupNameRole = Qt.ItemDataRole.UserRole + 5
+    PipelineIDRole = Qt.ItemDataRole.UserRole + 6
+    PipelineNameRole = Qt.ItemDataRole.UserRole + 7
 
     def __init__(self, controller: Controller):
         super().__init__()
@@ -55,12 +57,20 @@ class CameraListModel(QAbstractListModel):
             return camera.activated
         elif role == self.RecordingIDRole:
             return camera.recording_id if camera.recording_id else None
-        elif role == self.RecordingNameRole:
+        elif role == self.GroupNameRole:
             recording = self.config.groups[camera.recording_id] if camera.recording_id else None
             if recording:
                 return recording.recording_name
             else:
                 return ""
+        elif role == self.PipelineIDRole:
+            return camera.pipeline_id if camera.pipeline_id else None
+        elif role == self.PipelineNameRole:
+            pipeline = self.config.pipelines[camera.pipeline_id] if camera.pipeline_id else None
+            if pipeline:
+                return pipeline.pipeline_name
+            else:
+                return "Default"
 
         return None
 
@@ -99,25 +109,53 @@ class CameraListModel(QAbstractListModel):
 
 
 class CameraDelegate(QStyledItemDelegate):
+    def __init__(self, parent=None, group_names=None, pipeline_names=None):
+        super().__init__(parent)
+        self.group_names = group_names or []
+        self.pipeline_names = pipeline_names or []
+
+        self.longest_group_name_width = None
+        self.longest_pipeline_name_width = None
+
     """Paints 'name' on the left and hosts a right-aligned QComboBox editor."""
     def sizeHint(self, option, index):
         return QSize(0, max(28, option.fontMetrics.height() + 10))
 
     def paint(self, painter: QPainter, option, index):
-        name = index.data(CameraListModel.NameRole)
-        active = index.data(CameraListModel.ActiveRole)
-        recording_name = index.data(CameraListModel.RecordingNameRole)
 
         # Draw selection background
         if option.state & QStyle.State_Selected:
             painter.fillRect(option.rect, option.palette.highlight())
 
+        if self.longest_group_name_width is None:
+            self.longest_group_name_width = painter.fontMetrics().horizontalAdvance("Default")
+            for group_name in self.group_names:
+                width = painter.fontMetrics().horizontalAdvance(group_name)
+                if width > self.longest_group_name_width:
+                    self.longest_group_name_width = width
+
+        if self.longest_pipeline_name_width is None:
+            self.longest_pipeline_name_width = painter.fontMetrics().horizontalAdvance("Default")
+            for pipeline_name in self.pipeline_names:
+                width = painter.fontMetrics().horizontalAdvance(pipeline_name)
+                if width > self.longest_pipeline_name_width:
+                    self.longest_pipeline_name_width = width
+
+        name = index.data(CameraListModel.NameRole)
+        active = index.data(CameraListModel.ActiveRole)
+        group_name = index.data(CameraListModel.GroupNameRole)
+        pipeline_name = index.data(CameraListModel.PipelineNameRole)
+
         # Common geometry
         margin = 10
-        recording_name_w = painter.fontMetrics().horizontalAdvance("Recording Name") + 2 * margin
+
+        group_name_w = self.longest_group_name_width + 2 * margin
+        pipeline_name_w = self.longest_pipeline_name_width + 2 * margin
+
         r = option.rect
-        name_rect = QRect(r.left() + margin, r.top(), r.width() - recording_name_w - 2 * margin, r.height())
-        recording_rect = QRect(r.right() - recording_name_w - margin + 1, r.top(), recording_name_w, r.height())
+        name_rect = QRect(r.left() + margin, r.top(), r.width() - group_name_w - pipeline_name_w - 3 * margin, r.height())
+        recording_rect = QRect(r.right() - pipeline_name_w - group_name_w - 2 * margin, r.top(), group_name_w, r.height())
+        pipeline_rect = QRect(r.right() - pipeline_name_w - margin, r.top(), pipeline_name_w, r.height())
 
         # Text color depends on selection
         if option.state & QStyle.State_Selected:
@@ -133,8 +171,11 @@ class CameraDelegate(QStyledItemDelegate):
         name_elided = option.fontMetrics.elidedText(name, Qt.ElideRight, name_rect.width())
         painter.drawText(name_rect, Qt.AlignVCenter | Qt.AlignLeft, name_elided)
 
-        recording_name_elided = option.fontMetrics.elidedText(recording_name, Qt.ElideRight, recording_rect.width())
+        recording_name_elided = option.fontMetrics.elidedText(group_name, Qt.ElideRight, recording_rect.width())
         painter.drawText(recording_rect, Qt.AlignVCenter | Qt.AlignRight, recording_name_elided)
+
+        pipeline_name_elided = option.fontMetrics.elidedText(pipeline_name, Qt.ElideRight, pipeline_rect.width())
+        painter.drawText(pipeline_rect, Qt.AlignVCenter | Qt.AlignRight, pipeline_name_elided)
 
         # Focus rect
         if option.state & QStyle.State_HasFocus:
@@ -151,7 +192,10 @@ class CameraListDialog(Ui_CameraListDialog, QDialog):
         self.controller = controller
         self.camera_list_model = CameraListModel(controller)
         self.lst_cameras.setModel(self.camera_list_model)
-        self.lst_cameras.setItemDelegate(CameraDelegate())
+
+        group_names = [g.recording_name for g in self.camera_list_model.config.groups.values() if not g.is_default]
+        pipeline_names = [p.pipeline_name for p in self.camera_list_model.config.pipelines.values()]
+        self.lst_cameras.setItemDelegate(CameraDelegate(self.lst_cameras, group_names=group_names, pipeline_names=pipeline_names))
 
         # Enable custom context menu and wire it up
         self.lst_cameras.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -164,7 +208,6 @@ class CameraListDialog(Ui_CameraListDialog, QDialog):
                 return
 
             row = idx.row()
-            # Select the row that was right-clicked (nice UX)
             self.lst_cameras.setCurrentIndex(idx)
 
             camera = self.camera_list_model.data(idx, CameraListModel.CameraRole)
@@ -178,7 +221,7 @@ class CameraListDialog(Ui_CameraListDialog, QDialog):
             if not camera.is_locked("recording_id"):
                 act_add_group = menu.addMenu("Assign to group")
 
-                camera_groups = sorted(self.controller.config.groups.values(),
+                camera_groups = sorted(self.camera_list_model.config.groups.values(),
                                         key=lambda x: (not x.is_default, x.recording_name))
                 for camera_group in camera_groups:
                     act = act_add_group.addAction(camera_group.recording_name)
@@ -186,6 +229,19 @@ class CameraListDialog(Ui_CameraListDialog, QDialog):
                         act.setData(None)
                     else:
                         act.setData(camera_group.recording_id)
+
+            act_add_pipeline = None
+            if not camera.is_locked("pipeline_id"):
+                act_add_pipeline = menu.addMenu("Set processing pipeline")
+
+                pipelines = sorted(self.camera_list_model.config.pipelines.values(),
+                                      key=lambda x: (not x.is_default, x.pipeline_name))
+                for pipeline in pipelines:
+                     act = act_add_pipeline.addAction(pipeline.pipeline_name)
+                     if pipeline.is_default:
+                           act.setData(None)
+                     else:
+                           act.setData(pipeline.pipeline_id)
 
             chosen = menu.exec(self.lst_cameras.viewport().mapToGlobal(pos))
             if not chosen:
@@ -197,8 +253,14 @@ class CameraListDialog(Ui_CameraListDialog, QDialog):
                 print("Assigning to group")
                 recording_id = chosen.data()
                 print(f"Recording ID: {recording_id}")
-                camera_id = list(self.controller.config.cameras.keys())[row]
+                camera_id = list(self.camera_list_model.config.cameras.keys())[row]
                 self.assign_camera_to_group(camera_id, recording_id)
+            elif chosen.parent() == act_add_pipeline:
+                print("Setting processing pipeline")
+                pipeline_id = chosen.data()
+                print(f"Pipeline ID: {pipeline_id}")
+                camera_id = list(self.camera_list_model.config.cameras.keys())[row]
+                self.assign_camera_to_pipeline(camera_id, pipeline_id)
 
         self.lst_cameras.customContextMenuRequested.connect(show_menu)
 
@@ -332,17 +394,31 @@ class CameraListDialog(Ui_CameraListDialog, QDialog):
         dialog.exec()
 
     def assign_camera_to_group(self, camera_id: str, recording_id: str):
-        fut = self.controller.assign_camera_to_recording.future(camera_id, recording_id)
-        fut.add_done_callback(self._assign_camera_result.future)
+        fut = self.controller.assign_camera_to_group.future(camera_id, recording_id)
+        fut.add_done_callback(self._assign_group_result.future)
 
     @thread_bound(timeout_ms=2000)
-    def _assign_camera_result(self, fut: Future):
+    def _assign_group_result(self, fut: Future):
         if fut.exception():
             QMessageBox.critical(self, "Error Assigning Camera Group", str(fut.exception()))
             return
         res = fut.result()
         if not res.success:
             QMessageBox.critical(self, "Error Assigning Camera Group", res.message)
+            return
+
+    def assign_camera_to_pipeline(self, camera_id: str, pipeline_id: str):
+        fut = self.controller.assign_camera_to_pipeline.future(camera_id, pipeline_id)
+        fut.add_done_callback(self._assign_pipeline_result.future)
+
+    @thread_bound(timeout_ms=2000)
+    def _assign_pipeline_result(self, fut: Future):
+        if fut.exception():
+            QMessageBox.critical(self, "Error Assigning Processing Pipeline", str(fut.exception()))
+            return
+        res = fut.result()
+        if not res.success:
+            QMessageBox.critical(self, "Error Assigning Processing Pipeline", res.message)
             return
 
     def _camera_activated(self, *_):

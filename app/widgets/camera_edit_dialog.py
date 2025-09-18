@@ -25,7 +25,7 @@ def get_available_pylon_devices() -> List[str]:
 
 
 class CameraEditDialog(Ui_CameraEditDialog, QDialog):
-    def __init__(self, controller: Controller, camera_config: CameraConfig = None, parent=None):
+    def __init__(self, controller: Controller, camera_config: CameraConfig = None, su_mode: bool = False, parent=None):
         super().__init__(parent)
         self.setupUi(self)
 
@@ -40,12 +40,18 @@ class CameraEditDialog(Ui_CameraEditDialog, QDialog):
 
         self.controller = controller
         self.new = camera_config is None
+        self.su_mode = su_mode
+
+        self.config = controller.get_config()
         self.camera_config = deepcopy(camera_config) if camera_config else CameraConfig()
-        self.su_mode = False
 
         self.dpd_group.clear()
-        for recording_id, recording_config in self.controller.config.groups.items():
-            self.dpd_group.addItem(recording_config.recording_name, recording_id)
+        for recording_id, group in self.config.groups.items():
+            self.dpd_group.addItem(group.recording_name, recording_id)
+
+        self.dpd_pipeline.clear()
+        for pipeline_id, pipeline in self.config.pipelines.items():
+            self.dpd_pipeline.addItem(pipeline.pipeline_name, pipeline_id)
 
         self.dpd_camera_type.clear()
         for camera_type, camera_type_name in CameraConfig.CAMERA_TYPES.items():
@@ -67,7 +73,8 @@ class CameraEditDialog(Ui_CameraEditDialog, QDialog):
         self.dpd_camera_type.currentIndexChanged.connect(self.camera_type_changed)
         self.dpd_pylon_device.currentIndexChanged.connect(self.pylon_device_changed)
         self.spn_webcam_device.valueChanged.connect(self.webcam_device_changed)
-        self.dpd_group.currentIndexChanged.connect(self.recording_changed)
+        self.dpd_group.currentIndexChanged.connect(self.group_changed)
+        self.dpd_pipeline.currentIndexChanged.connect(self.pipeline_changed)
 
         self.btn_test_camera.clicked.connect(self.test_camera)
 
@@ -110,6 +117,11 @@ class CameraEditDialog(Ui_CameraEditDialog, QDialog):
         self.dpd_group.setCurrentIndex(self.dpd_group.findData(self.camera_config.recording_id) if self.camera_config.recording_id else 0)
         enabled = self.su_mode or not self.camera_config.is_locked("recording_id")
         self.dpd_group.setEnabled(enabled)
+
+    def update_dpd_pipeline(self):
+        self.dpd_pipeline.setCurrentIndex(self.dpd_pipeline.findData(self.camera_config.pipeline_id) if self.camera_config.pipeline_id else 0)
+        enabled = self.su_mode or not self.camera_config.is_locked("pipeline_id")
+        self.dpd_pipeline.setEnabled(enabled)
 
     def update_dpd_camera_type(self):
         self.dpd_camera_type.setCurrentIndex(self.dpd_camera_type.findData(self.camera_config.camera_type))
@@ -167,6 +179,7 @@ class CameraEditDialog(Ui_CameraEditDialog, QDialog):
 
         self.update_txt_camera_name()
         self.update_dpd_group()
+        self.update_dpd_pipeline()
         self.update_dpd_camera_type()
         self.update_dpd_pylon_device()
         self.update_spn_webcam_device()
@@ -189,12 +202,19 @@ class CameraEditDialog(Ui_CameraEditDialog, QDialog):
 
         self.camera_config.camera_name = camera_name
 
-    def recording_changed(self):
-        recording_id = self.dpd_group.currentData()
-        if recording_id is not None and not self.controller.config.groups[recording_id].is_default:
-            self.camera_config.recording_id = recording_id
+    def group_changed(self):
+        group_id = self.dpd_group.currentData()
+        if group_id is not None and not group_id == "default":
+            self.camera_config.recording_id = group_id
         else:
             self.camera_config.recording_id = None
+
+    def pipeline_changed(self):
+        pipeline_id = self.dpd_pipeline.currentData()
+        if pipeline_id is not None and not pipeline_id == "default":
+            self.camera_config.pipeline_id = pipeline_id
+        else:
+            self.camera_config.pipeline_id = None
 
     def camera_type_changed(self):
         camera_type = self.dpd_camera_type.currentData()

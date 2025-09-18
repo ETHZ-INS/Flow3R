@@ -25,7 +25,7 @@ class Ui_CameraEditDialog(object):
     def setupUi(self, CameraEditDialog):
         if not CameraEditDialog.objectName():
             CameraEditDialog.setObjectName(u"CameraEditDialog")
-        CameraEditDialog.resize(400, 341)
+        CameraEditDialog.resize(400, 369)
         self.verticalLayout = QVBoxLayout(CameraEditDialog)
         self.verticalLayout.setObjectName(u"verticalLayout")
         self.label_4 = QLabel(CameraEditDialog)
@@ -65,39 +65,39 @@ class Ui_CameraEditDialog(object):
         self.label_3 = QLabel(self.frm_camera_config)
         self.label_3.setObjectName(u"label_3")
 
-        self.formLayout.setWidget(2, QFormLayout.LabelRole, self.label_3)
+        self.formLayout.setWidget(3, QFormLayout.LabelRole, self.label_3)
 
         self.dpd_camera_type = QComboBox(self.frm_camera_config)
         self.dpd_camera_type.addItem("")
         self.dpd_camera_type.addItem("")
         self.dpd_camera_type.setObjectName(u"dpd_camera_type")
 
-        self.formLayout.setWidget(2, QFormLayout.FieldRole, self.dpd_camera_type)
+        self.formLayout.setWidget(3, QFormLayout.FieldRole, self.dpd_camera_type)
 
         self.lbl_dpd_pylon_device = QLabel(self.frm_camera_config)
         self.lbl_dpd_pylon_device.setObjectName(u"lbl_dpd_pylon_device")
 
-        self.formLayout.setWidget(3, QFormLayout.LabelRole, self.lbl_dpd_pylon_device)
+        self.formLayout.setWidget(4, QFormLayout.LabelRole, self.lbl_dpd_pylon_device)
 
         self.dpd_pylon_device = QComboBox(self.frm_camera_config)
         self.dpd_pylon_device.setObjectName(u"dpd_pylon_device")
 
-        self.formLayout.setWidget(3, QFormLayout.FieldRole, self.dpd_pylon_device)
+        self.formLayout.setWidget(4, QFormLayout.FieldRole, self.dpd_pylon_device)
 
         self.lbl_spn_webcam_device = QLabel(self.frm_camera_config)
         self.lbl_spn_webcam_device.setObjectName(u"lbl_spn_webcam_device")
 
-        self.formLayout.setWidget(4, QFormLayout.LabelRole, self.lbl_spn_webcam_device)
+        self.formLayout.setWidget(5, QFormLayout.LabelRole, self.lbl_spn_webcam_device)
 
         self.spn_webcam_device = QSpinBox(self.frm_camera_config)
         self.spn_webcam_device.setObjectName(u"spn_webcam_device")
 
-        self.formLayout.setWidget(4, QFormLayout.FieldRole, self.spn_webcam_device)
+        self.formLayout.setWidget(5, QFormLayout.FieldRole, self.spn_webcam_device)
 
         self.lbl_frm_video_file = QLabel(self.frm_camera_config)
         self.lbl_frm_video_file.setObjectName(u"lbl_frm_video_file")
 
-        self.formLayout.setWidget(5, QFormLayout.LabelRole, self.lbl_frm_video_file)
+        self.formLayout.setWidget(6, QFormLayout.LabelRole, self.lbl_frm_video_file)
 
         self.frm_video_file = QFrame(self.frm_camera_config)
         self.frm_video_file.setObjectName(u"frm_video_file")
@@ -115,18 +115,24 @@ class Ui_CameraEditDialog(object):
 
         self.btn_select_video_file = QToolButton(self.frm_video_file)
         self.btn_select_video_file.setObjectName(u"btn_select_video_file")
-        icon = QIcon(QIcon.fromTheme(u"folder-open"))
+        icon = QIcon()
+        iconThemeName = u"folder-open"
+        if QIcon.hasThemeIcon(iconThemeName):
+            icon = QIcon.fromTheme(iconThemeName)
+        else:
+            icon.addFile(u".", QSize(), QIcon.Normal, QIcon.Off)
+
         self.btn_select_video_file.setIcon(icon)
 
         self.horizontalLayout_2.addWidget(self.btn_select_video_file)
 
 
-        self.formLayout.setWidget(5, QFormLayout.FieldRole, self.frm_video_file)
+        self.formLayout.setWidget(6, QFormLayout.FieldRole, self.frm_video_file)
 
         self.label_5 = QLabel(self.frm_camera_config)
         self.label_5.setObjectName(u"label_5")
 
-        self.formLayout.setWidget(6, QFormLayout.LabelRole, self.label_5)
+        self.formLayout.setWidget(7, QFormLayout.LabelRole, self.label_5)
 
         self.frm_pylon_config_file = QFrame(self.frm_camera_config)
         self.frm_pylon_config_file.setObjectName(u"frm_pylon_config_file")
@@ -149,12 +155,23 @@ class Ui_CameraEditDialog(object):
         self.horizontalLayout_4.addWidget(self.btn_select_pylon_config_file)
 
 
-        self.formLayout.setWidget(6, QFormLayout.FieldRole, self.frm_pylon_config_file)
+        self.formLayout.setWidget(7, QFormLayout.FieldRole, self.frm_pylon_config_file)
 
         self.btn_test_camera = QPushButton(self.frm_camera_config)
         self.btn_test_camera.setObjectName(u"btn_test_camera")
 
-        self.formLayout.setWidget(7, QFormLayout.FieldRole, self.btn_test_camera)
+        self.formLayout.setWidget(8, QFormLayout.FieldRole, self.btn_test_camera)
+
+        self.label_6 = QLabel(self.frm_camera_config)
+        self.label_6.setObjectName(u"label_6")
+
+        self.formLayout.setWidget(2, QFormLayout.LabelRole, self.label_6)
+
+        self.dpd_pipeline = QComboBox(self.frm_camera_config)
+        self.dpd_pipeline.addItem("")
+        self.dpd_pipeline.setObjectName(u"dpd_pipeline")
+
+        self.formLayout.setWidget(2, QFormLayout.FieldRole, self.dpd_pipeline)
 
 
         self.verticalLayout.addWidget(self.frm_camera_config)
@@ -206,6 +223,9 @@ class Ui_CameraEditDialog(object):
         self.lbl_pylon_config_file.setText(QCoreApplication.translate("CameraEditDialog", u"No file selected", None))
         self.btn_select_pylon_config_file.setText(QCoreApplication.translate("CameraEditDialog", u"...", None))
         self.btn_test_camera.setText(QCoreApplication.translate("CameraEditDialog", u"Preview", None))
+        self.label_6.setText(QCoreApplication.translate("CameraEditDialog", u"Pipeline:", None))
+        self.dpd_pipeline.setItemText(0, QCoreApplication.translate("CameraEditDialog", u"Default", None))
+
         self.lbl_status.setText("")
     # retranslateUi
 

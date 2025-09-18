@@ -66,15 +66,17 @@ class PoseModelManager:
         """
         return PoseModelManager.Lease(self.acquire(model_id, device))
 
-    def _load_model(self, model_id: str, device: str = "cuda"):
-        model_folder = self._config.INTERNAL_MODELS.get(model_id)
-        if not model_folder:
-            raise ValueError(f"Model folder for {model_id} not found.")
-        model = YoloPoseModel.from_folder(model_folder, device)
+    def _load_model(self, pose_model_id: str, device: str = "cuda"):
+        pose_model_config = self._config.pose_models.get(pose_model_id)
+        if not pose_model_config:
+            raise ValueError(f"Pose model {pose_model_id} not found in config.")
+        if not pose_model_config.folder:
+            raise ValueError(f"Pose model {pose_model_id} has no folder configured.")
+        model = YoloPoseModel.from_folder(pose_model_config.folder, device)
         entry = _Entry(model=model)
 
         with self._global_lock:
-            self._entries[(model_id, device)] = entry
+            self._entries[(pose_model_id, device)] = entry
 
     def _unload_model(self, model_id: str, device: str = "cuda"):
         with self._global_lock:

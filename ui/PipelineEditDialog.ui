@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>PipelineConfigurationDialog</class>
- <widget class="QDialog" name="PipelineConfigurationDialog">
+ <class>PipelineEditDialog</class>
+ <widget class="QDialog" name="PipelineEditDialog">
   <property name="geometry">
    <rect>
     <x>0</x>
     <y>0</y>
     <width>357</width>
-    <height>309</height>
+    <height>261</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -15,46 +15,17 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="QFrame" name="frm_camera_configuration">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
+    <widget class="QLabel" name="label_4">
+     <property name="text">
+      <string>### Pipeline Settings</string>
      </property>
-     <property name="frameShape">
-      <enum>QFrame::StyledPanel</enum>
+     <property name="textFormat">
+      <enum>Qt::MarkdownText</enum>
      </property>
-     <property name="frameShadow">
-      <enum>QFrame::Raised</enum>
-     </property>
-     <layout class="QFormLayout" name="formLayout">
-      <item row="0" column="0">
-       <widget class="QLabel" name="label_4">
-        <property name="text">
-         <string>Camera:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="1">
-       <widget class="QComboBox" name="dpd_camera">
-        <item>
-         <property name="text">
-          <string>Camera 1</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>Camera 2</string>
-         </property>
-        </item>
-       </widget>
-      </item>
-     </layout>
     </widget>
    </item>
    <item>
-    <widget class="QFrame" name="frame">
+    <widget class="QFrame" name="frm_configuration">
      <property name="frameShape">
       <enum>QFrame::StyledPanel</enum>
      </property>
@@ -62,86 +33,42 @@
       <enum>QFrame::Raised</enum>
      </property>
      <layout class="QGridLayout" name="gridLayout">
-      <item row="0" column="1">
-       <widget class="QToolButton" name="btn_configure_save_video">
-        <property name="text">
-         <string>...</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="1">
-       <widget class="QToolButton" name="btn_configure_pose_estimation">
-        <property name="text">
-         <string>...</string>
-        </property>
-       </widget>
-      </item>
-      <item row="4" column="0">
+      <item row="5" column="0">
        <widget class="QCheckBox" name="chb_grimace">
         <property name="text">
          <string>Grimace Scoring</string>
         </property>
        </widget>
       </item>
-      <item row="1" column="0">
+      <item row="1" column="1">
+       <widget class="QToolButton" name="btn_configure_save_video">
+        <property name="text">
+         <string>...</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="2">
+       <widget class="QLabel" name="lbl_live_heatmap_hint">
+        <property name="text">
+         <string>Requires: Pose Estimation</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
        <widget class="QCheckBox" name="chb_pose_estimation">
         <property name="text">
          <string>Pose Estimation</string>
         </property>
        </widget>
       </item>
-      <item row="0" column="0">
-       <widget class="QCheckBox" name="chb_save_video">
+      <item row="4" column="0">
+       <widget class="QCheckBox" name="chb_welfare_analysis">
         <property name="text">
-         <string>Save Video File</string>
-        </property>
-        <property name="checked">
-         <bool>true</bool>
+         <string>Welfare Analysis</string>
         </property>
        </widget>
       </item>
-      <item row="4" column="1">
-       <widget class="QToolButton" name="btn_configure_grimace">
-        <property name="text">
-         <string>...</string>
-        </property>
-       </widget>
-      </item>
-      <item row="5" column="0">
-       <spacer name="verticalSpacer">
-        <property name="orientation">
-         <enum>Qt::Vertical</enum>
-        </property>
-        <property name="sizeHint" stdset="0">
-         <size>
-          <width>20</width>
-          <height>40</height>
-         </size>
-        </property>
-       </spacer>
-      </item>
-      <item row="2" column="1">
-       <widget class="QToolButton" name="btn_configure_live_heatmap">
-        <property name="text">
-         <string>...</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="0">
-       <widget class="QCheckBox" name="chb_live_heatmap">
-        <property name="text">
-         <string>Live Heatmap</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="2">
-       <widget class="QLabel" name="label">
-        <property name="text">
-         <string>Requires: Pose Estimation</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="2">
+      <item row="1" column="2">
        <spacer name="horizontalSpacer">
         <property name="orientation">
          <enum>Qt::Horizontal</enum>
@@ -154,26 +81,80 @@
         </property>
        </spacer>
       </item>
-      <item row="3" column="0">
-       <widget class="QCheckBox" name="chb_welfare_analysis">
+      <item row="6" column="0">
+       <spacer name="verticalSpacer">
+        <property name="orientation">
+         <enum>Qt::Vertical</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>20</width>
+          <height>40</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item row="5" column="1">
+       <widget class="QToolButton" name="btn_configure_grimace">
         <property name="text">
-         <string>Welfare Analysis</string>
+         <string>...</string>
         </property>
        </widget>
       </item>
       <item row="3" column="1">
+       <widget class="QToolButton" name="btn_configure_live_heatmap">
+        <property name="text">
+         <string>...</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
        <widget class="QToolButton" name="btn_configure_welfare_analysis">
         <property name="text">
          <string>...</string>
         </property>
        </widget>
       </item>
-      <item row="3" column="2">
-       <widget class="QLabel" name="label_2">
+      <item row="2" column="1">
+       <widget class="QToolButton" name="btn_configure_pose_estimation">
+        <property name="text">
+         <string>...</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="2">
+       <widget class="QLabel" name="lbl_welfare_analysis_hint">
         <property name="text">
          <string>Requires: Pose Estimation</string>
         </property>
        </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QCheckBox" name="chb_live_heatmap">
+        <property name="text">
+         <string>Live Heatmap</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QCheckBox" name="chb_save_video">
+        <property name="text">
+         <string>Save Video File</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="0">
+       <widget class="QLabel" name="label_3">
+        <property name="text">
+         <string>Name:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1" colspan="2">
+       <widget class="QLineEdit" name="txt_name"/>
       </item>
      </layout>
     </widget>
@@ -195,7 +176,7 @@
   <connection>
    <sender>buttonBox</sender>
    <signal>accepted()</signal>
-   <receiver>PipelineConfigurationDialog</receiver>
+   <receiver>PipelineEditDialog</receiver>
    <slot>accept()</slot>
    <hints>
     <hint type="sourcelabel">
@@ -211,7 +192,7 @@
   <connection>
    <sender>buttonBox</sender>
    <signal>rejected()</signal>
-   <receiver>PipelineConfigurationDialog</receiver>
+   <receiver>PipelineEditDialog</receiver>
    <slot>reject()</slot>
    <hints>
     <hint type="sourcelabel">

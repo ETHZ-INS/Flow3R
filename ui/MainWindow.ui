@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>800</width>
-    <height>600</height>
+    <height>569</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -75,13 +75,13 @@
       <property name="minimumSize">
        <size>
         <width>0</width>
-        <height>60</height>
+        <height>65</height>
        </size>
       </property>
       <property name="maximumSize">
        <size>
         <width>16777215</width>
-        <height>60</height>
+        <height>65</height>
        </size>
       </property>
       <property name="styleSheet">
@@ -94,28 +94,28 @@
        <enum>QFrame::Raised</enum>
       </property>
       <layout class="QHBoxLayout" name="horizontalLayout_4">
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
        <property name="topMargin">
-        <number>9</number>
+        <number>0</number>
        </property>
        <property name="rightMargin">
-        <number>9</number>
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
        </property>
        <item>
-        <widget class="QLabel" name="lbl_message">
-         <property name="sizePolicy">
-          <sizepolicy hsizetype="Preferred" vsizetype="MinimumExpanding">
-           <horstretch>0</horstretch>
-           <verstretch>0</verstretch>
-          </sizepolicy>
+        <widget class="QPlainTextEdit" name="txt_log">
+         <property name="horizontalScrollBarPolicy">
+          <enum>Qt::ScrollBarAlwaysOff</enum>
          </property>
-         <property name="text">
-          <string>Status messages will be displayed here</string>
+         <property name="undoRedoEnabled">
+          <bool>false</bool>
          </property>
-         <property name="textFormat">
-          <enum>Qt::MarkdownText</enum>
-         </property>
-         <property name="alignment">
-          <set>Qt::AlignCenter</set>
+         <property name="textInteractionFlags">
+          <set>Qt::NoTextInteraction</set>
          </property>
         </widget>
        </item>
@@ -140,37 +140,33 @@
     <addaction name="action_load_project"/>
     <addaction name="action_save_project"/>
     <addaction name="action_save_project_as"/>
-   </widget>
-   <widget class="QMenu" name="menuRecording">
-    <property name="title">
-     <string>Recording</string>
-    </property>
-    <addaction name="action_add_camera_group"/>
-    <addaction name="action_configure_camera_groups"/>
+    <addaction name="action_enable_superuser_mode"/>
    </widget>
    <widget class="QMenu" name="menuCameras">
     <property name="title">
      <string>Cameras</string>
     </property>
-    <addaction name="action_add_camera"/>
     <addaction name="action_configure_cameras"/>
+    <addaction name="action_configure_camera_groups"/>
+    <addaction name="action_add_camera"/>
+    <addaction name="action_add_camera_group"/>
    </widget>
    <widget class="QMenu" name="menuProcessing">
     <property name="title">
      <string>Processing</string>
     </property>
     <addaction name="action_configure_pipelines"/>
+    <addaction name="action_add_pipeline"/>
    </widget>
    <widget class="QMenu" name="menuVariables">
     <property name="title">
-     <string>Variables</string>
+     <string>Placeholders</string>
     </property>
-    <addaction name="action_add_variable"/>
-    <addaction name="action_configure_variables"/>
+    <addaction name="action_configure_placeholders"/>
+    <addaction name="action_add_placeholder"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuCameras"/>
-   <addaction name="menuRecording"/>
    <addaction name="menuProcessing"/>
    <addaction name="menuVariables"/>
   </widget>
@@ -180,9 +176,9 @@
     <string>Configure Recording</string>
    </property>
   </action>
-  <action name="action_configure_pipelines">
+  <action name="action_add_pipeline">
    <property name="text">
-    <string>Configure Processing Pipeline</string>
+    <string>Add Processing Pipeline</string>
    </property>
   </action>
   <action name="action_load_project">
@@ -207,7 +203,7 @@
   </action>
   <action name="action_configure_cameras">
    <property name="text">
-    <string>Configure Cameras</string>
+    <string>Cameras...</string>
    </property>
   </action>
   <action name="action_add_camera_group">
@@ -217,17 +213,27 @@
   </action>
   <action name="action_configure_camera_groups">
    <property name="text">
-    <string>Configure Camera Groups</string>
+    <string>Camera Groups...</string>
    </property>
   </action>
-  <action name="action_add_variable">
+  <action name="action_add_placeholder">
    <property name="text">
-    <string>Add Variable</string>
+    <string>Add Placeholder</string>
    </property>
   </action>
-  <action name="action_configure_variables">
+  <action name="action_configure_placeholders">
    <property name="text">
-    <string>Configure Variables</string>
+    <string>Placeholders...</string>
+   </property>
+  </action>
+  <action name="action_configure_pipelines">
+   <property name="text">
+    <string>Processing Pipelines...</string>
+   </property>
+  </action>
+  <action name="action_enable_superuser_mode">
+   <property name="text">
+    <string>Enable Superuser Mode</string>
    </property>
   </action>
  </widget>

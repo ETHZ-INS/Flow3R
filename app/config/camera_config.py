@@ -121,6 +121,7 @@ class CameraConfig(ConfigBase):
     camera_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     camera_name: str = "New Camera"
     recording_id: str | None = None
+    pipeline_id: str | None = None
     camera_type: Literal['pylon', 'webcam', 'video_file'] = 'pylon'
 
     pylon: PylonCameraConfig = field(default_factory=PylonCameraConfig)
@@ -183,29 +184,3 @@ class CameraConfig(ConfigBase):
         if subkey is None:
             return None
         return self.camera_type + ":" + str(subkey)
-
-
-@dataclass
-class CameraConfigList(ConfigBase):
-    cameras: Dict[str, CameraConfig] = field(default_factory=dict)
-
-    def _extra_to_dict(self):
-        return {
-            "cameras": {camera_id: camera.to_dict() for camera_id, camera in self.cameras.items()}
-        }
-
-    @classmethod
-    def _extra_from_dict(cls, data: dict):
-        return {
-            "cameras": {camera_id: CameraConfig.from_dict(camera_data) for camera_id, camera_data in data.get("cameras", {}).items()}
-        }
-
-    def get(self, camera_id: str) -> CameraConfig | None:
-        return self.cameras.get(camera_id)
-
-    def set(self, camera_config: CameraConfig):
-        self.cameras[camera_config.camera_id] = camera_config
-
-    def remove(self, camera_id: str):
-        if camera_id in self.cameras:
-            del self.cameras[camera_id]

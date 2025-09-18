@@ -74,8 +74,8 @@ class WebcamCameraSource(CameraSource):
                         ts = now - start
                         observer.on_next((idx, ts, frame))
                         idx += 1
-                        if idx == 180:
-                            raise RuntimeError("Simulated camera disconnect")
+                        #if idx == 180:
+                        #    raise RuntimeError("Simulated camera disconnect")
                 except Exception as e:
                     observer.on_error(e)
                 else:

@@ -46,6 +46,7 @@ class VariableEditDialog(Ui_VariableEditDialog, QDialog):
         self.dpd_scope.currentIndexChanged.connect(self.scope_changed)
         self.dpd_persistence.currentIndexChanged.connect(self.persistence_changed)
         self.txt_description.textChanged.connect(self.description_changed)
+        self.chb_preview.stateChanged.connect(self.preview_changed)
 
         self.update_all()
 
@@ -77,11 +78,6 @@ class VariableEditDialog(Ui_VariableEditDialog, QDialog):
         self.dpd_variable_type.setEnabled(enabled)
         self.dpd_variable_type.setCurrentIndex(self.dpd_variable_type.findData(self.variable_config.variable_type))
 
-    def update_txt_example_value(self):
-        enabled = self.su_mode or not self.variable_config.is_locked("example_value")
-        self.txt_example_value.setEnabled(enabled)
-        self.txt_example_value.setText(self.variable_config.example_value)
-
     def update_dpd_scope(self):
         enabled = self.su_mode or not self.variable_config.is_locked("scope")
         self.dpd_scope.setEnabled(enabled)
@@ -97,16 +93,27 @@ class VariableEditDialog(Ui_VariableEditDialog, QDialog):
         self.txt_description.setEnabled(enabled)
         self.txt_description.setText(self.variable_config.description)
 
+    def update_txt_example_value(self):
+        enabled = self.su_mode or not self.variable_config.is_locked("example_value")
+        self.txt_example_value.setEnabled(enabled)
+        self.txt_example_value.setText(self.variable_config.example_value)
+
+    def update_chb_preview(self):
+        enabled = self.su_mode or not self.variable_config.is_locked("show_in_controls")
+        self.chb_preview.setEnabled(enabled)
+        self.chb_preview.setChecked(self.variable_config.show_in_controls)
+
     def update_all(self):
         self._switch_form_group()
 
         self.update_txt_name()
         self.update_txt_label()
         self.update_dpd_variable_type()
-        self.update_txt_example_value()
         self.update_dpd_scope()
         self.update_dpd_persistence()
         self.update_txt_description()
+        self.update_txt_example_value()
+        self.update_chb_preview()
 
     def name_changed(self):
         old_name = self.variable_config.variable_name
@@ -150,6 +157,10 @@ class VariableEditDialog(Ui_VariableEditDialog, QDialog):
     def description_changed(self):
         new_description = self.txt_description.toPlainText()
         self.variable_config.description = new_description
+
+    def preview_changed(self):
+        show_in_controls = self.chb_preview.isChecked()
+        self.variable_config.show_in_controls = show_in_controls
 
     def accept(self):
         if self.new:

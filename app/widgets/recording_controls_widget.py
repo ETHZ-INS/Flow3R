@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from PySide6 import QtWidgets, QtCore
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QMenu, QLabel
+from PySide6.QtWidgets import QMenu, QLabel, QSizePolicy
 
 from app.config.welfare_recorder_config import GroupConfigView
 from app.flow_layout import FlowLayout
@@ -70,10 +70,11 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QtWidgets.QFrame):
         super().__init__(parent)
         self.setupUi(self)
 
-        preview_layout = FlowLayout(self.frm_preview)
-        self.frm_preview.setLayout(preview_layout)
+        self.preview_layout = FlowLayout(self.frm_preview)
+        self.frm_preview.setLayout(self.preview_layout)
+        self.frm_preview.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
 
-        print("Initializing RecordingControlsWidget with recording_id:", recording_id)
+        self.frm_preview.setObjectName(f"frm_preview_{recording_id}")
 
         self.recording_id = recording_id
         self.recording_name = recording_name
@@ -93,6 +94,9 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QtWidgets.QFrame):
         self.btn_start.clicked.connect(self._start_recording)
 
         self.update_all()
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
 
     @thread_bound(timeout_ms=2000)
     def set_recording_id(self, recording_id: str, recording_name: str):
@@ -160,46 +164,41 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QtWidgets.QFrame):
 
         self.frm_preview.show()
 
+        camera_names = [camera_view.camera.camera_name for camera_view in self.recording_view.cameras]
+
         for placeholder in self.recording_view.placeholders:
             if not placeholder.show_in_controls:
                 continue
 
-            if placeholder.scope == "camera" and len(self.recording_view.cameras) > 1:
-                for camera_view in self.recording_view.camera_views:
-                    placeholder_context = camera_view.placeholder_context
-                    value = placeholder_context.resolve(placeholder.variable_name)
-                    if value.missing_dependencies:
-                        continue
+            value_per_camera = []
+            for camera_view in self.recording_view.cameras:
+                placeholder_context = camera_view.placeholder_context
+                value = placeholder_context.resolve(placeholder.variable_name)
+                if value.is_set and not value.missing_dependencies:
+                    value_per_camera.append(value.value)
+                else:
+                    value_per_camera.append(None)
 
-                    if value.is_set:
-                        value = value.value
-                    else:
+            if len(set(value_per_camera)) > 1:
+                # Different values for different cameras, show all
+                for camera_name, value in zip(camera_names, value_per_camera):
+                    if value is None:
                         value = "<span style='color: red; font-style: italic'>(not set)</span>"
 
-                    lbl = QLabel(f"({camera_view.camera.camera_name}) {placeholder.variable_label} - {value}")
+                    lbl = QLabel(f"({camera_name}) {placeholder.variable_label} - {value}")
                     lbl.setTextFormat(QtCore.Qt.TextFormat.RichText)
                     lbl.setStyleSheet("background: lightblue; padding: 5px; border: 1px solid gray; border-radius: 5px;")
                     self.frm_preview.layout().addWidget(lbl)
-
-                    lbl.linkActivated.connect(lambda link, path=value: _goto_file(path) if link == "open_explorer" else None)
             else:
-                camera_view = self.recording_view.cameras[0]
-                placeholder_context = camera_view.placeholder_context
-                value = placeholder_context.resolve(placeholder.variable_name)
-                if value.missing_dependencies:
-                    continue
+                value = value_per_camera[0]
 
-                if value.is_set and not value.missing_dependencies:
-                    value = value.value
-                else:
+                if value is None:
                     value = "<span style='color: red; font-style: italic'>(not set)</span>"
 
                 lbl = QLabel(f"{placeholder.variable_label} - {value}")
                 lbl.setTextFormat(QtCore.Qt.TextFormat.RichText)
                 lbl.setStyleSheet("background: lightblue; padding: 5px; border: 1px solid gray; border-radius: 5px;")
                 self.frm_preview.layout().addWidget(lbl)
-
-                lbl.linkActivated.connect(lambda link, path=value: _goto_file(path) if link == "open_explorer" else None)
 
     def update_all(self):
         self.update_lbl_recording_name()

@@ -1,8 +1,8 @@
-from typing import List, Dict
+from typing import Dict
 
 from PySide6.QtCore import Qt, QMargins, QSize
 from PySide6.QtGui import QIcon, QFontMetrics
-from PySide6.QtWidgets import QDialog, QLabel, QLineEdit, QSpinBox, QDoubleSpinBox, QStyle, QFrame, QHBoxLayout, \
+from PySide6.QtWidgets import QDialog, QLabel, QLineEdit, QSpinBox, QDoubleSpinBox, QFrame, QHBoxLayout, \
     QSizePolicy
 
 from app.layout.variable_preparation_dialog import Ui_VariablePreparationDialog
@@ -171,8 +171,6 @@ class VariablePreparationDialog(Ui_VariablePreparationDialog, QDialog):
 
     def _hide_filled(self, hide: bool):
         for scope, scope_data in self.scopes.items():
-            print(scope_data["placeholders"])
-            print(scope_data["old_values"])
             missing_values = [v.variable_id for v in scope_data["placeholders"] if v.variable_name in self._required_dependencies() and v.variable_id not in scope_data["old_values"]]
             show_title = not (hide and len(missing_values) == 0) and not (len(scope_data["placeholders"]) == 0)
             self.frm_variables.layout().setRowVisible(scope_data["title_widget"], show_title)
