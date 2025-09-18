@@ -42,33 +42,3 @@ class GroupConfig(ConfigBase):
             "recording_duration": data.get("recording_duration", cls.recording_duration),
             "variable_values": {var_id: VariableValue.from_dict(var_value_data) for var_id, var_value_data in data.get("variable_values", {}).items()}
         }
-
-
-@dataclass
-class RecordingConfigList(ConfigBase):
-    recordings: Dict[str, GroupConfig] = field(default_factory=lambda: {'default': GroupConfig(recording_id='default', recording_name='Default (Individual)', locked_values=["self", "recording_name"])})
-
-    @property
-    def default_recording(self) -> GroupConfig:
-        return self.recordings['default']
-
-    def _extra_to_dict(self):
-        return {
-            "recordings": {recording_id: recording.to_dict() for recording_id, recording in self.recordings.items()}
-        }
-
-    @classmethod
-    def _extra_from_dict(cls, data: dict):
-        return {
-            "recordings": {recording_id: GroupConfig.from_dict(recording_data) for recording_id, recording_data in data.get("recordings", {}).items()}
-        }
-
-    def get(self, recording_id: str) -> GroupConfig:
-        return self.recordings.get(recording_id, self.default_recording)
-
-    def set(self, recording_config: GroupConfig):
-        self.recordings[recording_config.recording_id] = recording_config
-
-    def remove(self, recording_id: str):
-        if recording_id in self.recordings and recording_id != 'default':
-            del self.recordings[recording_id]

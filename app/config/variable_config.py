@@ -34,6 +34,7 @@ class VariableConfig(ConfigBase):
     variable_name: str = 'new_variable'
     variable_label: str = 'New Variable'
     variable_type: str = 'text'
+    is_system: bool = False
     example_value: str = "Hello World"
     scope: str = 'project'
     persistence: str = 'recording'
@@ -47,6 +48,7 @@ class VariableConfig(ConfigBase):
             "variable_name": self.variable_name,
             "variable_label": self.variable_label,
             "variable_type": self.variable_type,
+            "is_system": self.is_system,
             "example_value": self.example_value,
             "scope": self.scope,
             "persistence": self.persistence,
@@ -62,28 +64,13 @@ class VariableConfig(ConfigBase):
             "variable_name": data["variable_name"],
             "variable_label": data.get("variable_label", cls.variable_label),
             "variable_type": data.get("variable_type", cls.variable_type),
+            "is_system": data.get("is_system", cls.is_system),
             "example_value": data.get("example_value", cls.example_value),
             "scope": data.get("scope", cls.scope),
             "persistence": data.get("persistence", cls.persistence),
             "show_in_controls": data.get("show_in_controls", cls.show_in_controls),
             "description": data.get("description", cls.description),
             "choice_values": data.get("choice_values") or []
-        }
-
-
-@dataclass
-class VariableConfigList(ConfigBase):
-    variables: Dict[str, VariableConfig] = field(default_factory=dict)
-
-    def _extra_to_dict(self) -> dict:
-        return {
-            "variables": {var_name: var.to_dict() for var_name, var in self.variables.items()}
-        }
-
-    @classmethod
-    def _extra_from_dict(cls, data: dict) -> dict:
-        return {
-            "variables": {var_name: VariableConfig.from_dict(var_data) for var_name, var_data in data.get("variables", {}).items()}
         }
 
 

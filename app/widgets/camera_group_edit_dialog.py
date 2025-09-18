@@ -4,14 +4,14 @@ from copy import deepcopy
 from PySide6.QtCore import QTime
 from PySide6.QtWidgets import QDialog, QMessageBox, QLayout
 
-from app.config.recording_config import GroupConfig
+from app.config.group_config import GroupConfig
 from app.layout.camera_group_edit_dialog import Ui_CameraGroupEditDialog
 from app.controller import Controller
 from app.thread_bound_callable import thread_bound
 
 
 class CameraGroupEditDialog(Ui_CameraGroupEditDialog, QDialog):
-    def __init__(self, controller: Controller, group_config: GroupConfig = None, su_mode: bool = False, parent=None):
+    def __init__(self, controller: Controller, group: GroupConfig = None, su_mode: bool = False, parent=None):
         super().__init__(parent)
         self.setupUi(self)
 
@@ -24,10 +24,25 @@ class CameraGroupEditDialog(Ui_CameraGroupEditDialog, QDialog):
         }
 
         self.controller = controller
-        self.new = group_config is None
-        self.group_configs = deepcopy(self.controller.config.groups)
-        self.group_config = deepcopy(group_config) if group_config else GroupConfig()
         self.su_mode = su_mode
+        self.new = group is None
+
+        self.config = controller.get_config()
+
+        if group:
+            print("Using existing group.")
+            self.group = deepcopy(group)
+        else:
+            default_group = self.config.groups.get("default")
+            if default_group is None:
+                print("No default group found, using empty group.")
+                self.group = GroupConfig()
+            else:
+                print("Using default group.")
+                new_group = GroupConfig()
+                self.group = deepcopy(default_group)
+                self.group.recording_id = new_group.recording_id
+                self.group.recording_name = new_group.recording_name
 
         self.dpd_recording_mode.clear()
         for recording_mode, recording_mode_name in GroupConfig.RECORDING_MODES.items():
@@ -35,13 +50,13 @@ class CameraGroupEditDialog(Ui_CameraGroupEditDialog, QDialog):
 
         self.dpd_recording_mode.currentIndexChanged.connect(self.recording_mode_changed)
 
-        self.txt_recording_name.editingFinished.connect(self.recording_name_changed)
+        self.txt_recording_name.editingFinished.connect(self.group_name_changed)
         self.tme_duration.timeChanged.connect(self.recording_duration_changed)
 
         self.update_all()
 
     def _switch_recording_form_group(self):
-        recording_mode = self.group_config.recording_mode
+        recording_mode = self.group.recording_mode
 
         for group_recording_mode, rows in self.recording_form_groups.items():
             if group_recording_mode == recording_mode:
@@ -60,19 +75,19 @@ class CameraGroupEditDialog(Ui_CameraGroupEditDialog, QDialog):
         #self.resize(self.width(), new_height)
 
     def update_txt_recording_name(self):
-        enabled = self.su_mode or not self.group_config.is_locked("recording_name")
+        enabled = self.su_mode or not self.group.is_locked("recording_name")
         self.txt_recording_name.setEnabled(enabled)
-        self.txt_recording_name.setText(self.group_config.recording_name)
+        self.txt_recording_name.setText(self.group.recording_name)
 
     def update_dpd_recording_mode(self):
-        enabled = self.su_mode or not self.group_config.is_locked("recording_mode")
+        enabled = self.su_mode or not self.group.is_locked("recording_mode")
         self.dpd_recording_mode.setEnabled(enabled)
-        self.dpd_recording_mode.setCurrentIndex(self.dpd_recording_mode.findData(self.group_config.recording_mode))
+        self.dpd_recording_mode.setCurrentIndex(self.dpd_recording_mode.findData(self.group.recording_mode))
 
     def update_tme_duration(self):
-        enabled = self.su_mode or not self.group_config.is_locked("recording_duration")
+        enabled = self.su_mode or not self.group.is_locked("recording_duration")
         self.tme_duration.setEnabled(enabled)
-        self.tme_duration.setTime(QTime.fromMSecsSinceStartOfDay(int(self.group_config.recording_duration * 1000)))
+        self.tme_duration.setTime(QTime.fromMSecsSinceStartOfDay(int(self.group.recording_duration * 1000)))
 
     def update_all(self):
         self._switch_recording_form_group()
@@ -80,43 +95,43 @@ class CameraGroupEditDialog(Ui_CameraGroupEditDialog, QDialog):
         self.update_dpd_recording_mode()
         self.update_tme_duration()
 
-    def recording_name_changed(self):
-        old_recording_name = self.group_config.recording_name
+    def group_name_changed(self):
+        old_name = self.group.recording_name
+        existing_names = [g.recording_name for g in self.config.groups.values() if g.recording_id != self.group.recording_id]
 
-        existing_names = [rec.recording_name for rec in self.group_configs.values() if rec.recording_id != self.group_config.recording_id]
-
+        base_name = self.txt_recording_name.text().strip()
         attempt = 1
         while True:
             postfix = f" ({attempt})" if attempt > 1 else ""
-            recording_name = self.txt_recording_name.text().strip() + postfix
-            if recording_name and recording_name not in existing_names:
+            name = base_name + postfix
+            if name and name not in existing_names:
                 break
             attempt += 1
 
-        if recording_name == old_recording_name:
+        if name == old_name:
             return
 
-        if recording_name != self.txt_recording_name.text().strip():
+        if name != base_name:
             self.txt_recording_name.blockSignals(True)
-            self.txt_recording_name.setText(recording_name)
+            self.txt_recording_name.setText(name)
             self.txt_recording_name.blockSignals(False)
 
-        self.group_config.recording_name = recording_name
+        self.group.recording_name = name
 
     def recording_mode_changed(self):
         recording_mode = self.dpd_recording_mode.itemData(self.dpd_recording_mode.currentIndex())
-        self.group_config.recording_mode = recording_mode
+        self.group.recording_mode = recording_mode
         self._switch_recording_form_group()
 
     def recording_duration_changed(self):
         duration: QTime = self.tme_duration.time()
-        self.group_config.recording_duration = duration.msecsSinceStartOfDay() / 1000.0  # Convert to seconds
+        self.group.recording_duration = duration.msecsSinceStartOfDay() / 1000.0  # Convert to seconds
 
     def accept(self):
         if self.new:
-            fut = self.controller.add_group.future(self.group_config)
+            fut = self.controller.add_group.future(self.group)
         else:
-            fut = self.controller.update_recording.future(self.group_config)
+            fut = self.controller.update_group.future(self.group)
 
         fut.add_done_callback(self._config_change_result.future)
 

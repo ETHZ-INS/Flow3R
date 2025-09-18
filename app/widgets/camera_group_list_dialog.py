@@ -6,7 +6,7 @@ from PySide6.QtCore import QAbstractListModel, Qt, QModelIndex, QSize, QRect
 from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QDialog, QStyledItemDelegate, QStyle, QMessageBox
 
-from app.config.recording_config import GroupConfig
+from app.config.group_config import GroupConfig
 from app.layout.camera_group_list_dialog import Ui_CameraGroupListDialog
 from app.controller import Controller
 from app.thread_bound_callable import thread_bound
@@ -274,6 +274,6 @@ class CameraGroupListDialog(Ui_CameraGroupListDialog, QDialog):
         row = index.row()
         group_config = self.camera_group_list_model.camera_groups[row]
 
-        dialog = CameraGroupEditDialog(self.controller, group_config=group_config)
+        dialog = CameraGroupEditDialog(self.controller, group=group_config)
         dialog.setWindowTitle("Edit Camera Group")
         dialog.exec()

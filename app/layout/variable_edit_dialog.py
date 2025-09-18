@@ -15,16 +15,16 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QFont, QFontDatabase, QGradient, QIcon,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
-from PySide6.QtWidgets import (QAbstractButton, QApplication, QComboBox, QDialog,
-    QDialogButtonBox, QFormLayout, QFrame, QLabel,
-    QLayout, QLineEdit, QSizePolicy, QSpacerItem,
-    QTextEdit, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QAbstractButton, QApplication, QCheckBox, QComboBox,
+    QDialog, QDialogButtonBox, QFormLayout, QFrame,
+    QLabel, QLayout, QLineEdit, QSizePolicy,
+    QSpacerItem, QTextEdit, QVBoxLayout, QWidget)
 
 class Ui_VariableEditDialog(object):
     def setupUi(self, VariableEditDialog):
         if not VariableEditDialog.objectName():
             VariableEditDialog.setObjectName(u"VariableEditDialog")
-        VariableEditDialog.resize(400, 337)
+        VariableEditDialog.resize(400, 359)
         sizePolicy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -126,6 +126,16 @@ class Ui_VariableEditDialog(object):
 
         self.formLayout.setWidget(6, QFormLayout.FieldRole, self.txt_example_value)
 
+        self.label_9 = QLabel(self.frm_configuration)
+        self.label_9.setObjectName(u"label_9")
+
+        self.formLayout.setWidget(7, QFormLayout.LabelRole, self.label_9)
+
+        self.chb_preview = QCheckBox(self.frm_configuration)
+        self.chb_preview.setObjectName(u"chb_preview")
+
+        self.formLayout.setWidget(7, QFormLayout.FieldRole, self.chb_preview)
+
 
         self.verticalLayout.addWidget(self.frm_configuration)
 
@@ -150,7 +160,7 @@ class Ui_VariableEditDialog(object):
 
     def retranslateUi(self, VariableEditDialog):
         VariableEditDialog.setWindowTitle(QCoreApplication.translate("VariableEditDialog", u"Configure Variable", None))
-        self.label.setText(QCoreApplication.translate("VariableEditDialog", u"### Variable Settings", None))
+        self.label.setText(QCoreApplication.translate("VariableEditDialog", u"### Placeholder Settings", None))
         self.label_3.setText(QCoreApplication.translate("VariableEditDialog", u"Name:", None))
         self.txt_name.setText(QCoreApplication.translate("VariableEditDialog", u"animal_id", None))
         self.label_4.setText(QCoreApplication.translate("VariableEditDialog", u"Label:", None))
@@ -171,5 +181,7 @@ class Ui_VariableEditDialog(object):
         self.label_5.setText(QCoreApplication.translate("VariableEditDialog", u"Description:", None))
         self.label_7.setText(QCoreApplication.translate("VariableEditDialog", u"Example Value:", None))
         self.txt_example_value.setText(QCoreApplication.translate("VariableEditDialog", u"a3001", None))
+        self.label_9.setText(QCoreApplication.translate("VariableEditDialog", u"Show Preview:", None))
+        self.chb_preview.setText("")
     # retranslateUi
 

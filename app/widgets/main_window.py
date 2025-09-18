@@ -1,10 +1,11 @@
+import re
 from concurrent.futures import Future
-from copy import deepcopy
 from pathlib import Path
-from typing import List
+from datetime import datetime
 
 from PySide6 import QtWidgets
-from PySide6.QtCore import QByteArray
+from PySide6.QtCore import QByteArray, Qt, QTimer
+from PySide6.QtGui import QSyntaxHighlighter, QColor, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import QMainWindow, QFileDialog
 
 from app.layout.main_window import Ui_WelfareRecorder
@@ -16,11 +17,19 @@ from app.widgets.camera_group_edit_dialog import CameraGroupEditDialog
 from app.widgets.camera_group_list_dialog import CameraGroupListDialog
 from app.widgets.camera_list_dialog import CameraListDialog
 from app.widgets.camera_widget import CameraWidgetFactory
-from app.widgets.pipeline_configuration_dialog import PipelineConfigurationDialog
+from app.widgets.pipeline_edit_dialog import PipelineEditDialog
+from app.widgets.pipeline_list_dialog import PipelineListDialog
 from app.widgets.recording_controls_widget import RecordingControlsWidgetFactory
 from app.widgets.variable_edit_dialog import VariableEditDialog
 from app.widgets.variable_list_dialog import VariableListDialog
 from app.widgets.variable_preparation_dialog import VariablePreparationDialog
+
+
+LOG_COLORS = {
+    "INFO": QColor("black"),
+    "WARNING": QColor("orange"),
+    "ERROR": QColor("red"),
+}
 
 
 class WelfareRecorder(Ui_WelfareRecorder, QMainWindow):
@@ -29,6 +38,8 @@ class WelfareRecorder(Ui_WelfareRecorder, QMainWindow):
 
         self.setupUi(self)
         self.setStyleSheet("QPushButton:disabled {color: gray}")
+
+        self.su_mode = False
 
         inner = QtWidgets.QWidget()
         vbox = QtWidgets.QVBoxLayout(inner)
@@ -46,6 +57,11 @@ class WelfareRecorder(Ui_WelfareRecorder, QMainWindow):
 
         self.setCentralWidget(inner)
 
+        self.txt_log.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        self.txt_log.viewport().setCursor(Qt.CursorShape.ArrowCursor)  # ensure arrow, not I-beam
+        self.txt_log.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.txt_log.document().setMaximumBlockCount(200)
+
         self.widget_manager = WidgetManager(self.dock_window, self.frm_recordings)
         self.controller = Controller(self.widget_manager)
 
@@ -61,29 +77,77 @@ class WelfareRecorder(Ui_WelfareRecorder, QMainWindow):
         self.action_add_camera.triggered.connect(self.add_camera)
         self.action_configure_cameras.triggered.connect(self.configure_cameras)
 
+        self.action_add_pipeline.triggered.connect(self.add_pipeline)
+        self.action_configure_pipelines.triggered.connect(self.configure_pipelines)
+
         self.action_add_camera_group.triggered.connect(self.add_camera_group)
         self.action_configure_camera_groups.triggered.connect(self.configure_camera_groups)
 
-        self.action_add_variable.triggered.connect(self.add_variable)
-        self.action_configure_variables.triggered.connect(self.configure_variables)
+        self.action_add_placeholder.triggered.connect(self.add_placeholder)
+        self.action_configure_placeholders.triggered.connect(self.configure_placeholders)
 
-        self.action_configure_pipelines.triggered.connect(self.configure_pipelines)
+        self.action_enable_superuser_mode.triggered.connect(self.enable_su_mode)
+
+        self.controller.log_message_added.connect(self.add_log_entry)
 
         if self.config_file:
             self.load_project(self.config_file)
 
+    def enable_su_mode(self):
+        self.su_mode = True
+
+    def add_log_entry(self, message: str, level: str = "INFO"):
+        edit = self.txt_log
+        sb = edit.verticalScrollBar()
+        stick = (sb.value() == sb.maximum())
+
+        cursor = edit.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+
+        # new line BEFORE the entry, not after the previous one
+        if not edit.document().isEmpty():
+            cursor.insertBlock()
+
+        fmt = QTextCharFormat()
+        fmt.setForeground(LOG_COLORS.get(level, QColor("black")))
+
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        cursor.insertText(f"{timestamp} [{level}] {message}", fmt)
+
+        edit.setTextCursor(cursor)
+
+        # snap to bottom only if user was already at bottom
+        if stick:
+            sb.setValue(sb.maximum())
+
     def add_camera(self):
-        dialog = CameraEditDialog(self.controller)
+        dialog = CameraEditDialog(self.controller, su_mode=self.su_mode, parent=self)
         dialog.setWindowTitle("Add Camera")
         dialog.exec()
 
     def edit_camera(self, camera_id: str):
-        camera_config = self.controller.config.cameras.get(camera_id)
-        if camera_config is None:
+        config = self.controller.get_config()
+        camera = config.cameras.get(camera_id)
+        if camera is None:
             return
 
-        dialog = CameraEditDialog(self.controller, camera_config=camera_config)
+        dialog = CameraEditDialog(self.controller, camera_config=camera, su_mode=self.su_mode, parent=self)
         dialog.setWindowTitle("Edit Camera")
+        dialog.exec()
+
+    def add_pipeline(self):
+        dialog = PipelineEditDialog(self.controller, su_mode=self.su_mode, parent=self)
+        dialog.setWindowTitle("Add Pipeline")
+        dialog.exec()
+
+    def edit_pipeline(self, pipeline_id: str):
+        config = self.controller.get_config()
+        pipeline = config.pipelines.get(pipeline_id)
+        if pipeline is None:
+            return
+
+        dialog = PipelineEditDialog(self.controller, pipeline=pipeline, parent=self)
+        dialog.setWindowTitle("Edit Pipeline")
         dialog.exec()
 
     def add_camera_group(self):
@@ -91,12 +155,13 @@ class WelfareRecorder(Ui_WelfareRecorder, QMainWindow):
         dialog.setWindowTitle("Add Camera Group")
         dialog.exec()
 
-    def edit_camera_group(self, recording_id: str):
-        group_config = self.controller.config.groups.get(recording_id)
-        if group_config is None:
+    def edit_camera_group(self, group_id: str):
+        config = self.controller.get_config()
+        group = config.groups.get(group_id)
+        if group is None:
             return
 
-        dialog = CameraGroupEditDialog(self.controller, group_config=group_config)
+        dialog = CameraGroupEditDialog(self.controller, group=group)
         dialog.setWindowTitle("Edit Camera Group")
         dialog.exec()
 
@@ -105,17 +170,17 @@ class WelfareRecorder(Ui_WelfareRecorder, QMainWindow):
         dialog.setWindowTitle("Configure Cameras")
         dialog.exec()
 
+    def configure_pipelines(self):
+        dialog = PipelineListDialog(self.controller, parent=self)
+        dialog.setWindowTitle("Configure Pipelines")
+        dialog.exec()
+
     def configure_camera_groups(self):
         dialog = CameraGroupListDialog(self.controller, parent=self)
         dialog.setWindowTitle("Configure Camera Groups")
         dialog.exec()
 
-    def configure_pipelines(self, camera_id: str = None):
-        dialog = PipelineConfigurationDialog(self.controller, selected_camera_id=camera_id, parent=self)
-        dialog.setWindowTitle("Configure Pipelines")
-        dialog.exec()
-
-    def add_variable(self):
+    def add_placeholder(self):
         dialog = VariableEditDialog(self.controller)
         dialog.setWindowTitle("Add Variable")
         dialog.exec()
@@ -129,13 +194,9 @@ class WelfareRecorder(Ui_WelfareRecorder, QMainWindow):
         dialog.setWindowTitle("Edit Variable")
         dialog.exec()
 
-    def configure_variables(self):
+    def configure_placeholders(self):
         dialog = VariableListDialog(self.controller, parent=self)
         dialog.setWindowTitle("Configure Variables")
-        dialog.exec()
-
-        dialog = VariablePreparationDialog(self.controller, recording_id=list(self.controller.config.groups.values())[1].recording_id, parent=self)
-        dialog.setWindowTitle("Prepare Variables")
         dialog.exec()
 
     def fill_variables_recording(self, recording_id: str):

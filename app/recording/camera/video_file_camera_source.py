@@ -66,6 +66,8 @@ class VideoFileCameraSource:
                 t0 = time.perf_counter()
                 try:
                     while not stop.is_set() and cap.isOpened():
+                        #if idx == 300:
+                        #    raise RuntimeError("Simulated camera disconnect")
                         ok, frame = cap.read()
                         if not ok:
                             if idx == 0:

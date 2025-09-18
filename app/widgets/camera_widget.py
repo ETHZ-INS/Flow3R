@@ -5,7 +5,7 @@ import numpy as np
 from PySide6 import QtCore
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QImage, QPixmap
-from PySide6.QtWidgets import QDockWidget, QMenu, QLabel
+from PySide6.QtWidgets import QDockWidget, QMenu, QLabel, QSizePolicy
 
 from app.layout.camera_widget import Ui_CameraWidget
 from app.thread_bound_callable import thread_bound
@@ -79,6 +79,7 @@ class CameraWidget(Ui_CameraWidget, QDockWidget):
         self.recording_controls = RecordingControlsWidget(self.recording_id, self.recording_name, show_recording_name=False, show_context_menu=False)
         #self.recording_controls_frame = self.recording_controls.frm_controls
         self.frm_content.layout().addWidget(self.recording_controls)
+        self.label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         self.context_menu = QMenu(self)
         self.action_configure_camera = self.context_menu.addAction("Configure Camera")

@@ -10,7 +10,6 @@ pyside6-uic "ui/RecordingControlsWidget.ui" -o "app/layout/recording_controls_wi
 pyside6-uic "ui/VariableTextWidget.ui" -o "app/layout/variable_text_widget.py"
 echo Compiling Dialogs...
 pyside6-uic "ui/CameraPreviewDialog.ui" -o "app/layout/camera_preview_dialog.py"
-pyside6-uic "ui/PipelineConfigurationDialog.ui" -o "app/layout/pipeline_configuration_dialog.py"
 pyside6-uic "ui/VideoFileConfigurationDialog.ui" -o "app/layout/video_file_configuration_dialog.py"
 pyside6-uic "ui/PoseEstimationConfigurationDialog.ui" -o "app/layout/pose_estimation_configuration_dialog.py"
 pyside6-uic "ui/CameraListDialog.ui" -o "app/layout/camera_list_dialog.py"
@@ -21,3 +20,5 @@ pyside6-uic "ui/VariablePreparationDialog.ui" -o "app/layout/variable_preparatio
 pyside6-uic "ui/TextEditorDialog.ui" -o "app/layout/text_editor_dialog.py"
 pyside6-uic "ui/VariableListDialog.ui" -o "app/layout/variable_list_dialog.py"
 pyside6-uic "ui/VariableEditDialog.ui" -o "app/layout/variable_edit_dialog.py"
+pyside6-uic "ui/PipelineListDialog.ui" -o "app/layout/pipeline_list_dialog.py"
+pyside6-uic "ui/PipelineEditDialog.ui" -o "app/layout/pipeline_edit_dialog.py"
