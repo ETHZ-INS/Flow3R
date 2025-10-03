@@ -23,7 +23,7 @@ def ensure_3_channel_input(img):
 
 class PoseEstimationTransform:
     """Callable object: upstream Observable -> downstream Observable."""
-    def __init__(self, model: PoseModel, batch_size: 1):
+    def __init__(self, model: PoseModel, batch_size: int = 1):
         self.model = model
         self.batch_size = batch_size
         self.scheduler = ThreadPoolScheduler(1)

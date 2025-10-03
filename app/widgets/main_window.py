@@ -1,11 +1,11 @@
-import re
 from concurrent.futures import Future
 from pathlib import Path
 from datetime import datetime
+from typing import List
 
 from PySide6 import QtWidgets
-from PySide6.QtCore import QByteArray, Qt, QTimer
-from PySide6.QtGui import QSyntaxHighlighter, QColor, QTextCharFormat, QTextCursor
+from PySide6.QtCore import QByteArray, Qt
+from PySide6.QtGui import  QColor, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import QMainWindow, QFileDialog
 
 from app.layout.main_window import Ui_WelfareRecorder
@@ -32,9 +32,9 @@ LOG_COLORS = {
 }
 
 
-class WelfareRecorder(Ui_WelfareRecorder, QMainWindow):
+class MainWindow(Ui_WelfareRecorder, QMainWindow):
     def __init__(self, config_file: Path = None):
-        super(WelfareRecorder, self).__init__()
+        super(MainWindow, self).__init__()
 
         self.setupUi(self)
         self.setStyleSheet("QPushButton:disabled {color: gray}")
@@ -93,8 +93,12 @@ class WelfareRecorder(Ui_WelfareRecorder, QMainWindow):
         if self.config_file:
             self.load_project(self.config_file)
 
+        self.add_log_entry("Application started", "INFO")
+
     def enable_su_mode(self):
         self.su_mode = True
+        self.setWindowTitle("Flow3R (Superuser Mode)")
+        self.action_enable_superuser_mode.setEnabled(False)
 
     def add_log_entry(self, message: str, level: str = "INFO"):
         edit = self.txt_log
@@ -120,6 +124,22 @@ class WelfareRecorder(Ui_WelfareRecorder, QMainWindow):
         if stick:
             sb.setValue(sb.maximum())
 
+    def goto(self, location: List[str]):
+        if len(location) < 2:
+            return
+
+        if location[0] == "camera":
+            self.edit_camera(location[1])
+        elif location[0] == "pipeline":
+            self.edit_pipeline(location[1], location[2:])
+        elif location[0] == "camera_group":
+            self.edit_camera_group(location[1])
+        elif location[0] == "variable":
+            self.edit_variable(location[1])
+        #elif location[0] == "prepare_variables":
+        #    self.fill_variables_recording(location[1])
+
+
     def add_camera(self):
         dialog = CameraEditDialog(self.controller, su_mode=self.su_mode, parent=self)
         dialog.setWindowTitle("Add Camera")
@@ -140,13 +160,13 @@ class WelfareRecorder(Ui_WelfareRecorder, QMainWindow):
         dialog.setWindowTitle("Add Pipeline")
         dialog.exec()
 
-    def edit_pipeline(self, pipeline_id: str):
+    def edit_pipeline(self, pipeline_id: str, location: List[str] = None):
         config = self.controller.get_config()
         pipeline = config.pipelines.get(pipeline_id)
         if pipeline is None:
             return
 
-        dialog = PipelineEditDialog(self.controller, pipeline=pipeline, parent=self)
+        dialog = PipelineEditDialog(self.controller, pipeline=pipeline, location=location, parent=self)
         dialog.setWindowTitle("Edit Pipeline")
         dialog.exec()
 
@@ -166,7 +186,7 @@ class WelfareRecorder(Ui_WelfareRecorder, QMainWindow):
         dialog.exec()
 
     def configure_cameras(self):
-        dialog = CameraListDialog(self.controller, parent=self)
+        dialog = CameraListDialog(self.controller, su_mode=self.su_mode, parent=self)
         dialog.setWindowTitle("Configure Cameras")
         dialog.exec()
 
@@ -176,7 +196,7 @@ class WelfareRecorder(Ui_WelfareRecorder, QMainWindow):
         dialog.exec()
 
     def configure_camera_groups(self):
-        dialog = CameraGroupListDialog(self.controller, parent=self)
+        dialog = CameraGroupListDialog(self.controller, su_mode=self.su_mode, parent=self)
         dialog.setWindowTitle("Configure Camera Groups")
         dialog.exec()
 
@@ -199,8 +219,8 @@ class WelfareRecorder(Ui_WelfareRecorder, QMainWindow):
         dialog.setWindowTitle("Configure Variables")
         dialog.exec()
 
-    def fill_variables_recording(self, recording_id: str):
-        dialog = VariablePreparationDialog(self.controller, recording_id=recording_id, parent=self)
+    def fill_variables_recording(self, group_id: str):
+        dialog = VariablePreparationDialog(self.controller, group_id=group_id, parent=self)
         dialog.setWindowTitle("Prepare Variables")
         dialog.exec()
 
@@ -246,7 +266,8 @@ class WelfareRecorder(Ui_WelfareRecorder, QMainWindow):
             "dock_window_state": bytes(dock_window_state)
         }
 
-        self.controller.save_config.future(self.config_file, ui_state)
+        fut = self.controller.save_config.future(self.config_file, ui_state, self.su_mode)
+        fut.add_done_callback(self._save_project_result.future)
 
     def save_project_as(self):
         selected_file = self._select_save_file()
@@ -254,6 +275,12 @@ class WelfareRecorder(Ui_WelfareRecorder, QMainWindow):
             return
         self.config_file = selected_file
         self.save_project()
+
+    @thread_bound(timeout_ms=2000)
+    def _save_project_result(self, future: Future):
+        if future.exception() is not None:
+            QtWidgets.QMessageBox.critical(self, "Error saving project", f"Failed to save project: {future.exception()}")
+            return
 
     def load_project(self, config_file: Path = None):
         if config_file:
@@ -272,13 +299,7 @@ class WelfareRecorder(Ui_WelfareRecorder, QMainWindow):
             QtWidgets.QMessageBox.critical(self, "Error", f"Failed to load project: {future.exception()}")
             return
 
-        res = future.result()
-
-        if not res.success :
-            QtWidgets.QMessageBox.critical(self, "Error", f"Failed to load project: {res.message}")
-            return
-
-        ui_state = res.message
+        ui_state = future.result()
         self.restoreGeometry(QByteArray(ui_state["geometry"]))
         #self.restoreState(QByteArray(ui_state["window_state"]))
         self.dock_window.restoreGeometry(QByteArray(ui_state["dock_window_geometry"]))

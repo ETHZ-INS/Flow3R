@@ -56,9 +56,9 @@ class CameraListModel(QAbstractListModel):
         elif role == self.ActiveRole:
             return camera.activated
         elif role == self.RecordingIDRole:
-            return camera.recording_id if camera.recording_id else None
+            return camera.group_id if camera.group_id else None
         elif role == self.GroupNameRole:
-            recording = self.config.groups[camera.recording_id] if camera.recording_id else None
+            recording = self.config.groups[camera.group_id] if camera.group_id else None
             if recording:
                 return recording.recording_name
             else:
@@ -185,11 +185,13 @@ class CameraDelegate(QStyledItemDelegate):
 
 
 class CameraListDialog(Ui_CameraListDialog, QDialog):
-    def __init__(self, controller: Controller, parent=None):
+    def __init__(self, controller: Controller, su_mode: bool = False, parent=None):
         super().__init__(parent)
         self.setupUi(self)
 
         self.controller = controller
+        self.su_mode = su_mode
+
         self.camera_list_model = CameraListModel(controller)
         self.lst_cameras.setModel(self.camera_list_model)
 
@@ -214,11 +216,11 @@ class CameraListDialog(Ui_CameraListDialog, QDialog):
             active = bool(self.camera_list_model.data(idx, CameraListModel.ActiveRole))
 
             act_toggle = None
-            if not camera.is_locked("activated"):
+            if self.su_mode or not camera.is_locked("activated"):
                 act_toggle = menu.addAction("Deactivate" if active else "Activate")
 
             act_add_group = None
-            if not camera.is_locked("recording_id"):
+            if self.su_mode or not camera.is_locked("group_id"):
                 act_add_group = menu.addMenu("Assign to group")
 
                 camera_groups = sorted(self.camera_list_model.config.groups.values(),
@@ -228,10 +230,10 @@ class CameraListDialog(Ui_CameraListDialog, QDialog):
                     if camera_group.is_default:
                         act.setData(None)
                     else:
-                        act.setData(camera_group.recording_id)
+                        act.setData(camera_group.group_id)
 
             act_add_pipeline = None
-            if not camera.is_locked("pipeline_id"):
+            if self.su_mode or not camera.is_locked("pipeline_id"):
                 act_add_pipeline = menu.addMenu("Set processing pipeline")
 
                 pipelines = sorted(self.camera_list_model.config.pipelines.values(),
@@ -250,15 +252,11 @@ class CameraListDialog(Ui_CameraListDialog, QDialog):
             if chosen == act_toggle:
                 self.toggle_activate_camera()
             elif chosen.parent() == act_add_group:
-                print("Assigning to group")
-                recording_id = chosen.data()
-                print(f"Recording ID: {recording_id}")
+                group_id = chosen.data()
                 camera_id = list(self.camera_list_model.config.cameras.keys())[row]
-                self.assign_camera_to_group(camera_id, recording_id)
+                self.assign_camera_to_group(camera_id, group_id)
             elif chosen.parent() == act_add_pipeline:
-                print("Setting processing pipeline")
                 pipeline_id = chosen.data()
-                print(f"Pipeline ID: {pipeline_id}")
                 camera_id = list(self.camera_list_model.config.cameras.keys())[row]
                 self.assign_camera_to_pipeline(camera_id, pipeline_id)
 
@@ -276,12 +274,12 @@ class CameraListDialog(Ui_CameraListDialog, QDialog):
         self.selected_camera_changed()
 
     def update_btn_add_camera(self):
-        if self.camera_list_model.config.is_locked("cameras"):
-            self.btn_add_camera.setVisible(False)
+        visible = self.su_mode or not self.camera_list_model.config.is_locked("cameras")
+        self.btn_add_camera.setVisible(visible)
 
     def update_btn_remove_camera(self):
-        if self.camera_list_model.config.is_locked("cameras"):
-            self.btn_remove_camera.setVisible(False)
+        visible = self.su_mode or not self.camera_list_model.config.is_locked("cameras")
+        self.btn_remove_camera.setVisible(visible)
 
         index = self.lst_cameras.currentIndex()
         if not index.isValid():
@@ -292,7 +290,7 @@ class CameraListDialog(Ui_CameraListDialog, QDialog):
         camera_id = list(self.camera_list_model.config.cameras.keys())[row]
         camera = self.camera_list_model.config.cameras[camera_id]
 
-        if camera.is_locked("self"):
+        if not self.su_mode and camera.is_locked("self"):
             self.btn_remove_camera.setEnabled(False)
             return
 
@@ -315,7 +313,7 @@ class CameraListDialog(Ui_CameraListDialog, QDialog):
         camera_id = list(self.camera_list_model.config.cameras.keys())[row]
         camera = self.camera_list_model.config.cameras[camera_id]
 
-        if camera.is_locked("activated"):
+        if not self.su_mode and camera.is_locked("activated"):
             self.btn_deactivate_camera.setEnabled(False)
             return
 
@@ -341,7 +339,13 @@ class CameraListDialog(Ui_CameraListDialog, QDialog):
         camera_id = list(self.controller.config.cameras.keys())[row]
         camera = self.controller.config.cameras[camera_id]
 
-        self.controller.set_camera_activated.future(camera_id, not camera.activated)
+        fut = self.controller.set_camera_activated.future(camera_id, not camera.activated)
+        fut.add_done_callback(self._set_camera_activated_result.future)
+
+    @thread_bound(timeout_ms=2000)
+    def _set_camera_activated_result(self, fut: Future):
+        if fut.exception():
+            QMessageBox.critical(self, "Error activating/deactivating camera", str(fut.exception()))
 
     def remove_camera(self):
         index = self.lst_cameras.currentIndex()
@@ -370,10 +374,7 @@ class CameraListDialog(Ui_CameraListDialog, QDialog):
     @thread_bound(timeout_ms=2000)
     def _remove_camera_result(self, fut: Future):
         if fut.exception():
-            QMessageBox.critical(self, "Error Removing Camera", str(fut.exception()))
-        res = fut.result()
-        if not res.success:
-            QMessageBox.critical(self, "Error Removing Camera", res.message)
+            QMessageBox.critical(self, "Error removing camera", str(fut.exception()))
 
     def add_camera(self):
         dialog = CameraEditDialog(self.controller)
@@ -393,18 +394,14 @@ class CameraListDialog(Ui_CameraListDialog, QDialog):
         dialog.setWindowTitle("Edit Camera")
         dialog.exec()
 
-    def assign_camera_to_group(self, camera_id: str, recording_id: str):
-        fut = self.controller.assign_camera_to_group.future(camera_id, recording_id)
+    def assign_camera_to_group(self, camera_id: str, group_id: str):
+        fut = self.controller.assign_camera_to_group.future(camera_id, group_id)
         fut.add_done_callback(self._assign_group_result.future)
 
     @thread_bound(timeout_ms=2000)
     def _assign_group_result(self, fut: Future):
         if fut.exception():
             QMessageBox.critical(self, "Error Assigning Camera Group", str(fut.exception()))
-            return
-        res = fut.result()
-        if not res.success:
-            QMessageBox.critical(self, "Error Assigning Camera Group", res.message)
             return
 
     def assign_camera_to_pipeline(self, camera_id: str, pipeline_id: str):
@@ -416,11 +413,7 @@ class CameraListDialog(Ui_CameraListDialog, QDialog):
         if fut.exception():
             QMessageBox.critical(self, "Error Assigning Processing Pipeline", str(fut.exception()))
             return
-        res = fut.result()
-        if not res.success:
-            QMessageBox.critical(self, "Error Assigning Processing Pipeline", res.message)
-            return
 
+    @thread_bound(timeout_ms=2000)
     def _camera_activated(self, *_):
-        print("Camera activated")
         self.update_btn_deactivate_camera()

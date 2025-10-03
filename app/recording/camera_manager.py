@@ -33,7 +33,7 @@ class Camera:
 
         config_error = camera_config.error
         if config_error:
-            self.error = config_error
+            self.error = config_error[1]
             return
 
         self.rebuild()
@@ -48,6 +48,9 @@ class Camera:
             self.camera_source = CameraBuilder.build(self.camera_config)
             self.error = None
         except Exception as e:
+            import traceback
+            print(f"Error setting up camera: {e}")
+            traceback.print_exc()
             self.error = str(e)
 
     def close(self):

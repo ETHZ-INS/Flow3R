@@ -15,6 +15,14 @@ class SaveVideoConfig(ConfigBase):
     file_path: str = "{base_folder}/{recording_name}/{camera_name}.mp4"
     video_codec: str = "mp4v"
 
+    @property
+    def error(self) -> str | None:
+        if not self.file_path:
+            return "File path is empty."
+        if self.video_codec not in self.CODECS:
+            return "Invalid video codec."
+        return None
+
     def _extra_to_dict(self) -> dict:
         return {
             'file_path': self.file_path,

@@ -1,6 +1,8 @@
 from concurrent.futures import Future
 from copy import deepcopy
+from typing import List
 
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QDialog, QMessageBox, QLayout
 
 from app.config.pipeline_config import PipelineConfig
@@ -12,7 +14,7 @@ from app.widgets.video_file_configuration_dialog import VideoFileConfigurationDi
 
 
 class PipelineEditDialog(Ui_PipelineEditDialog, QDialog):
-    def __init__(self, controller: Controller, pipeline: PipelineConfig = None, su_mode: bool = False, parent=None):
+    def __init__(self, controller: Controller, pipeline: PipelineConfig = None, su_mode: bool = False, location: List[str] = None, parent=None):
         super().__init__(parent)
         self.setupUi(self)
 
@@ -58,6 +60,12 @@ class PipelineEditDialog(Ui_PipelineEditDialog, QDialog):
         self.btn_configure_pose_estimation.clicked.connect(self.configure_pose_estimation)
 
         self.update_all()
+
+        if location:
+            if location[0] == "save_video":
+                QTimer.singleShot(0, self.configure_save_video)
+            elif location[0] == "pose_estimation":
+                QTimer.singleShot(0, self.configure_pose_estimation)
 
     def update_txt_name(self):
         enabled = self.su_mode or (not self.pipeline.is_default and not self.pipeline.is_locked("pipeline_name"))
@@ -136,9 +144,4 @@ class PipelineEditDialog(Ui_PipelineEditDialog, QDialog):
         if fut.exception():
             QMessageBox.critical(self, "Error", f"Error while saving configuration: {fut.exception()}")
             return
-        else:
-            res = fut.result()
-            if not res.success:
-                QMessageBox.critical(self, "Error", f"Error while saving configuration: {res.message}")
-                return
         super().accept()

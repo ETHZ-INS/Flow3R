@@ -18,9 +18,9 @@ class PlaceholderListModel(QAbstractListModel):
         super().__init__()
         self.controller = controller
 
-        self.controller.variable_added.connect(self._variable_added)
-        self.controller.variable_updated.connect(self._variable_updated)
-        self.controller.variable_removed.connect(self._variable_removed)
+        self.controller.placeholder_added.connect(self._variable_added)
+        self.controller.placeholder_updated.connect(self._variable_updated)
+        self.controller.placeholder_removed.connect(self._variable_removed)
 
         self.config = self.controller.get_config()
         self.placeholder_configs = list(self.config.placeholders.values())
@@ -117,11 +117,13 @@ class VariableDelegate(QStyledItemDelegate):
 
 
 class VariableListDialog(Ui_VariableListDialog, QDialog):
-    def __init__(self, controller: Controller, parent=None):
+    def __init__(self, controller: Controller, su_mode: bool = False, parent=None):
         super().__init__(parent)
         self.setupUi(self)
 
         self.controller = controller
+        self.su_mode = su_mode
+
         self.list_model = PlaceholderListModel(controller)
         self.lst_variables.setModel(self.list_model)
         self.lst_variables.setItemDelegate(VariableDelegate())
@@ -136,12 +138,12 @@ class VariableListDialog(Ui_VariableListDialog, QDialog):
         self.selected_variable_changed()
 
     def update_btn_add(self):
-        if self.list_model.config.is_locked("placeholders"):
-            self.btn_add.setVisible(False)
+        visible = self.su_mode or not self.list_model.config.is_locked("placeholders")
+        self.btn_add.setVisible(visible)
 
     def update_btn_remove(self):
-        if self.list_model.config.is_locked("placeholders"):
-            self.btn_remove.setVisible(False)
+        visible = self.su_mode or not self.list_model.config.is_locked("placeholders")
+        self.btn_remove.setVisible(visible)
 
         index = self.lst_variables.currentIndex()
         if not index.isValid():
@@ -151,7 +153,7 @@ class VariableListDialog(Ui_VariableListDialog, QDialog):
         row = index.row()
         variable_config = self.list_model.placeholder_configs[row]
 
-        if variable_config.is_locked("self"):
+        if not self.su_mode and variable_config.is_locked("self"):
             self.btn_remove.setEnabled(False)
             return
 
@@ -195,9 +197,6 @@ class VariableListDialog(Ui_VariableListDialog, QDialog):
     def _remove_variable_result(self, fut: Future):
         if fut.exception():
             QMessageBox.critical(self, "Error Removing Variable", str(fut.exception()))
-        res = fut.result()
-        if not res.success:
-            QMessageBox.critical(self, "Error Removing Variable", res.message)
 
     def add_variable(self):
         dialog = VariableEditDialog(self.controller)

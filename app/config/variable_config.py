@@ -1,6 +1,6 @@
 import uuid
 from dataclasses import field, dataclass
-from typing import Any, ClassVar, Dict
+from typing import Any, ClassVar, Dict, List, Tuple
 
 from app.config.config_base import ConfigBase
 
@@ -41,6 +41,26 @@ class VariableConfig(ConfigBase):
     show_in_controls: bool = False
     description: str = ''
     choice_values: list = field(default_factory=list)
+
+    @property
+    def location(self) -> List[str]:
+        return ["variable", self.variable_id]
+
+    @property
+    def error(self) -> Tuple[List[str], str] | None:
+        if not self.variable_id:
+            return self.location, "Variable ID is empty."
+        if not self.variable_name:
+            return self.location, "Variable name is empty."
+        if not self.variable_label:
+            return self.location, "Variable label is empty."
+        if self.variable_type not in self.VARIABLE_TYPES:
+            return self.location, "Invalid variable type."
+        if self.scope not in self.SCOPE_OPTIONS:
+            return self.location, "Invalid scope."
+        if self.persistence not in self.PERSISTENCE_OPTIONS:
+            return self.location, "Invalid persistence type."
+        return None
 
     def _extra_to_dict(self) -> dict:
         return {

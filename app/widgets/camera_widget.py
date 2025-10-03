@@ -1,3 +1,4 @@
+import threading
 from typing import TYPE_CHECKING
 
 import cv2
@@ -13,44 +14,45 @@ from app.widgets.recording_controls_widget import RecordingControlsWidget
 
 if TYPE_CHECKING:
     from app.controller import Controller
-    from app.widgets.main_window import WelfareRecorder
+    from app.widgets.main_window import MainWindow
 
 
 class CameraWidgetFactory:
-    def __init__(self, controller: "Controller", ui: "WelfareRecorder"):
+    def __init__(self, controller: "Controller", ui: "MainWindow"):
         self.controller = controller
         self.ui = ui
 
     def create_widget(self, config) -> "CameraWidget":
         camera_id = config["camera_id"]
         camera_name = config["camera_name"]
-        recording_id = config.get("recording_id", None)
+        group_id = config.get("group_id", None)
         recording_name = config.get("recording_name", None)
 
-        widget = CameraWidget(camera_id, camera_name, recording_id, recording_name)
+        widget = CameraWidget(camera_id, camera_name, group_id, recording_name)
 
         widget.recording_controls.recording_start.connect(lambda rid: self.controller.start_recording.future(rid))
         widget.recording_controls.recording_stop.connect(lambda rid: self.controller.stop_recording.future(rid))
-        widget.recording_controls.fill_variables.connect(lambda rid: self.ui.fill_variables_recording(recording_id=rid))
+        widget.recording_controls.fill_variables.connect(lambda rid: self.ui.fill_variables_recording(group_id=rid))
         widget.retry.connect(lambda cid: self.controller.setup_camera.future(cid))
 
+        widget.recording_controls.goto.connect(self.ui.goto)
         widget.edit_camera.connect(self.ui.edit_camera)
         widget.edit_recording.connect(self.ui.edit_camera_group)
 
         self.controller.group_view_changed.connect(widget.recording_controls.recording_view_changed)
         self.controller.recording_state_changed.connect(widget.recording_controls.recording_state_changed)
 
-        self.controller.check_recording_state.future(recording_id if recording_id is not None else camera_id)
+        self.controller.check_recording_state.future(group_id if group_id is not None else camera_id)
 
         return widget
 
     def update_widget(self, widget: "CameraWidget", config) -> "CameraWidget":
         camera_id = config["camera_id"]
         camera_name = config["camera_name"]
-        recording_id = config.get("recording_id", None)
+        group_id = config.get("group_id", None)
         recording_name = config.get("recording_name", None)
 
-        widget.set_camera_config(camera_id, recording_id, camera_name, recording_name)
+        widget.set_camera_config(camera_id, group_id, camera_name, recording_name)
         return widget
 
 
@@ -64,19 +66,19 @@ class CameraWidget(Ui_CameraWidget, QDockWidget):
     edit_pipeline = Signal(str)
     retry = Signal(str)  # Signal to retry the camera setup
 
-    def __init__(self, camera_id: str, camera_name: str, recording_id: str = None, recording_name: str = None):
+    def __init__(self, camera_id: str, camera_name: str, group_id: str = None, recording_name: str = None):
         super(CameraWidget, self).__init__()
 
         self.setupUi(self)
 
         self.camera_id = camera_id
-        self.recording_id = recording_id or camera_id
+        self.group_id = group_id or camera_id
         self.camera_name = camera_name
         self.recording_name = recording_name
 
-        print(self.recording_id)
+        print(self.group_id)
 
-        self.recording_controls = RecordingControlsWidget(self.recording_id, self.recording_name, show_recording_name=False, show_context_menu=False)
+        self.recording_controls = RecordingControlsWidget(self.group_id, self.recording_name, show_recording_name=False, show_context_menu=False)
         #self.recording_controls_frame = self.recording_controls.frm_controls
         self.frm_content.layout().addWidget(self.recording_controls)
         self.label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -91,13 +93,15 @@ class CameraWidget(Ui_CameraWidget, QDockWidget):
 
         self.label.setMinimumSize(20, 20)
 
-        self.image_signal.connect(self.display_image)
+        self.image_signal.connect(self._image_changed)
 
         self.current_image = None
         self.current_time = 0.0
         self.camera_message = None
         self.status_type = "neutral"
         self.status_message = None
+
+        self._dirty = False
 
         self.recording_running = False
 
@@ -117,19 +121,21 @@ class CameraWidget(Ui_CameraWidget, QDockWidget):
             title += f" ({self.recording_name})"
         self.setWindowTitle(title)
 
-    def set_camera_config(self, camera_id: str, recording_id: str, camera_name: str, recording_name: str = None):
+    def set_camera_config(self, camera_id: str, group_id: str, camera_name: str, recording_name: str = None):
         self.camera_id = camera_id
-        self.recording_id = recording_id or camera_id
+        self.group_id = group_id or camera_id
         self.camera_name = camera_name
         self.recording_name = recording_name
 
-        self.recording_controls.set_recording_id(self.recording_id, self.recording_name)
+        self.recording_controls.set_group_id(self.group_id, self.recording_name)
         self._update()
 
     def set_image(self, image: np.ndarray):
         """Set the current image to be displayed."""
         self.current_image = image
-        self.image_signal.emit()
+        if not self._dirty:
+            self._dirty = True
+            self.image_signal.emit()
 
     def set_camera_message(self, message: str, show_retry: bool = False, show_edit: bool = False):
         """Set an error message to be displayed."""
@@ -144,7 +150,7 @@ class CameraWidget(Ui_CameraWidget, QDockWidget):
         self.edit_camera.emit(self.camera_id)
 
     def configure_recording(self):
-        self.edit_recording.emit(self.recording_id)
+        self.edit_recording.emit(self.group_id)
 
     def on_link_activated(self, link: str):
         """Handle link activation in the camera message."""
@@ -160,6 +166,10 @@ class CameraWidget(Ui_CameraWidget, QDockWidget):
             print(f"[CameraWidget] emitting retry signal for {self.camera_id}")
             self.set_camera_message("Retrying camera setup...")
             self.retry.emit(self.camera_id)
+
+    def _image_changed(self):
+        self._dirty = False
+        self.display_image()
 
     def display_image(self):
         if self.camera_message is not None:

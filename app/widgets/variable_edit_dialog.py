@@ -175,9 +175,4 @@ class VariableEditDialog(Ui_VariableEditDialog, QDialog):
         if fut.exception():
             QMessageBox.critical(self, "Error", f"Error while saving configuration: {fut.exception()}")
             return
-        else:
-            res = fut.result()
-            if not res.success:
-                QMessageBox.critical(self, "Error", f"Error while saving configuration: {res.message}")
-                return
         super().accept()

@@ -130,11 +130,13 @@ class PipelineDelegate(QStyledItemDelegate):
 
 
 class PipelineListDialog(Ui_PipelineListDialog, QDialog):
-    def __init__(self, controller: Controller, parent=None):
+    def __init__(self, controller: Controller, su_mode: bool = False, parent=None):
         super().__init__(parent)
         self.setupUi(self)
 
         self.controller = controller
+        self.su_mode = su_mode
+
         self.list_model = PipelineListModel(controller)
         self.lst_pipelines.setModel(self.list_model)
         self.lst_pipelines.setItemDelegate(PipelineDelegate())
@@ -149,12 +151,12 @@ class PipelineListDialog(Ui_PipelineListDialog, QDialog):
         self.selected_camera_changed()
 
     def update_btn_add(self):
-        if self.list_model.config.is_locked("pipelines"):
-            self.btn_add.setVisible(False)
+        visible = self.su_mode or not self.list_model.config.is_locked("pipelines")
+        self.btn_add.setVisible(visible)
 
     def update_btn_remove(self):
-        if self.list_model.config.is_locked("pipelines"):
-            self.btn_remove.setVisible(False)
+        visible = self.su_mode or not self.list_model.config.is_locked("pipelines")
+        self.btn_remove.setVisible(visible)
 
         index = self.lst_pipelines.currentIndex()
         if not index.isValid():
@@ -164,7 +166,7 @@ class PipelineListDialog(Ui_PipelineListDialog, QDialog):
         row = index.row()
         pipeline = self.list_model.pipelines[row]
 
-        if pipeline.is_default or pipeline.is_locked("self"):
+        if pipeline.is_default or (not self.su_mode and pipeline.is_locked("self")):
             self.btn_remove.setEnabled(False)
             return
 
@@ -208,9 +210,6 @@ class PipelineListDialog(Ui_PipelineListDialog, QDialog):
     def _remove_pipeline_result(self, fut: Future):
         if fut.exception():
             QMessageBox.critical(self, "Error Removing Pipeline", str(fut.exception()))
-        res = fut.result()
-        if not res.success:
-            QMessageBox.critical(self, "Error Removing Pipeline", res.message)
 
     def add_pipeline(self):
         dialog = PipelineEditDialog(self.controller)

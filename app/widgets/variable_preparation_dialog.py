@@ -12,7 +12,7 @@ from app.widgets.variable_text_widget import VariableTextWidget
 
 
 class VariablePreparationDialog(Ui_VariablePreparationDialog, QDialog):
-    def __init__(self, controller: Controller, recording_id: str = None, parent=None):
+    def __init__(self, controller: Controller, group_id: str = None, parent=None):
         super(VariablePreparationDialog, self).__init__(parent)
         self.setupUi(self)
 
@@ -37,17 +37,17 @@ class VariablePreparationDialog(Ui_VariablePreparationDialog, QDialog):
 
         self.required_placeholders = set()
 
-        if recording_id:
-            recording_config = self.config.groups.get(recording_id)
+        if group_id:
+            recording_config = self.config.groups.get(group_id)
             if recording_config:
-                self.scopes[("group", recording_config.recording_id)] = {
+                self.scopes[("group", recording_config.group_id)] = {
                     "placeholders": group_placeholders,
                     "old_values": {v.variable_id: v.value for v in recording_config.variable_values.values() if v.value is not None},
                     "changed_values": {},
                     "widgets": {},
                     "title_widget": None
                 }
-                camera_configs = [c for c in self.config.cameras.values() if c.activated and c.recording_id == recording_id]
+                camera_configs = [c for c in self.config.cameras.values() if c.activated and c.group_id == group_id]
                 for camera_config in camera_configs:
                     config_view = self.config.get_camera_view(camera_config.camera_id)
                     self.required_placeholders.update(config_view.get_required_placeholders())
@@ -60,7 +60,7 @@ class VariablePreparationDialog(Ui_VariablePreparationDialog, QDialog):
                         "title_widget": None
                     }
             else:
-                camera_config = self.config.cameras.get(recording_id)
+                camera_config = self.config.cameras.get(group_id)
                 if camera_config:
                     config_view = self.config.get_camera_view(camera_config.camera_id)
                     self.required_placeholders.update(config_view.get_required_placeholders())

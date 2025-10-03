@@ -10,6 +10,14 @@ class PoseEstimationConfig(ConfigBase):
     save_to_file: bool = True
     save_file: str = "pose_results.csv"
 
+    @property
+    def error(self) -> str | None:
+        if self.preset_id is None:
+            return "Pose estimation preset is not selected."
+        if self.save_to_file and not self.save_file:
+            return "Save file is not selected."
+        return None
+
     def _extra_to_dict(self) -> dict:
         return {
             "preset_id": self.preset_id,

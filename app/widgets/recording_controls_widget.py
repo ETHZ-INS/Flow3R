@@ -14,7 +14,7 @@ from app.thread_bound_callable import thread_bound
 
 if TYPE_CHECKING:
     from app.controller import Controller
-    from app.widgets.main_window import WelfareRecorder
+    from app.widgets.main_window import MainWindow
 
 
 def _goto_file(file_path: str):
@@ -26,30 +26,31 @@ def _goto_file(file_path: str):
 
 
 class RecordingControlsWidgetFactory:
-    def __init__(self, controller: "Controller", ui: "WelfareRecorder"):
+    def __init__(self, controller: "Controller", ui: "MainWindow"):
         self.controller = controller
         self.ui = ui
 
     def create_widget(self, config: dict) -> "RecordingControlsWidget":
-        recording_id = config["recording_id"]
+        group_id = config["group_id"]
         recording_name = config.get("recording_name", None)
 
-        widget = RecordingControlsWidget(recording_id, recording_name)
+        widget = RecordingControlsWidget(group_id, recording_name)
         widget.setFrameStyle(QtWidgets.QFrame.Shape.StyledPanel)
 
         widget.recording_start.connect(lambda rid: self.controller.start_recording.future(rid))
         widget.recording_stop.connect(lambda rid: self.controller.stop_recording.future(rid))
 
+        widget.goto.connect(self.ui.goto)
         widget.edit_recording.connect(self.ui.edit_camera_group)
-        widget.fill_variables.connect(lambda rid: self.ui.fill_variables_recording(recording_id=rid))
+        widget.fill_variables.connect(lambda rid: self.ui.fill_variables_recording(group_id=rid))
 
         widget.request_recording_state.connect(lambda rid: self.controller.check_recording_state.future(rid))
 
         self.controller.group_view_changed.connect(widget.recording_view_changed)
         self.controller.recording_state_changed.connect(widget.recording_state_changed)
 
-        self.controller.refresh_group_view.future(recording_id)
-        self.controller.check_recording_state.future(recording_id)
+        self.controller.refresh_group_view.future(group_id)
+        self.controller.check_recording_state.future(group_id)
 
         return widget
 
@@ -61,12 +62,13 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QtWidgets.QFrame):
     recording_start = Signal(str)  # Signal to start recording
     recording_stop = Signal(str)   # Signal to stop recording
 
+    goto = Signal(list)  # Signal to open a config dialog
     edit_recording = Signal(str)  # Signal to configure recording
-    fill_variables = Signal(str)  # recording_id, missing_placeholder_names
+    fill_variables = Signal(str)  # group_id, missing_placeholder_names
 
     request_recording_state = Signal(str)  # Signal to request recording state update
 
-    def __init__(self, recording_id: str, recording_name: str = None, show_recording_name: bool = True, show_context_menu: bool = True, parent=None):
+    def __init__(self, group_id: str, recording_name: str = None, show_recording_name: bool = True, show_context_menu: bool = True, parent=None):
         super().__init__(parent)
         self.setupUi(self)
 
@@ -74,9 +76,9 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QtWidgets.QFrame):
         self.frm_preview.setLayout(self.preview_layout)
         self.frm_preview.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
 
-        self.frm_preview.setObjectName(f"frm_preview_{recording_id}")
+        self.frm_preview.setObjectName(f"frm_preview_{group_id}")
 
-        self.recording_id = recording_id
+        self.group_id = group_id
         self.recording_name = recording_name
         self.show_recording_name = show_recording_name
         self.show_context_menu = show_context_menu
@@ -99,15 +101,15 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QtWidgets.QFrame):
         super().resizeEvent(ev)
 
     @thread_bound(timeout_ms=2000)
-    def set_recording_id(self, recording_id: str, recording_name: str):
-        print("Setting recording ID:", recording_id)
-        if self.recording_id == recording_id:
+    def set_group_id(self, group_id: str, recording_name: str):
+        print("Setting recording ID:", group_id)
+        if self.group_id == group_id:
             return
 
-        self.recording_id = recording_id
+        self.group_id = group_id
         self.recording_name = recording_name
 
-        self.request_recording_state.emit(self.recording_id)
+        self.request_recording_state.emit(self.group_id)
 
         self.update_all()
 
@@ -124,7 +126,7 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QtWidgets.QFrame):
             self.lbl_recording_name.hide()
 
     def update_btn_start(self):
-        enabled = self.recording_id is not None and isinstance(self.recording_state, (RecordingState.Ready, RecordingState.Running))
+        enabled = self.group_id is not None and isinstance(self.recording_state, (RecordingState.Ready, RecordingState.Running))
         self.btn_start.setEnabled(enabled)
 
         if isinstance(self.recording_state, RecordingState.Running):
@@ -146,7 +148,9 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QtWidgets.QFrame):
                 self.lbl_status.setText(f"Not Ready: {self.recording_state.reason}")
             self.lbl_status.setStyleSheet("QLabel { color: red; }")
         elif isinstance(self.recording_state, RecordingState.Error):
-            if isinstance(self.recording_state, RecordingState.InvalidPlaceholders):
+            if isinstance(self.recording_state, RecordingState.ConfigError):
+                self.lbl_status.setText(f"Config Error: <a href=\"config_error\">{self.recording_state.message}</a>")
+            elif isinstance(self.recording_state, RecordingState.InvalidPlaceholders):
                 self.lbl_status.setText(f"Error: invalid placeholders: {', '.join(self.recording_state.invalid_placeholders)}")
             else:
                 self.lbl_status.setText(f"Error: {self.recording_state.message}")
@@ -183,7 +187,7 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QtWidgets.QFrame):
                 # Different values for different cameras, show all
                 for camera_name, value in zip(camera_names, value_per_camera):
                     if value is None:
-                        value = "<span style='color: red; font-style: italic'>(not set)</span>"
+                        value = "<span style='color: red; font-style: italic'>not set</span>"
 
                     lbl = QLabel(f"({camera_name}) {placeholder.variable_label} - {value}")
                     lbl.setTextFormat(QtCore.Qt.TextFormat.RichText)
@@ -208,19 +212,23 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QtWidgets.QFrame):
 
     def _start_recording(self):
         if isinstance(self.recording_state, RecordingState.Running):
-            self.recording_stop.emit(self.recording_id)
+            self.recording_stop.emit(self.group_id)
         else:
-            self.recording_start.emit(self.recording_id)
+            self.recording_start.emit(self.group_id)
 
     def _configure_recording(self):
-        self.edit_recording.emit(self.recording_id)
+        self.edit_recording.emit(self.group_id)
 
     def _status_link_clicked(self, link: str):
         if link == "fill_variables":
-            self.fill_variables.emit(self.recording_id)
+            self.fill_variables.emit(self.group_id)
+        elif link == "config_error":
+            if isinstance(self.recording_state, RecordingState.ConfigError):
+                print(f"Going to: {self.recording_state.location}")
+                self.goto.emit(self.recording_state.location)
 
-    def recording_view_changed(self, recording_id: str, recording_view: GroupConfigView):
-        if self.recording_id != recording_id:
+    def recording_view_changed(self, group_id: str, recording_view: GroupConfigView):
+        if self.group_id != group_id:
             return
 
         self.recording_view = recording_view
@@ -233,8 +241,8 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QtWidgets.QFrame):
         #    self.update_frm_preview()
         self.update_frm_preview()
 
-    def recording_state_changed(self, recording_id: str, recording_state: RecordingStateBase):
-        if self.recording_id != recording_id:
+    def recording_state_changed(self, group_id: str, recording_state: RecordingStateBase):
+        if self.group_id != group_id:
             return
 
         if self.recording_state != recording_state:

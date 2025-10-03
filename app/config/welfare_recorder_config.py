@@ -2,7 +2,7 @@ from collections import OrderedDict
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import ClassVar, Dict, List
+from typing import ClassVar, Dict, List, Tuple
 
 from app.config.camera_config import CameraConfig
 from app.config.config_base import ConfigBase
@@ -37,6 +37,15 @@ class CameraConfigView:
     placeholder_context: PlaceholderContext
     preview_placeholder_context: PlaceholderContext
 
+    @property
+    def error(self) -> Tuple[List[str], str] | None:
+        configs = [self.camera, self.pipeline] + self.placeholders
+        for config in configs:
+            error = config.error
+            if error:
+                return error
+        return None
+
     def get_required_placeholders(self) -> set[str]:
         required_placeholders = self.pipeline.get_required_placeholders()
         for placeholder in list(required_placeholders):
@@ -55,8 +64,8 @@ class CameraConfigView:
             if placeholder.scope == "project":
                 value = self.project.values.get(placeholder.variable_id)
             elif placeholder.scope == "group":
-                if self.camera.recording_id:
-                    group = self.project.groups.get(self.camera.recording_id)
+                if self.camera.group_id:
+                    group = self.project.groups.get(self.camera.group_id)
                     if group:
                         value = group.variable_values.get(placeholder.variable_id)
                 else:
@@ -78,6 +87,15 @@ class GroupConfigView:
     cameras: List[CameraConfigView]
     placeholders: List[VariableConfig]
 
+    @property
+    def error(self) -> Tuple[List[str], str] | None:
+        configs = [self.group] + self.cameras + self.placeholders
+        for config in configs:
+            error = config.error
+            if error:
+                return error
+        return None
+
 
 @dataclass
 class PipelineConfigView:
@@ -90,7 +108,7 @@ class PipelineConfigView:
 @dataclass
 class WelfareRecorderConfig(ConfigBase):
     cameras: OrderedDict[str, CameraConfig] = field(default_factory=OrderedDict)
-    groups: OrderedDict[str, GroupConfig] = field(default_factory=lambda: OrderedDict({'default': GroupConfig(recording_id='default', recording_name='Default (Individual)')}))
+    groups: OrderedDict[str, GroupConfig] = field(default_factory=lambda: OrderedDict({'default': GroupConfig(group_id='default', recording_name='Default (Individual)')}))
     pipelines: OrderedDict[str, PipelineConfig] = field(default_factory=lambda: OrderedDict({'default': PipelineConfig(pipeline_id='default', pipeline_name='Default')}))
     placeholders: OrderedDict[str, VariableConfig] = field(default_factory=lambda: OrderedDict({'camera_name': VariableConfig(variable_id='camera_name', variable_name='camera_name', variable_label="Camera Name", variable_type="text", is_system=True, scope='camera', description='Name of the camera', example_value='Camera1')}))
 
@@ -98,6 +116,21 @@ class WelfareRecorderConfig(ConfigBase):
     pose_estimation_presets: OrderedDict[str, PoseEstimationPresetConfig] = field(default_factory=lambda: OrderedDict(deepcopy(BUILTIN_POSE_PRESETS)))
 
     values: Dict[str, VariableValue] = field(default_factory=dict)
+
+    @property
+    def error(self) -> Tuple[List[str], str] | None:
+        configs = []
+        configs += list(self.cameras.values())
+        configs += list(self.groups.values())
+        configs += list(self.pipelines.values())
+        configs += list(self.placeholders.values())
+        configs += list(self.pose_models.values())
+        configs += list(self.pose_estimation_presets.values())
+        for config in configs:
+            error = config.error
+            if error:
+                return error
+        return None
 
     def _extra_to_dict(self):
         return {
@@ -114,7 +147,7 @@ class WelfareRecorderConfig(ConfigBase):
     def _extra_from_dict(cls, data):
         return {
             "cameras": OrderedDict((c["camera_id"], CameraConfig.from_dict(c)) for c in data.get("cameras", [])),
-            "groups": OrderedDict((g["recording_id"], GroupConfig.from_dict(g)) for g in data.get("groups", [])),
+            "groups": OrderedDict((g["group_id"], GroupConfig.from_dict(g)) for g in data.get("groups", [])),
             "pipelines": OrderedDict((p["pipeline_id"], PipelineConfig.from_dict(p)) for p in data.get("pipelines", [])),
             "placeholders": OrderedDict((v["variable_id"], VariableConfig.from_dict(v)) for v in data.get("placeholders", [])),
             "pose_models": OrderedDict((m["id"], PoseEstimationModelConfig.from_dict(m)) for m in data.get("pose_models", [])),
@@ -130,9 +163,9 @@ class WelfareRecorderConfig(ConfigBase):
             pipeline = self.pipelines.get("default")
         placeholders = list(self.placeholders.values())
 
-        if camera.recording_id:
-            group_id = camera.recording_id
-            group_values = self.groups[camera.recording_id].variable_values
+        if camera.group_id:
+            group_id = camera.group_id
+            group_values = self.groups[camera.group_id].variable_values
         else:
             group_id = camera_id
             group_values = camera.variable_values
@@ -170,7 +203,7 @@ class WelfareRecorderConfig(ConfigBase):
             group = self.groups.get("default")
             cameras = [self.get_camera_view(camera.camera_id)]
         else:
-            cameras = [self.get_camera_view(camera.camera_id) for camera in self.cameras.values() if camera.activated and camera.recording_id == group_id]
+            cameras = [self.get_camera_view(camera.camera_id) for camera in self.cameras.values() if camera.activated and camera.group_id == group_id]
 
         placeholders = list(self.placeholders.values())
         return GroupConfigView(group_id, self, group, cameras, placeholders)
@@ -180,7 +213,7 @@ class WelfareRecorderConfig(ConfigBase):
         for group_id in self.groups.keys():
             group_views.append(self.get_group_view(group_id))
         for camera in self.cameras.values():
-            if not camera.recording_id:
+            if not camera.group_id:
                 group_views.append(self.get_group_view(camera.camera_id))
         return group_views
 

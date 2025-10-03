@@ -46,8 +46,8 @@ class CameraEditDialog(Ui_CameraEditDialog, QDialog):
         self.camera_config = deepcopy(camera_config) if camera_config else CameraConfig()
 
         self.dpd_group.clear()
-        for recording_id, group in self.config.groups.items():
-            self.dpd_group.addItem(group.recording_name, recording_id)
+        for group_id, group in self.config.groups.items():
+            self.dpd_group.addItem(group.recording_name, group_id)
 
         self.dpd_pipeline.clear()
         for pipeline_id, pipeline in self.config.pipelines.items():
@@ -114,8 +114,8 @@ class CameraEditDialog(Ui_CameraEditDialog, QDialog):
         self.txt_camera_name.setEnabled(enabled)
 
     def update_dpd_group(self):
-        self.dpd_group.setCurrentIndex(self.dpd_group.findData(self.camera_config.recording_id) if self.camera_config.recording_id else 0)
-        enabled = self.su_mode or not self.camera_config.is_locked("recording_id")
+        self.dpd_group.setCurrentIndex(self.dpd_group.findData(self.camera_config.group_id) if self.camera_config.group_id else 0)
+        enabled = self.su_mode or not self.camera_config.is_locked("group_id")
         self.dpd_group.setEnabled(enabled)
 
     def update_dpd_pipeline(self):
@@ -143,7 +143,7 @@ class CameraEditDialog(Ui_CameraEditDialog, QDialog):
 
     def update_lbl_video_file(self):
         if self.camera_config.video_file.video_file_path:
-            self.lbl_video_file.setText(str(self.camera_config.video_file.video_file_path))
+            self.lbl_video_file.setText(self.camera_config.video_file.video_file_path)
         else:
             self.lbl_video_file.setText("No file selected")
         enabled = self.su_mode or not self.camera_config.video_file.is_locked("video_file_path")
@@ -205,9 +205,9 @@ class CameraEditDialog(Ui_CameraEditDialog, QDialog):
     def group_changed(self):
         group_id = self.dpd_group.currentData()
         if group_id is not None and not group_id == "default":
-            self.camera_config.recording_id = group_id
+            self.camera_config.group_id = group_id
         else:
-            self.camera_config.recording_id = None
+            self.camera_config.group_id = None
 
     def pipeline_changed(self):
         pipeline_id = self.dpd_pipeline.currentData()
@@ -226,7 +226,7 @@ class CameraEditDialog(Ui_CameraEditDialog, QDialog):
 
         video_file, _ = QFileDialog.getOpenFileName(self, "Select Video File", "", "Video Files (*.mp4 *.avi *.mov)")
         if video_file:
-            self.camera_config.video_file.video_file_path = Path(video_file)
+            self.camera_config.video_file.video_file_path = video_file
             self.update_lbl_video_file()
 
     def select_pylon_config_file(self):
@@ -234,7 +234,7 @@ class CameraEditDialog(Ui_CameraEditDialog, QDialog):
 
         config_file, _ = QFileDialog.getOpenFileName(self, "Select Pylon Config File", "", "Pylon Config Files (*.pfs)")
         if config_file:
-            self.camera_config.pylon.config_file_path = Path(config_file)
+            self.camera_config.pylon.config_file_path = config_file
             self.update_lbl_pylon_config_file()
 
     def pylon_device_changed(self):
@@ -301,11 +301,6 @@ class CameraEditDialog(Ui_CameraEditDialog, QDialog):
     @thread_bound(timeout_ms=2000)
     def _config_change_result(self, fut: Future):
         if fut.exception():
-            QMessageBox.critical(self, "Error", f"Error while saving configuration: {fut.exception()}")
+            QMessageBox.critical(self, "Error saving configuration", str(fut.exception()))
             return
-        else:
-            res = fut.result()
-            if not res.success:
-                QMessageBox.critical(self, "Error", f"Error while saving configuration: {res.message}")
-                return
         super().accept()

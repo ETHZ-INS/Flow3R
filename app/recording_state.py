@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import List
 
 
 class RecordingStateBase:
@@ -23,6 +24,11 @@ class RecordingState:
     class MissingInfo(NotReady):
         message: str = "Missing info"
         missing_placeholders: list = field(default_factory=list)
+
+    @dataclass
+    class ConfigError(Error):
+        message: str = "Configuration error"
+        location: List[str] = field(default_factory=list)
 
     @dataclass
     class InvalidPlaceholders(Error):

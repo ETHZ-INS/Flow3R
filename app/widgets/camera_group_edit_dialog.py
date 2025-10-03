@@ -30,18 +30,15 @@ class CameraGroupEditDialog(Ui_CameraGroupEditDialog, QDialog):
         self.config = controller.get_config()
 
         if group:
-            print("Using existing group.")
             self.group = deepcopy(group)
         else:
             default_group = self.config.groups.get("default")
             if default_group is None:
-                print("No default group found, using empty group.")
                 self.group = GroupConfig()
             else:
-                print("Using default group.")
                 new_group = GroupConfig()
                 self.group = deepcopy(default_group)
-                self.group.recording_id = new_group.recording_id
+                self.group.group_id = new_group.group_id
                 self.group.recording_name = new_group.recording_name
 
         self.dpd_recording_mode.clear()
@@ -70,24 +67,20 @@ class CameraGroupEditDialog(Ui_CameraGroupEditDialog, QDialog):
             if not self.frm_recording_configuration.layout().isRowVisible(row):
                 self.frm_recording_configuration.layout().setRowVisible(row, True)
 
-        #self.layout().invalidate()
-        #new_height = self.sizeHint().height()
-        #self.resize(self.width(), new_height)
-
     def update_txt_recording_name(self):
+        self.txt_recording_name.setText(self.group.recording_name)
         enabled = self.su_mode or not self.group.is_locked("recording_name")
         self.txt_recording_name.setEnabled(enabled)
-        self.txt_recording_name.setText(self.group.recording_name)
 
     def update_dpd_recording_mode(self):
+        self.dpd_recording_mode.setCurrentIndex(self.dpd_recording_mode.findData(self.group.recording_mode))
         enabled = self.su_mode or not self.group.is_locked("recording_mode")
         self.dpd_recording_mode.setEnabled(enabled)
-        self.dpd_recording_mode.setCurrentIndex(self.dpd_recording_mode.findData(self.group.recording_mode))
 
     def update_tme_duration(self):
+        self.tme_duration.setTime(QTime.fromMSecsSinceStartOfDay(int(self.group.recording_duration * 1000)))
         enabled = self.su_mode or not self.group.is_locked("recording_duration")
         self.tme_duration.setEnabled(enabled)
-        self.tme_duration.setTime(QTime.fromMSecsSinceStartOfDay(int(self.group.recording_duration * 1000)))
 
     def update_all(self):
         self._switch_recording_form_group()
@@ -97,7 +90,7 @@ class CameraGroupEditDialog(Ui_CameraGroupEditDialog, QDialog):
 
     def group_name_changed(self):
         old_name = self.group.recording_name
-        existing_names = [g.recording_name for g in self.config.groups.values() if g.recording_id != self.group.recording_id]
+        existing_names = [g.recording_name for g in self.config.groups.values() if g.group_id != self.group.group_id]
 
         base_name = self.txt_recording_name.text().strip()
         attempt = 1
@@ -140,9 +133,4 @@ class CameraGroupEditDialog(Ui_CameraGroupEditDialog, QDialog):
         if fut.exception():
             QMessageBox.critical(self, "Error", f"Error while saving configuration: {fut.exception()}")
             return
-        else:
-            res = fut.result()
-            if not res.success:
-                QMessageBox.critical(self, "Error", f"Error while saving configuration: {res.message}")
-                return
         super().accept()

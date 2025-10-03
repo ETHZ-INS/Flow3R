@@ -1,5 +1,6 @@
 import uuid
 from dataclasses import dataclass, field
+from typing import List, Tuple
 
 from app.config.config_base import ConfigBase
 from app.config.pose_estimation_config import PoseEstimationConfig
@@ -20,6 +21,27 @@ class PipelineConfig(ConfigBase):
     @property
     def is_default(self) -> bool:
         return self.pipeline_id == 'default'
+
+    @property
+    def location(self) -> List[str]:
+        return ["pipeline", self.pipeline_id]
+
+    @property
+    def error(self) -> Tuple[List[str], str] | None:
+        if not self.pipeline_id:
+            return self.location, "Pipeline ID is empty."
+        if not self.pipeline_name:
+            return self.location, "Pipeline name is empty."
+        if self.save_video:
+            error = self.save_video_config.error
+            if error:
+                return self.location + ["save_video"], error
+        if self.pose_estimation:
+            error = self.pose_estimation_config.error
+            if error:
+                return self.location + ["pose_estimation"], error
+        return None
+
 
     def _extra_to_dict(self) -> dict:
         return {
