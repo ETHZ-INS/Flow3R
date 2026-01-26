@@ -1,0 +1,36 @@
+from typing import Protocol, ClassVar, TypeVar, Optional
+
+from PySide6.QtCore import QObject
+
+from aaaflow3r.core.streaming.abc.stream import IStream
+
+
+class IConnectableSignal(Protocol):
+    def connect(self, slot): ...
+    def disconnect(self, slot): ...
+
+
+TDesc = TypeVar("TDesc")
+TData = TypeVar("TData")
+
+class IVisualizerHandle(Protocol[TDesc, TData]):
+    def subscribe(self, stream: IStream[TDesc, TData]): ...
+    def unsubscribe(self): ...
+    def dispose(self): ...
+
+    @property
+    def item(self) -> Optional[TData]: ...
+    @property
+    def error(self) -> Optional[Exception]: ...
+    @property
+    def completed(self) -> bool: ...
+    @property
+    def item_changed(self) -> IConnectableSignal: ...
+    @property
+    def error_changed(self) -> IConnectableSignal: ...
+    @property
+    def completed_changed(self) -> IConnectableSignal: ...
+
+
+class QVisualizerMeta(type(QObject), type(IVisualizerHandle)):
+    pass

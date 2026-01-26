@@ -1,0 +1,9 @@
+from typing import TypeVar, Protocol
+
+TStream = TypeVar("TStream")
+
+class ISource(Protocol[TStream]):
+    @property
+    def stream(self) -> TStream: ...
+    def open(self): ...
+    def close(self): ...

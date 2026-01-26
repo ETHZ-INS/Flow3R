@@ -1,0 +1,6 @@
+from typing import Protocol
+
+
+class IPipelineHandle(Protocol):
+    def start(self): ...
+    def stop(self): ...
