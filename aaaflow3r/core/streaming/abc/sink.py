@@ -1,14 +1,27 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Generic, TypeVar, Optional
 
 from reactivex.abc import DisposableBase
 from reactivex.disposable import Disposable
-from reactivex import operators as ops
+from reactivex import operators as ops, Observable
+from reactivex.subject import ReplaySubject
 
 from aaaflow3r.core.streaming.abc.stream import IStream
 
 TDesc = TypeVar("TDesc")
 TData = TypeVar("TData")
+
+
+@dataclass(frozen=True)
+class SinkSubscription:
+    """Returned by Sink.subscribe()."""
+    disposable: Disposable
+    done: Observable[None]  # emits nothing; completes when cleanup finished
+
+    def dispose(self):
+        self.disposable.dispose()
+
 
 class Sink(Generic[TDesc, TData], ABC):
     """
@@ -43,10 +56,12 @@ class Sink(Generic[TDesc, TData], ABC):
     @abstractmethod
     def cleanup(self) -> None: ...
 
-    def subscribe(self, stream: IStream[TData, TDesc]) -> Disposable:
+    def subscribe(self, stream: IStream[TData, TDesc]) -> SinkSubscription:
         closed = False
         data_sub: Optional[DisposableBase] = None
         desc_sub: Optional[DisposableBase] = None
+
+        done_subject: ReplaySubject[None] = ReplaySubject(1)
 
         def cleanup_once():
             nonlocal closed, data_sub, desc_sub
@@ -70,6 +85,9 @@ class Sink(Generic[TDesc, TData], ABC):
             except Exception:
                 # Never let cleanup exceptions escape; at most log externally.
                 pass
+            finally:
+                done_subject.on_next(None)
+                done_subject.on_completed()
 
         def start_data_subscription():
             nonlocal data_sub
@@ -135,4 +153,5 @@ class Sink(Generic[TDesc, TData], ABC):
         desc_sub = stream.descriptor.pipe(ops.take(1)).subscribe(_on_desc, _on_desc_error)
 
         # Disposing the returned Disposable always triggers cleanup.
-        return Disposable(cleanup_once)
+        disposable = Disposable(cleanup_once)
+        return SinkSubscription(disposable, done_subject.pipe(ops.take(1)))

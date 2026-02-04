@@ -12,7 +12,7 @@ from aaaflow3r.plugins.core.source.video.video_file.config import VideoFileSourc
 from aaaflow3r.plugins.core.typing.video import VideoFormat
 
 
-class VideoFileSource(ISource[VideoFrame]):
+class VideoFileSource(ISource[VideoFormat, VideoFrame]):
     def __init__(self, config: VideoFileSourceConfig):
         self._video_source = FFmpegVideoFileSource(Path(config.file_path), playback=True)
         self._desc_subject = ReplaySubject(1)
@@ -20,7 +20,7 @@ class VideoFileSource(ISource[VideoFrame]):
         self._stream = Stream(self._desc_subject, self._frame_observable.pipe(ops.share()))
 
     @property
-    def stream(self) -> Stream[VideoFrame]:
+    def stream(self) -> Stream[VideoFormat, VideoFrame]:
         return self._stream
 
     def open(self):

@@ -1,0 +1,248 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>WelfareRecorder</class>
+ <widget class="QMainWindow" name="WelfareRecorder">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>800</width>
+    <height>569</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Welfar3Recorder</string>
+  </property>
+  <property name="dockOptions">
+   <set>QMainWindow::AllowNestedDocks|QMainWindow::AllowTabbedDocks|QMainWindow::AnimatedDocks</set>
+  </property>
+  <property name="unifiedTitleAndToolBarOnMac">
+   <bool>false</bool>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <item>
+     <widget class="QFrame" name="frm_dock_window">
+      <property name="frameShape">
+       <enum>QFrame::StyledPanel</enum>
+      </property>
+      <property name="frameShadow">
+       <enum>QFrame::Raised</enum>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QFrame" name="frm_recordings">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="frameShape">
+       <enum>QFrame::NoFrame</enum>
+      </property>
+      <property name="frameShadow">
+       <enum>QFrame::Raised</enum>
+      </property>
+      <layout class="QVBoxLayout" name="verticalLayout_3">
+       <property name="spacing">
+        <number>2</number>
+       </property>
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+      </layout>
+     </widget>
+    </item>
+    <item>
+     <widget class="QFrame" name="frm_footer">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>0</width>
+        <height>65</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>16777215</width>
+        <height>65</height>
+       </size>
+      </property>
+      <property name="styleSheet">
+       <string notr="true"/>
+      </property>
+      <property name="frameShape">
+       <enum>QFrame::StyledPanel</enum>
+      </property>
+      <property name="frameShadow">
+       <enum>QFrame::Raised</enum>
+      </property>
+      <layout class="QHBoxLayout" name="horizontalLayout_4">
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+       <item>
+        <widget class="QPlainTextEdit" name="txt_log">
+         <property name="horizontalScrollBarPolicy">
+          <enum>Qt::ScrollBarAlwaysOff</enum>
+         </property>
+         <property name="undoRedoEnabled">
+          <bool>false</bool>
+         </property>
+         <property name="textInteractionFlags">
+          <set>Qt::NoTextInteraction</set>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>800</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menuFile">
+    <property name="title">
+     <string>File</string>
+    </property>
+    <addaction name="action_load_project"/>
+    <addaction name="action_save_project"/>
+    <addaction name="action_save_project_as"/>
+    <addaction name="action_enable_superuser_mode"/>
+   </widget>
+   <widget class="QMenu" name="menuCameras">
+    <property name="title">
+     <string>Sources</string>
+    </property>
+    <addaction name="action_list_sources"/>
+    <addaction name="action_add_source"/>
+   </widget>
+   <widget class="QMenu" name="menuProcessing">
+    <property name="title">
+     <string>Pipelines</string>
+    </property>
+    <addaction name="action_list_pipelines"/>
+    <addaction name="action_add_pipeline"/>
+   </widget>
+   <widget class="QMenu" name="menuVariables">
+    <property name="title">
+     <string>Placeholders</string>
+    </property>
+    <addaction name="action_configure_placeholders"/>
+    <addaction name="action_add_placeholder"/>
+   </widget>
+   <widget class="QMenu" name="menuGroups">
+    <property name="title">
+     <string>Groups</string>
+    </property>
+    <addaction name="action_list_groups"/>
+    <addaction name="action_add_group"/>
+   </widget>
+   <addaction name="menuFile"/>
+   <addaction name="menuCameras"/>
+   <addaction name="menuGroups"/>
+   <addaction name="menuProcessing"/>
+   <addaction name="menuVariables"/>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+  <action name="action_configure_recordings">
+   <property name="text">
+    <string>Configure Recording</string>
+   </property>
+  </action>
+  <action name="action_add_pipeline">
+   <property name="text">
+    <string>Add Processing Pipeline</string>
+   </property>
+  </action>
+  <action name="action_load_project">
+   <property name="text">
+    <string>Load Project...</string>
+   </property>
+  </action>
+  <action name="action_save_project">
+   <property name="text">
+    <string>Save Project</string>
+   </property>
+  </action>
+  <action name="action_save_project_as">
+   <property name="text">
+    <string>Save Project As...</string>
+   </property>
+  </action>
+  <action name="action_add_source">
+   <property name="text">
+    <string>Add Source</string>
+   </property>
+  </action>
+  <action name="action_list_sources">
+   <property name="text">
+    <string>Sources...</string>
+   </property>
+  </action>
+  <action name="action_add_group">
+   <property name="text">
+    <string>Add Group</string>
+   </property>
+  </action>
+  <action name="action_list_groups">
+   <property name="text">
+    <string>Groups...</string>
+   </property>
+  </action>
+  <action name="action_add_placeholder">
+   <property name="text">
+    <string>Add Placeholder</string>
+   </property>
+  </action>
+  <action name="action_configure_placeholders">
+   <property name="text">
+    <string>Placeholders...</string>
+   </property>
+  </action>
+  <action name="action_list_pipelines">
+   <property name="text">
+    <string>Processing Pipelines...</string>
+   </property>
+  </action>
+  <action name="action_enable_superuser_mode">
+   <property name="text">
+    <string>Enable Superuser Mode</string>
+   </property>
+  </action>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

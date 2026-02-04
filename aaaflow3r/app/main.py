@@ -12,6 +12,16 @@ if __name__ == "__main__":
     os.environ['OPENCV_LOG_LEVEL'] = 'OFF'
     os.environ['OPENCV_FFMPEG_LOGLEVEL'] = "-8"
 
+    sys._excepthook = sys.excepthook
+
+
+    def exception_hook(exctype, value, traceback):
+        print(exctype, value, traceback)
+        sys._excepthook(exctype, value, traceback)
+
+
+    sys.excepthook = exception_hook
+
     app = QApplication(sys.argv)
 
     api = PluginAPI()

@@ -1,6 +1,7 @@
 from typing import List, Dict, Optional
 
-from PySide6.QtWidgets import QDialog, QComboBox, QVBoxLayout, QWidget, QLineEdit, QDialogButtonBox, QFormLayout
+from PySide6.QtWidgets import QDialog, QComboBox, QVBoxLayout, QWidget, QLineEdit, QDialogButtonBox, QFormLayout, \
+    QSizePolicy
 
 from aaaflow3r.core.pipeline.abc.pipeline_type import IPipelineType
 from aaaflow3r.core.pipeline.pipeline_config import PipelineConfig
@@ -36,6 +37,11 @@ class PipelineConfigDialog(QDialog):
         self.content_layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.content)
 
+        self.bottom_spacer = QWidget(self)
+        layout.addWidget(self.bottom_spacer)
+        self.bottom_spacer.setContentsMargins(0, 0, 0, 0)
+        self.bottom_spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
         self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self)
         layout.addWidget(self.button_box)
         self.button_box.accepted.connect(self.accept)
@@ -45,6 +51,9 @@ class PipelineConfigDialog(QDialog):
         self._current_widget: Optional[QWidget] = None
 
         self.show_pipeline_type_config_widget()
+
+        self.adjustSize()
+        self.resize(400, self.height())
 
     def show_pipeline_type_config_widget(self):
         if self._current_widget:

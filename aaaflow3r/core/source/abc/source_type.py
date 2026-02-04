@@ -1,16 +1,15 @@
-from dataclasses import dataclass
-from typing import Protocol, TypeVar, Callable, Any, Generic
+from typing import Protocol, TypeVar, Callable
 
 from PySide6.QtWidgets import QWidget
-from reactivex.observable import Observable
 
 from aaaflow3r.core.source.abc.source import ISource
 
 TConfig = TypeVar("TConfig")  # TODO: bound to config type interface
-TStream = TypeVar("TStream")
+TDesc = TypeVar("TDesc")
+TData = TypeVar("TData")
 
 
-class ISourceType(Protocol[TConfig, TStream]):
+class ISourceType(Protocol[TConfig, TDesc, TData]):
     @property
     def name(self) -> str: ...
     @property
@@ -21,4 +20,4 @@ class ISourceType(Protocol[TConfig, TStream]):
     def live(self) -> bool: ...
     def get_config_factory(self) -> Callable[[], TConfig]: ...
     def get_config_widget_factory(self) -> Callable[[TConfig, QWidget], QWidget]: ...
-    def get_source_factory(self) -> Callable[[TConfig], ISource]: ...  # TODO: Think about whether one source/device can have multiple streams
+    def get_source_factory(self) -> Callable[[TConfig], ISource[TDesc, TData]]: ...  # TODO: Think about whether one source/device can have multiple streams

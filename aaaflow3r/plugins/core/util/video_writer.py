@@ -29,8 +29,14 @@ class VideoWriterSink(Sink[VideoFormat, VideoFrame]):
         self._writer: Optional[IVideoWriter] = None
 
     def setup(self, desc: VideoFormat) -> None:
-        self._writer = self._factory(self._video_file, desc)
-        self._writer.open()
+        try:
+            print("VideoWriterSink setup:", self._video_file, desc)
+            self._writer = self._factory(self._video_file, desc)
+            self._writer.open()
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            raise e
 
     def on_next(self, item: VideoFrame) -> None:
         assert self._writer is not None

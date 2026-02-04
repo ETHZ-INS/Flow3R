@@ -8,9 +8,10 @@ from aaaflow3r.core.source.abc.source_type import ISourceType
 from aaaflow3r.plugins.core.source.video.video_file.config import VideoFileSourceConfig
 from aaaflow3r.plugins.core.source.video.video_file.config_widget import VideoFileSourceConfigWidget
 from aaaflow3r.plugins.core.source.video.video_file.source import VideoFileSource
+from aaaflow3r.plugins.core.typing.video import VideoFormat
 
 
-class VideoFileSourceType(ISourceType[VideoFileSourceConfig, VideoFrame]):
+class VideoFileSourceType(ISourceType[VideoFileSourceConfig, VideoFormat, VideoFrame]):
     @property
     def name(self) -> str:
         return "Video File"

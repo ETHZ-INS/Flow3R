@@ -11,6 +11,7 @@ TData = TypeVar("TData")
 
 
 class VisualizerHandle(QObject, IVisualizerHandle[TDesc, TData], metaclass=QVisualizerMeta):
+    desc_changed = Signal(str)
     item_changed = Signal(object)
     error_changed = Signal(object)
     completed_changed = Signal()
@@ -18,10 +19,16 @@ class VisualizerHandle(QObject, IVisualizerHandle[TDesc, TData], metaclass=QVisu
     def __init__(self):
         super().__init__()
 
+        self._desc_sub: Optional[DisposableBase] = None
         self._sub: Optional[DisposableBase] = None
+        self._desc: Optional[TDesc] = None
         self._item: Optional[TData] = None
         self._error: Optional[Exception] = None
         self._completed = False
+
+    @property
+    def desc(self) -> str:
+        return self._desc
 
     @property
     def item(self) -> Optional[TData]:
@@ -37,15 +44,24 @@ class VisualizerHandle(QObject, IVisualizerHandle[TDesc, TData], metaclass=QVisu
 
     def subscribe(self, stream: IStream[TDesc, TData]):
         self.unsubscribe()
+        self._desc_sub = stream.descriptor.subscribe(self._on_desc, self._on_error)
         self._sub = stream.observable.subscribe(self._on_next, self._on_error, self._on_completed)
 
     def unsubscribe(self):
         if self._sub:
             self._sub.dispose()
             self._sub = None
+        if self._desc_sub:
+            self._desc_sub.dispose()
+            self._desc_sub = None
 
     def dispose(self):
         self.unsubscribe()
+
+    def _on_desc(self, desc: TDesc):
+        print(f"Got descriptor: {desc}")
+        self._desc = desc
+        self.desc_changed.emit(desc)
 
     def _on_next(self, item: TData):
         self._item = item

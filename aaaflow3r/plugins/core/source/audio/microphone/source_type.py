@@ -1,15 +1,15 @@
 from typing import Callable
 
-import numpy as np
 from PySide6.QtWidgets import QWidget
 
 from aaaflow3r.core.source.abc.source_type import ISourceType
 from aaaflow3r.plugins.core.source.audio.microphone.config import MicrophoneSourceConfig
 from aaaflow3r.plugins.core.source.audio.microphone.config_widget import MicrophoneSourceConfigWidget
 from aaaflow3r.plugins.core.source.audio.microphone.source import MicrophoneSource
+from aaaflow3r.plugins.core.typing.audio import AudioFormat, AudioChunk
 
 
-class MicrophoneSourceType(ISourceType[MicrophoneSourceConfig, np.ndarray]):
+class MicrophoneSourceType(ISourceType[MicrophoneSourceConfig, AudioFormat, AudioChunk]):
     @property
     def name(self) -> str:
         return "Microphone"

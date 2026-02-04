@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Protocol, TypeVar
+from typing import Protocol, TypeVar
 import threading
 
 import reactivex as rx
@@ -18,7 +18,7 @@ class ISource(Protocol[TData]):
 
 
 def source_observable(source: ISource[TData]) -> Observable[TData]:
-    read_timeout_s = 0.1  # keep this reasonably small for responsive shutdown
+    read_timeout_s = 0.5  # keep this reasonably small for responsive shutdown
 
     def _subscribe(observer: Observer[TData], _=None):
         stop = threading.Event()
@@ -49,8 +49,7 @@ def source_observable(source: ISource[TData]) -> Observable[TData]:
 
                     observer.on_next(item)
 
-                # Optional: if you want completion on normal unsubscribe, uncomment:
-                # observer.on_completed()
+                observer.on_completed()
 
             finally:
                 try:

@@ -1,6 +1,7 @@
 from aaaflow3r.core.api.plugins.plugins import IPluginAPI
 from aaaflow3r.core.plugin.plugin import IPlugin
 from aaaflow3r.plugins.core.pipeline.record_video.pipeline_type import RecordVideoPipelineType
+from aaaflow3r.plugins.core.source.audio.audio_file.source_type import AudioFileSourceType
 from aaaflow3r.plugins.core.source.audio.microphone.source_type import MicrophoneSourceType
 from aaaflow3r.plugins.core.source.video.video_file.source_type import VideoFileSourceType
 from aaaflow3r.plugins.core.source.video.webcam.source_type import WebcamSourceType
@@ -13,6 +14,7 @@ class CorePlugin(IPlugin):
         api.source_types.register(WebcamSourceType())
         api.source_types.register(VideoFileSourceType())
         api.source_types.register(MicrophoneSourceType())
+        api.source_types.register(AudioFileSourceType())
 
         api.visualizer_types.register(VideoVisualizerType())
         api.visualizer_types.register(AudioVisualizerType())

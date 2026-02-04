@@ -1,16 +1,11 @@
 import threading
 from dataclasses import dataclass
-from typing import Dict, Tuple, Callable
+from typing import Dict, Tuple, Callable, Literal, Optional
 
-from PySide6.QtCore import QObject, Signal, Slot, Qt
-from PySide6.QtWidgets import QMainWindow, QDockWidget
+from PySide6.QtCore import QObject, Signal
 
-from aaaflow3r.app.visualization.source_widget import SourceWidget
-from aaaflow3r.app.visualization.visualizer_widget import VisualizerWidget
-from aaaflow3r.app.widgets.recording_controls_widget import RecordingControlsWidget
 from aaaflow3r.core.streaming.abc.stream import IStream
 from aaaflow3r.core.visualization.abc.visualizer_handle import IVisualizerHandle
-from aaaflow3r.core.visualization.abc.visualizer_type import IVisualizerType
 from aaaflow3r.core.visualization.visualizer_handle import VisualizerHandle
 
 
@@ -36,14 +31,29 @@ class LeaseVisualizerHandle(IVisualizerHandle):
 
 
 @dataclass
-class _WidgetEntry:
+class _SourceWidgetEntry:
     widget_id: str
-    widget: QDockWidget
     refcount: int = 0
 
 
 @dataclass
-class _HandleEntry:
+class _VisualizerWidgetEntry:
+    group_id: str
+    widget_id: str
+    refcount: int = 0
+
+
+@dataclass
+class _SourceHandleEntry:
+    widget_id: str
+    session_id: str
+    handle: IVisualizerHandle
+    refcount: int = 0
+
+
+@dataclass
+class _VisualizerHandleEntry:
+    group_id: str
     widget_id: str
     session_id: str
     handle: IVisualizerHandle
@@ -51,162 +61,107 @@ class _HandleEntry:
 
 
 class WidgetService(QObject):
-    request_widget = Signal(str, str, str, bool)  # widget_type_name, widget_id, session_id, is_source
-    release_widget = Signal(str)                  # widget_id (UI-thread teardown)
+    source_handle_added = Signal(str, str, IVisualizerHandle)  # source_id, session_id, handle
+    source_handle_removed = Signal(str, str)  # source_id, session_id
+    source_assignment_requested = Signal(str, str)  # source_id, session_id
+    source_widget_requested = Signal(str)  # source_id
+    source_widget_released = Signal(str)  # source_id
 
-    def __init__(self, dock_window: QMainWindow, widget_types: Dict[str, IVisualizerType]):
+    visualizer_handle_added = Signal(str, str, str, IVisualizerHandle)  # group_id, widget_id, session_id, handle
+    visualizer_handle_removed = Signal(str, str, str)  # group_id, widget_id, session_id
+    visualizer_assignment_requested = Signal(str, str, str)  # group_id, widget_id, session_id
+    visualizer_widget_requested = Signal(str, str)  # group_id, widget_id
+    visualizer_widget_released = Signal(str, str)  # group_id, widget_id
+
+    recording_controls_requested = Signal(str)
+    recording_controls_released = Signal(str)
+    recording_controls_location_requested = Signal(str, str, str)
+
+    def __init__(self):
         super().__init__()
-        self._dock_window = dock_window
-        self._widget_types = widget_types
-
         self._lock = threading.Lock()
 
-        self.controller = None
+        # handles remain per (widget_id/source_id, session_id)
+        self._source_handles: Dict[Tuple[str, str], _SourceHandleEntry] = {}
+        self._visualizer_handles: Dict[Tuple[str, str, str], _VisualizerHandleEntry] = {}
 
-        # handles remain per (widget_id, session_id)
-        self._handles: Dict[Tuple[str, str], _HandleEntry] = {}
+        # widget entries per widget_id/source_id
+        self._source_widgets: Dict[str, _SourceWidgetEntry] = {}
+        self._visualizer_widgets: Dict[Tuple[str, str], _VisualizerWidgetEntry] = {}
 
-        # widget entries per widget_id
-        self._entries: Dict[str, _WidgetEntry] = {}
-
-        self.request_widget.connect(self._ensure_widget_and_connect)
-        self.release_widget.connect(self._teardown_widget)
-
-    def get_visualizer_handle(
-        self,
-        widget_type_name: str,
-        widget_id: str,
-        session_id: str,
-        is_source: bool = False,
-    ) -> LeaseVisualizerHandle:
-        """
-        Call from worker or UI thread.
-        Returns a lease with `lease.handle` and `lease.dispose()`.
-        """
+    def get_source_handle(self, source_id: str, session_id: str) -> LeaseVisualizerHandle:
         with self._lock:
-            if (widget_id, session_id) in self._handles:
-                handle = self._handles[(widget_id, session_id)].handle
-            else:
+            if source_id not in self._source_widgets:
+                self._source_widgets[source_id] = _SourceWidgetEntry(source_id)
+                self.source_widget_requested.emit(source_id)
+            self._source_widgets[source_id].refcount += 1
+
+            if (source_id, session_id) not in self._source_handles:
                 handle = VisualizerHandle()
+                self._source_handles[(source_id, session_id)] = _SourceHandleEntry(source_id, session_id, handle)
+                self.source_handle_added.emit(source_id, session_id, handle)
+                self.source_assignment_requested.emit(source_id, session_id)
+            self._source_handles[(source_id, session_id)].refcount += 1
 
-                handle_entry = _HandleEntry(widget_id, session_id, handle)
-                self._handles[(widget_id, session_id)] = handle_entry
+        handle = self._source_handles[(source_id, session_id)].handle
+        return LeaseVisualizerHandle(handle, lambda: self._release_source_lease(source_id, session_id))
 
-            self._increment_refcount(widget_id, session_id)
-
-        self.request_widget.emit(widget_type_name, widget_id, session_id, is_source)
-
-        return LeaseVisualizerHandle(
-            inner=handle,
-            dispose_cb=lambda: self._release_lease(widget_id, session_id)
-        )
-
-    def _increment_refcount(self, widget_id: str, session_id: str) -> None:
-        handle_entry = self._handles.get((widget_id, session_id))
-        if handle_entry is not None:
-            handle_entry.refcount += 1
-
-        entry = self._entries.get(widget_id)
-        if entry is None:
-            # placeholder until UI actually creates widget/dock
-            self._entries[widget_id] = _WidgetEntry(
-                widget_id=widget_id,
-                widget=None,   # type: ignore
-                refcount=1,
-            )
-        else:
-            entry.refcount += 1
-
-    def _release_lease(self, widget_id: str, session_id: str) -> None:
-        """
-        Decrease refcount; if hits 0, schedule widget teardown in UI thread.
-        Also dispose/remove the per-session handle if you want.
-        """
-        needs_release = False
+    def _release_source_lease(self, source_id: str, session_id: str):
         with self._lock:
-            handle_entry = self._handles.get((widget_id, session_id))
-            if handle_entry is not None:
-                handle_entry.refcount -= 1
-                if handle_entry.refcount <= 0:
-                    try:
-                        handle_entry.handle.dispose()
-                    except Exception:
-                        pass
-                    del self._handles[(widget_id, session_id)]
+            self._source_handles[(source_id, session_id)].refcount -= 1
+            if self._source_handles[(source_id, session_id)].refcount == 0:
+                del self._source_handles[(source_id, session_id)]
+                self.source_handle_removed.emit(source_id, session_id)
+            self._source_widgets[source_id].refcount -= 1
+            if self._source_widgets[source_id].refcount == 0:
+                del self._source_widgets[source_id]
+                self.source_widget_released.emit(source_id)
 
-            widget_entry = self._entries.get(widget_id)
-            if widget_entry is not None:
-                widget_entry.refcount -= 1
-                if widget_entry.refcount <= 0:
-                    # schedule UI teardown
-                    needs_release = True
-
-        if needs_release:
-            self.release_widget.emit(widget_id)
-
-    @Slot(str, str, str, bool)
-    def _ensure_widget_and_connect(self, widget_type_name: str, widget_id: str, session_id: str, is_source: bool):
-        """
-        UI thread: create widget/dock if missing; connect widget to the handle.
-        """
+    def get_visualizer_handle(self, group_id: str, widget_id: str, session_id: str) -> LeaseVisualizerHandle:
         with self._lock:
-            handle_entry = self._handles.get((widget_id, session_id))
-            widget_entry = self._entries.get(widget_id)
+            if (group_id, widget_id) not in self._visualizer_widgets:
+                self._visualizer_widgets[(group_id, widget_id)] = _VisualizerWidgetEntry(group_id, widget_id)
+                self.visualizer_widget_requested.emit(group_id, widget_id)
+            self._visualizer_widgets[group_id, widget_id].refcount += 1
 
-        if handle_entry is None or widget_entry is None:
-            return  # lease ended or widget got torn down
+            if (group_id, widget_id, session_id) not in self._visualizer_handles:
+                handle = VisualizerHandle()
+                self._visualizer_handles[(group_id, widget_id, session_id)] = _VisualizerHandleEntry(group_id, widget_id, session_id, handle)
+                self.visualizer_handle_added.emit(group_id, widget_id, session_id, handle)
+                self.visualizer_assignment_requested.emit(group_id, widget_id, session_id)
+            self._visualizer_handles[(group_id, widget_id, session_id)].refcount += 1
 
-        if widget_entry.widget is None:
-            widget_type = self._widget_types[widget_type_name]
-            visualizer = widget_type.widget_factory(self._dock_window)
+        handle = self._visualizer_handles[(group_id, widget_id, session_id)].handle
+        return LeaseVisualizerHandle(handle, lambda: self._release_visualizer_lease(group_id, widget_id, session_id))
 
-            if is_source:
-                widget = SourceWidget(widget_id, self._dock_window)
-                widget.setup_source.connect(self.controller.setup_source)
-
-                recording_controls = RecordingControlsWidget(widget_id, "My Recording")
-                recording_controls.session_id = "My Session"
-                recording_controls.recording_start.connect(self.controller.start_recording)
-                widget.set_recording_controls_widget(recording_controls)
-            else:
-                widget = VisualizerWidget(self._dock_window)
-
-            widget.setObjectName(widget_id)
-            widget.set_visualizer(visualizer)
-
-            # Try to restore dock widget in its last known position
-            if not self._dock_window.restoreDockWidget(widget):
-                self._dock_window.addDockWidget(Qt.DockWidgetArea.TopDockWidgetArea, widget)
-
-            with self._lock:
-                self._entries[widget_id].widget = widget
-
+    def _release_visualizer_lease(self, group_id: str, widget_id: str, session_id: str):
         with self._lock:
-            # re-fetch widget (or keep widget ref)
-            widget = self._entries.get(widget_id).widget if self._entries.get(widget_id) else None
+            self._visualizer_handles[(group_id, widget_id, session_id)].refcount -= 1
+            if self._visualizer_handles[(group_id, widget_id, session_id)].refcount == 0:
+                del self._visualizer_handles[(group_id, widget_id, session_id)]
+                self.visualizer_handle_removed.emit(group_id, widget_id, session_id)
+            self._visualizer_widgets[group_id, widget_id].refcount -= 1
+            if self._visualizer_widgets[group_id, widget_id].refcount == 0:
+                del self._visualizer_widgets[group_id, widget_id]
+                self.visualizer_widget_released.emit(group_id, widget_id)
 
-        if widget is None:
-            return
+    def add_recording_controls(self, group_id: str):
+        self.recording_controls_requested.emit(group_id)
 
-        widget.set_handle(handle_entry.handle)
+    def remove_recording_controls(self, group_id: str):
+        self.recording_controls_released.emit(group_id)
 
-    @Slot(str)
-    def _teardown_widget(self, widget_id: str) -> None:
-        """
-        UI thread: remove widget. Safe to call multiple times.
-        """
-        with self._lock:
-            entry = self._entries.get(widget_id)
-            if entry is None or entry.refcount > 0:
-                return
-            widget = entry.widget
-            self._entries.pop(widget_id, None)
+    def set_recording_controls_location(self, group_id: str, location: Literal["hidden", "source", "bottom"], source_id: Optional[str] = None):
+        self.recording_controls_location_requested.emit(group_id, location, source_id)
 
-        # Remove from UI
-        if widget is not None:
-            try:
-                self._dock_window.removeDockWidget(widget)
-            except Exception:
-                pass
-            widget.set_visualizer(None)
-            widget.deleteLater()
+class SessionWidgetServiceWrapper:
+    def __init__(self, service: WidgetService, group_id: str, session_id: str):
+        self._service = service
+        self._group_id = group_id
+        self._session_id = session_id
+
+    def get_source_handle(self, source_id: str) -> LeaseVisualizerHandle:
+        return self._service.get_source_handle(source_id, self._session_id)
+
+    def get_visualizer_handle(self, widget_id: str) -> LeaseVisualizerHandle:
+        return self._service.get_visualizer_handle(self._group_id, widget_id, self._session_id)

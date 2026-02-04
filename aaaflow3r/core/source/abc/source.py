@@ -1,9 +1,12 @@
 from typing import TypeVar, Protocol
 
-TStream = TypeVar("TStream")
+from aaaflow3r.core.streaming.abc.stream import IStream
 
-class ISource(Protocol[TStream]):
+TDesc = TypeVar("TDesc")
+TData = TypeVar("TData")
+
+class ISource(Protocol[TDesc, TData]):
     @property
-    def stream(self) -> TStream: ...
+    def stream(self) -> IStream[TDesc, TData]: ...
     def open(self): ...
     def close(self): ...

@@ -1,26 +1,42 @@
 from pathlib import Path
-from typing import List, Any, Optional
+from typing import List, Optional
 
-from py3r.media.streaming.operators import adaptive_pace
-from py3r.pose.core.model.mock_pose_model import MockPoseModel
-from py3r.pose.core.streaming.pose_estimation_transform import PoseEstimationTransform
-from py3r.pose.core.streaming.pose_render_transform import PoseRenderTransform
-from py3r.pose.core.types import PoseInstance, PoseInstanceType, PosePoint
-from py3r.pose.core.visualization.pose_renderer import PoseRenderer
 from py3r.pose.yolo.model.staged_yolo_pose_model import StagedYoloPoseModel
 from py3r.pose.yolo.model.yolo_pose_model import YoloPoseModel
 from reactivex import operators as ops
 
-from py3r.media.streaming.video.video_writer_observer import VideoWriterObserver
-from py3r.media.video.ffmpeg_video_file_writer import FFmpegVideoFileWriter
+import reactivex as rx
+from reactivex.disposable import CompositeDisposable
+from reactivex.scheduler import EventLoopScheduler
 
 from aaaflow3r.core.api.app.app_context import IAppContext
-from aaaflow3r.core.pipeline.abc.pipeline import IPipeline
+from aaaflow3r.core.pipeline.abc.pipeline import IPipeline, PipelineSubscription
 from aaaflow3r.core.streaming.abc.stream import IStream
 from aaaflow3r.core.streaming.stream import Stream
 from aaaflow3r.core.visualization.abc.visualizer_handle import IVisualizerHandle
-from aaaflow3r.plugins.core.typing.video import VideoFormat
+from aaaflow3r.core.visualization.visualizer_sink import VisualizerSink
+from aaaflow3r.plugins.core.node.do_nothing_sink import DoNothingSink
+from aaaflow3r.plugins.core.node.video_segment_concatenator import VideoSegmentConcatenator
+from aaaflow3r.plugins.core.node.video_segment_reader import VideoSegmentReader
+from aaaflow3r.plugins.core.node.video_segment_writer import VideoSegmentWriter
+from aaaflow3r.plugins.core.node.video_spool import VideoSpool
+from aaaflow3r.plugins.core.util.video_writer import VideoWriterSink
+from aaaflow3r.plugins.pose_estimation.node.pose_estimation_transform import PoseEstimationTransform
+from aaaflow3r.plugins.pose_estimation.node.pose_render_transform import PoseRenderTransform
+from aaaflow3r.plugins.pose_estimation.node.pose_results_writer import PoseResultsWriterSink
+from aaaflow3r.plugins.pose_estimation.node.video_pacer import VideoPacer
 from aaaflow3r.plugins.pose_estimation.pipeline.pose_estimation.config import PoseEstimationConfig
+
+
+class MockPoseModelService:
+    def get_instance_types(self, pose_model_id: str):
+        return YoloPoseModel.load_instance_types(Path("C:/Users/Me/AppData/Local/ETH3RHub/models/bohaceklab/pose_estimation/mouse/mouse_top_main"))
+
+    def get_pose_model(self, pose_model_id: str):
+        model = YoloPoseModel.from_folder(
+            Path("C:/Users/Me/AppData/Local/ETH3RHub/models/bohaceklab/pose_estimation/mouse/mouse_top_main"))
+        staged_model = StagedYoloPoseModel(model, max_batch=16, input_channels=1)
+        return staged_model
 
 
 class PoseEstimationPipeline(IPipeline[PoseEstimationConfig]):
@@ -28,52 +44,67 @@ class PoseEstimationPipeline(IPipeline[PoseEstimationConfig]):
         self._widget_handle: Optional[IVisualizerHandle] = None
         self._config: Optional[PoseEstimationConfig] = None
 
+        self._main_scheduler = EventLoopScheduler()
+        self._pose_estimation_scheduler = EventLoopScheduler()
+        self._writer_scheduler = EventLoopScheduler()
+
     def configure(self, app_context: IAppContext, config: PoseEstimationConfig):
         self._config = config
         if not self._widget_handle:
-            self._widget_handle = app_context.widget_service.get_visualizer_handle("Video", "my_video", "my_session")
+            self._widget_handle = app_context.widget_service.get_visualizer_handle("Pose Preview")
 
-    def build(self, app_context: IAppContext, sources: List[IStream]) -> Any:
+    def build(self, app_context: IAppContext, sources: List[IStream]) -> PipelineSubscription:
         assert len(sources) == 1
         source = sources[0]
 
-        def setup(desc: VideoFormat):
-            print("PoseEstimationPipeline setup")
-            shared_source = Stream(source.descriptor, source.observable.pipe(ops.share()))
+        video_stream = Stream(source.descriptor, source.observable.pipe(ops.observe_on(self._main_scheduler)))
 
-            model = YoloPoseModel.from_folder(Path("C:/Users/Me/AppData/Local/ETH3RHub/models/bohaceklab/pose_estimation/mouse/mouse_top_main"))
-            staged_model = StagedYoloPoseModel(model, max_batch=4, input_channels=1)
+        video_file = Path(self._config.video_file)
+        video_segment_writer = VideoSegmentWriter()
+        video_segment_reader = VideoSegmentReader()
+        video_segment_concatenator = VideoSegmentConcatenator(video_file)
+        video_spool = VideoSpool(video_segment_writer, video_segment_reader, video_segment_concatenator)
 
-            #triangle_type = PoseInstanceType("triangle", ["p1", "p2", "p3"], skeleton=[(0, 1), (1, 2), (2, 0)])
+        spool_stream = video_spool.pipe(video_stream)
+        spool_stream = Stream(spool_stream.descriptor, spool_stream.observable.pipe(ops.share()))
 
-            #pose_renderer = PoseRenderer([triangle_type])
-            pose_renderer = PoseRenderer(model.get_instance_types())
+        do_nothing_sink = DoNothingSink()
 
-            #box = (0.25 * desc.size[0], 0.25 * desc.size[1], 0.75 * desc.size[0], 0.75 * desc.size[1])
-            #points = [
-            #    PosePoint(0.5 * desc.size[0], 0.35 * desc.size[1], 0.9),
-            #    PosePoint(0.3 * desc.size[0], 0.65 * desc.size[1], 0.9),
-            #    PosePoint(0.7 * desc.size[0], 0.65 * desc.size[1], 0.9)
-            #]
+        pose_estimation_transform = PoseEstimationTransform(MockPoseModelService(), "my_model", batch_size=16)
+        pose_render_transform = PoseRenderTransform()
+        pose_preview_pacer = VideoPacer(buffer_size=150)
 
-            #model = MockPoseModel([
-            #    PoseInstance("triangle_1", triangle_type, box, points, 0.95)
-            #])
+        vis_video_file = Path(self._config.video_file).with_suffix(".vis.mp4")
+        vis_video_writer_sink = VideoWriterSink(vis_video_file)
 
-            pose_estimation_transform = PoseEstimationTransform(staged_model, batch_size=4)
-            pose_render_transform = PoseRenderTransform(pose_renderer)
+        pose_results_file = Path(self._config.pose_results_file)
+        pose_results_writer = PoseResultsWriterSink(pose_results_file)
 
-            poses = shared_source.observable.pipe(pose_estimation_transform)
-            pose_visualizations = poses.pipe(adaptive_pace(1/desc.fps), pose_render_transform(shared_source.observable))
-            pose_stream = Stream(source.descriptor, pose_visualizations)
+        visualizer_sink = VisualizerSink(app_context.widget_service, "Pose Preview")
 
-            self._widget_handle.subscribe(pose_stream)
+        pose_input_stream = Stream(source.descriptor, spool_stream.observable.pipe(ops.observe_on(self._pose_estimation_scheduler)))
+        pose_stream = pose_estimation_transform.pipe(pose_input_stream)
+        pose_stream = Stream(pose_stream.descriptor, pose_stream.observable.pipe(ops.observe_on(self._main_scheduler), ops.share()))
 
-            writer = FFmpegVideoFileWriter(Path(self._config.video_file), desc.size, desc.fps, grayscale=desc.fmt=="mono8", quality="high")
-            observer = VideoWriterObserver(writer)
-            shared_source.observable.pipe(observer.using).subscribe(observer)
+        pose_render_input_stream = Stream(rx.combine_latest(spool_stream.descriptor, pose_stream.descriptor), rx.zip(spool_stream.observable, pose_stream.observable))
 
-        source.descriptor.subscribe(setup)
+        pose_vis_stream = pose_render_transform.pipe(pose_render_input_stream)
+        pose_vis_stream = Stream(pose_vis_stream.descriptor, pose_vis_stream.observable.pipe(ops.share()))
+
+        vis_video_writer_stream = Stream(source.descriptor, pose_vis_stream.observable.pipe(ops.observe_on(self._writer_scheduler)))
+        pose_results_writer_stream = Stream(source.descriptor, pose_stream.observable.pipe(ops.observe_on(self._writer_scheduler)))
+        pose_preview_stream = pose_preview_pacer.pipe(pose_vis_stream)
+
+        video_writer_sub = do_nothing_sink.subscribe(spool_stream)
+        vis_video_writer_sub = vis_video_writer_sink.subscribe(vis_video_writer_stream)
+        pose_results_writer_sub = pose_results_writer.subscribe(pose_results_writer_stream)
+        pose_vis_widget_sub = visualizer_sink.subscribe(pose_preview_stream)
+
+        disposable = CompositeDisposable(video_writer_sub, vis_video_writer_sub, pose_results_writer_sub, pose_vis_widget_sub)
+        primary_done = video_writer_sub.done
+        secondary_done = rx.zip(vis_video_writer_sub.done, pose_results_writer_sub.done).pipe(ops.take(1))
+
+        return PipelineSubscription(disposable, primary_done, secondary_done)
 
     def dispose(self):
         if self._widget_handle:

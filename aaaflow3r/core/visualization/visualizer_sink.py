@@ -9,16 +9,15 @@ from aaaflow3r.plugins.core.typing.video import VideoFormat
 
 
 class VisualizerSink(Sink[Any, Any]):
-    def __init__(self, widget_service: IWidgetService, widget_type: str, widget_id: str, session_id: str):
+    def __init__(self, widget_service: IWidgetService, widget_id: str):
         super().__init__()
         self._widget_service = widget_service
-        self._widget_type = widget_type
         self._widget_id = widget_id
-        self._session_id = session_id
         self._visualizer_handle: Optional[IVisualizerHandle] = None
 
     def setup(self, desc: VideoFormat) -> None:
-        self._visualizer_handle = self._widget_service.get_visualizer_handle(self._widget_type, self._widget_id, self._session_id)
+        self._visualizer_handle = self._widget_service.get_visualizer_handle(self._widget_id)
+        self._visualizer_handle._inner._on_desc(desc)
 
     def on_next(self, item: VideoFrame) -> None:
         assert self._visualizer_handle is not None

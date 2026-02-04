@@ -11,6 +11,8 @@ from aaaflow3r.core.source.source_config import SourceConfig
 class AppConfig:
     sources: OrderedDict[str, SourceConfig] = field(default_factory=OrderedDict)
     groups: OrderedDict[str, GroupConfig] = field(default_factory=OrderedDict)
+    implicit_groups: OrderedDict[str, GroupConfig] = field(default_factory=OrderedDict)
+    pipelines: OrderedDict[str, PipelineConfig] = field(default_factory=OrderedDict)
 
     default_recording_config: RecordingConfig = field(default_factory=RecordingConfig)
     pipeline: PipelineConfig = field(default_factory=PipelineConfig)

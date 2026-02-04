@@ -3,6 +3,7 @@ from typing import Dict
 
 from aaaflow3r.app.config.app_config import AppConfig
 from aaaflow3r.app.config.view.group_config_view import GroupConfigView
+from aaaflow3r.app.config.view.pipeline_config_view import PipelineConfigView
 from aaaflow3r.app.config.view.source_config_view import SourceConfigView
 
 
@@ -12,19 +13,33 @@ class AppConfigView:
 
     @cached_property
     def sources(self) -> Dict[str, SourceConfigView]:
-        return {source_id: SourceConfigView(self, source) for source_id, source in self._app.sources.items()}
+        return {
+            source_id: SourceConfigView(self, source_config)
+            for source_id, source_config in self._app.sources.items()
+        }
 
     @cached_property
     def groups(self) -> Dict[str, GroupConfigView]:
-        return {
-            group_id: GroupConfigView(self, group_id, group.recording_config)
-            for group_id, group in self._app.groups.items()
-        } | self._implicit_groups
+        return self.explicit_groups | self.implicit_groups
 
     @cached_property
-    def _implicit_groups(self) -> Dict[str, GroupConfigView]:
+    def pipelines(self) -> Dict[str, PipelineConfigView]:
         return {
-            source_id: GroupConfigView(self, source_id, self._app.default_recording_config)
-            for source_id, source in self._app.sources.items()
-            if source.group_id is None
+            pipeline_id: PipelineConfigView(self, pipeline_config)
+            for pipeline_id, pipeline_config in self._app.pipelines.items()
+        }
+
+    @cached_property
+    def explicit_groups(self) -> Dict[str, GroupConfigView]:
+        return {
+            group_id: GroupConfigView(self, group_config, implicit=False)
+            for group_id, group_config in self._app.groups.items()
+        }
+
+
+    @cached_property
+    def implicit_groups(self) -> Dict[str, GroupConfigView]:
+        return {
+            source_id: GroupConfigView(self, group_config, implicit=True)
+            for source_id, group_config in self._app.implicit_groups.items()
         }

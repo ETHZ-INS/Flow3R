@@ -29,7 +29,7 @@ class AudioWidget(QtWidgets.QWidget):
 
         #self._cfg = AudioVizConfig(384_000)
         self._cfg = AudioVizConfig()
-        self._handle: Optional[IVisualizerHandle[np.ndarray]] = None
+        self._handle: Optional[IVisualizerHandle[None, np.ndarray]] = None
 
         self._n_window = max(1, int(self._cfg.sample_rate * self._cfg.window_seconds))
         self._ring = np.zeros(self._n_window, dtype=np.float32)
@@ -50,7 +50,7 @@ class AudioWidget(QtWidgets.QWidget):
 
     # --- Qt-ish "setSource" (optional but nice, like the video widget) ---
 
-    def set_handle(self, handle: Optional[IVisualizerHandle[np.ndarray]]) -> None:
+    def set_handle(self, handle: Optional[IVisualizerHandle[None, np.ndarray]]) -> None:
         if self._handle is not None:
             try:
                 self._handle.item_changed.disconnect(self.push_chunk)

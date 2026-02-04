@@ -3,18 +3,31 @@ from typing import Optional, Any
 from PySide6.QtCore import Signal, Qt, Slot
 from PySide6.QtWidgets import QWidget, QStackedWidget, QVBoxLayout, QLabel, QDockWidget
 
+from aaaflow3r.app.config.group_config import GroupConfig
 from aaaflow3r.app.widgets.recording_controls_widget import RecordingControlsWidget
+from aaaflow3r.core.source.source_config import SourceConfig
 from aaaflow3r.core.visualization.abc.visualizer_handle import IVisualizerHandle
+from aaaflow3r.plugins.core.typing.video import VideoFormat
+from aaaflow3r.plugins.core.visualization.audio.spectogram.widget import SpectrogramWidget
+from aaaflow3r.plugins.core.visualization.audio.widget import AudioWidget
+from aaaflow3r.plugins.core.visualization.video.widget import VideoWidget
 
 
 class SourceWidget(QDockWidget):
     edit_source = Signal(str)
     setup_source = Signal(str)
 
+    group_snapshot_requested = Signal(str)
+
     def __init__(self, source_id: str, parent=None):
         super().__init__(parent)
 
         self.source_id = source_id
+        self.setWindowTitle(source_id)
+
+        self.source_name: Optional[str] = None
+        self.group_id: Optional[str] = None
+        self.group_name: Optional[str] = None
 
         self.dock_widget_content = QWidget(self)
         self.setWidget(self.dock_widget_content)
@@ -43,11 +56,13 @@ class SourceWidget(QDockWidget):
 
         self.handle: Optional[IVisualizerHandle[Any, Any]] = None
         self.visualizer: Optional[QWidget] = None
+        self.desc: Optional[Any] = None
 
         self.recording_controls_widget: Optional[RecordingControlsWidget] = None
 
     def set_handle(self, handle: Optional[IVisualizerHandle[Any, Any]]):
         if self.handle:
+            self.handle.desc_changed.disconnect(self._desc_changed)
             self.handle.error_changed.disconnect(self._error)
 
         self.handle = handle
@@ -55,7 +70,9 @@ class SourceWidget(QDockWidget):
             self.visualizer.set_handle(handle)
 
         if self.handle:
+            self.handle.desc_changed.connect(self._desc_changed)
             self.handle.error_changed.connect(self._error)
+            self._desc_changed(self.handle.desc)
             self._error(self.handle.error)
 
     def set_visualizer(self, visualizer: Optional[QWidget]):
@@ -82,6 +99,43 @@ class SourceWidget(QDockWidget):
             self.bottom_widget.layout().addWidget(widget)
         else:
             self.bottom_widget.setVisible(False)
+
+    def source_changed(self, source_config: SourceConfig):
+        if self.source_id != source_config.id:
+            return
+
+        self.source_name = source_config.name
+        if source_config.group_id != self.group_id:
+            self.group_id = source_config.group_id
+            self.group_name = None
+            if self.group_id is not None:
+                self.group_snapshot_requested.emit(source_config.group_id)
+
+        self._update_window_title()
+
+    def group_changed(self, group_config: GroupConfig):
+        if self.group_id != group_config.id:
+            return
+
+        self.group_name = group_config.name
+        self._update_window_title()
+
+    def _update_window_title(self):
+        source_name = self.source_name or self.source_id
+        if self.group_name:
+            self.setWindowTitle(f"{source_name} ({self.group_name})")
+        else:
+            self.setWindowTitle(source_name)
+
+    @Slot(object)
+    def _desc_changed(self, desc: Optional[Any]):
+        self.desc = desc
+        if isinstance(desc, VideoFormat):
+            if not isinstance(self.visualizer, VideoWidget):
+                self.set_visualizer(VideoWidget())
+        else:
+            if not isinstance(self.visualizer, AudioWidget):
+                self.set_visualizer(SpectrogramWidget())
 
     @Slot(object)
     def _error(self, error: Optional[Exception]):

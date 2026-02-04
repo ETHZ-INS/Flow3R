@@ -7,9 +7,10 @@ from aaaflow3r.core.source.abc.source_type import ISourceType
 from aaaflow3r.plugins.core.source.video.webcam.config import WebcamSourceConfig
 from aaaflow3r.plugins.core.source.video.webcam.config_widget import WebcamSourceConfigWidget
 from aaaflow3r.plugins.core.source.video.webcam.source import WebcamSource
+from aaaflow3r.plugins.core.typing.video import VideoFormat
 
 
-class WebcamSourceType(ISourceType[WebcamSourceConfig, VideoFrame]):
+class WebcamSourceType(ISourceType[WebcamSourceConfig, VideoFormat, VideoFrame]):
     @property
     def name(self) -> str:
         return "Webcam"

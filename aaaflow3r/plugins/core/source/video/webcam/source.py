@@ -13,17 +13,15 @@ from aaaflow3r.plugins.core.source.video.webcam.config import WebcamSourceConfig
 from aaaflow3r.plugins.core.typing.video import VideoFormat
 
 
-class WebcamSource(ISource[VideoFrame]):
+class WebcamSource(ISource[VideoFormat, VideoFrame]):
     def __init__(self, config: WebcamSourceConfig):
-        if random.random() < 0.5:
-            raise Exception("Oh no!")
         self._video_source = OpenCVWebcamSource(config.device_index)
         self._desc_subject = ReplaySubject(1)
         self._frame_observable = source_observable(self._video_source).pipe(ops.share())
         self._stream = Stream(self._desc_subject, self._frame_observable)
 
     @property
-    def stream(self) -> Stream[VideoFrame]:
+    def stream(self) -> Stream[VideoFormat, VideoFrame]:
         return self._stream
 
     def open(self):
