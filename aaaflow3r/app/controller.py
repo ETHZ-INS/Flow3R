@@ -376,6 +376,7 @@ class Controller(QObject):
 
     def assign_group(self, source_id: str, group_id: Optional[str]):
         with self.transaction() as config:
+            print(config.sources)
             assert source_id in config.sources, f"SourceConfig {source_id} not found"
             assert group_id is None or group_id in config.groups, f"GroupConfig {group_id} not found"
 
@@ -577,13 +578,19 @@ class Controller(QObject):
         self._update_session_state(group_id, session_id)
 
     def _apply_changes(self, changes: ChangeSet, old: AppConfig, new: AppConfig):
-        # --- 1) stop preview for sources that will be affected ---
-        for sid in set(changes.sources_removed) | {new_sc.id for (_, new_sc) in changes.sources_updated}:
-            self._stop_preview(sid)
+        sources_requiring_rebuild = [
+            new_sc for old_sc, new_sc in changes.sources_updated
+            if self._source_requires_rebuild(old_sc, new_sc)
+        ]
 
         # --- 2) teardown removed sources/groups (sources first if they depend on groups) ---
         for sid in changes.sources_removed:
+            self._stop_preview(sid)
             self._teardown_source(sid)
+
+        for sc in sources_requiring_rebuild:
+            self._stop_preview(sc.id)
+            self._teardown_source(sc.id)
 
         for gid in changes.groups_removed:
             self._teardown_group(gid)
@@ -619,14 +626,11 @@ class Controller(QObject):
             self._setup_pipeline(gid, pipeline_config)  # your existing method, but it should be idempotent
 
         # source edits may require teardown/setup; you can choose “patch” vs “rebuild”
-        for old_sc, new_sc in changes.sources_updated:
-            # if any field besides group_id changed that affects runtime, rebuild:
-            if self._source_requires_rebuild(old_sc, new_sc):
-                self._teardown_source(new_sc.id)
-                self._setup_source(new.sources[new_sc.id])
+        for sc in sources_requiring_rebuild:
+            self._setup_source(sc)
 
         # --- 5) restart previews for relevant sources ---
-        for _, sc in changes.sources_updated:
+        for sc in sources_requiring_rebuild:
             self._start_preview(sc)
 
         for sc in changes.sources_added:

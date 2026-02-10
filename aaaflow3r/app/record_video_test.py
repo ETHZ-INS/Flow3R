@@ -1,59 +1,59 @@
+import os
 import sys
-import time
 
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
-from reactivex import Subject, operators as ops
-from reactivex.subject import ReplaySubject
 
-from aaaflow3r.app.api.app.app_context import AppContext
 from aaaflow3r.app.api.plugins.plugins import PluginAPI
+from aaaflow3r.app.config.group_config import GroupConfig
 from aaaflow3r.app.widgets.main_window import MainWindow
-from aaaflow3r.core.streaming.stream import Stream
-from aaaflow3r.plugins.core.pipeline.record_video.pipeline import RecordVideoPipeline
+from aaaflow3r.core.pipeline.pipeline_config import PipelineConfig
+from aaaflow3r.core.source.source_config import SourceConfig
+from aaaflow3r.plugins.core.pipeline.record_video.config import RecordVideoConfig
 from aaaflow3r.plugins.core.plugin import CorePlugin
-from aaaflow3r.plugins.core.source.audio.microphone.config import MicrophoneSourceConfig
-from aaaflow3r.plugins.core.source.audio.microphone.source import MicrophoneSource
 from aaaflow3r.plugins.core.source.video.webcam.config import WebcamSourceConfig
-from aaaflow3r.plugins.core.source.video.webcam.source import WebcamSource
-from aaaflow3r.plugins.test.pipeline.test.pipeline import TestPipeline
-from aaaflow3r.plugins.test.source.test.source import VideoTestSource
+from aaaflow3r.plugins.pose_estimation.plugin import PoseEstimationPlugin
 
-plugins = [CorePlugin()]
+if __name__ == "__main__":
+    os.environ['OPENCV_LOG_LEVEL'] = 'OFF'
+    os.environ['OPENCV_FFMPEG_LOGLEVEL'] = "-8"
 
-api = PluginAPI()
+    sys._excepthook = sys.excepthook
 
-for plugin in plugins:
-    plugin.initialize(api)
 
-app = QApplication(sys.argv)
+    def exception_hook(exctype, value, traceback):
+        print(exctype, value, traceback)
+        sys._excepthook(exctype, value, traceback)
 
-window = MainWindow(api)
-window.setWindowTitle("Flow3R")
-window.show()
 
-app_context = AppContext(window.widget_service)
+    sys.excepthook = exception_hook
 
-start = ReplaySubject(1)
-stop = ReplaySubject(1)
+    app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon("res/flow3r.png"))
 
-video_source = WebcamSource(WebcamSourceConfig(device_index=0))
-video_source2 = VideoTestSource()
-audio_source = MicrophoneSource(MicrophoneSourceConfig(device_index=0))
+    api = PluginAPI()
+    core_plugin = CorePlugin()
+    core_plugin.initialize(api)
 
-#pipeline = TestPipeline()
-pipeline = RecordVideoPipeline()
+    pose_estimation_plugin = PoseEstimationPlugin()
+    pose_estimation_plugin.initialize(api)
 
-video_stream = Stream(video_source.stream.descriptor, video_source.stream.observable.pipe(ops.take(300)))
+    window = MainWindow(api)
+    window.setWindowTitle("Flow3R")
+    window.show()
 
-sources = [video_stream]#, audio_source.stream, video_source2.stream]
-pipeline_interface = pipeline.build(app_context, sources)
+    source = SourceConfig()
+    source.set_sub_config("Webcam", WebcamSourceConfig(device_index=0))
 
-video_source.open()
-audio_source.open()
-video_source2.open()
+    group = GroupConfig()
 
-#start.on_next(None)
-#input("Press enter to stop...")
-#stop.on_next(None)
-#
-sys.exit(app.exec())
+    pipeline = PipelineConfig()
+    pipeline.set_sub_config("Record Video", RecordVideoConfig("recordings/recording_{recording_number}.mp4"))
+
+    window.pipeline_added.emit(pipeline)
+    window.group_added.emit(group)
+    window.source_added.emit(source)
+    window.group_assigned_to_source.emit(source.id, group.id)
+    window.pipeline_assigned_to_group.emit(group.id, pipeline.id)
+
+    sys.exit(app.exec())
