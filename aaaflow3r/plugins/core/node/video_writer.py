@@ -30,7 +30,6 @@ class VideoWriterSink(Sink[VideoFormat, VideoFrame]):
 
     def setup(self, desc: VideoFormat) -> None:
         try:
-            print("VideoWriterSink setup:", self._video_file, desc)
             self._writer = self._factory(self._video_file, desc)
             self._writer.open()
         except Exception as e:

@@ -1,10 +1,12 @@
+from datetime import datetime
 from typing import Optional
 
-from PySide6.QtCore import Signal, Slot
+from PySide6.QtCore import Signal, Slot, QTimer
 from PySide6.QtWidgets import QMenu, QWidget
 
 from aaaflow3r.app.config.group_config import GroupConfig
 from aaaflow3r.app.layout.recording_controls_widget import Ui_RecordingControlsWidget
+from aaaflow3r.app.session_state import SessionStateBase, SessionState
 
 
 class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
@@ -24,7 +26,10 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
         self.group_id = group_id
         self.group_name: Optional[str] = None
         self.session_id: Optional[str] = None
-        self.state = "idle"
+        self.state: SessionStateBase = SessionState.NotReady()
+
+        self.start_time: Optional[datetime] = None
+        self.timer = QTimer(self)
 
         self.context_menu = QMenu(self)
         self.action_configure_group = self.context_menu.addAction("Configure Group")
@@ -34,6 +39,7 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
 
         self.lbl_status.linkActivated.connect(self._status_link_clicked)
         self.btn_start.clicked.connect(self._start_recording)
+        self.timer.timeout.connect(self._update_timer)
 
     def request_active_session(self):
         self.active_session_requested.emit(self.group_id)
@@ -47,24 +53,98 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
     def _update_group_name_label(self):
         self.lbl_group_name.setText(self.group_name)
 
-    def set_active_session(self, group_id: str, session_id: str):
+    def set_active_session(self, group_id: str, session_id: str, state: SessionStateBase):
         if group_id != self.group_id:
             return
-        self.session_id = session_id
-        self.set_session_state(group_id, session_id, "idle")
 
-    def set_session_state(self, group_id: str, session_id: str, state: str):
-        print(f"Session state changed: {group_id} {session_id} {state}")
+        print(f"Active session changed for group {group_id}: {session_id}")
+
+        self.session_id = session_id
+        self.set_session_state(group_id, session_id, state)
+
+    def set_session_state(self, group_id: str, session_id: str, state: SessionStateBase):
         if group_id != self.group_id or session_id != self.session_id:
             return
-        print(f"Set session state: {state}")
+
+        print(f"Session state changed for {group_id}/{session_id}: {state}")
+
         self.state = state
-        if state == "idle":
+        self._update_lbl_status()
+
+        if isinstance(state, SessionState.Ready):
             self.btn_start.setText("Start")
-            self.lbl_status.setText("Ready")
-        elif state == "recording":
+        elif isinstance(state, SessionState.Running):
             self.btn_start.setText("Stop")
-            self.lbl_status.setText("Recording...")
+
+        if isinstance(state, SessionState.Running):
+            self._ensure_timer_running(state.start_time)
+        elif isinstance(state, SessionState.AcquisitionFinished):
+            self._stop_timer(state.end_time)
+        else:
+            self._stop_timer()
+
+    def _update_btn_start(self):
+        enabled = self.session_id is not None and isinstance(self.state, (SessionState.Ready, SessionState.Running))
+        self.btn_start.setEnabled(enabled)
+
+        if isinstance(self.state, SessionState.Running):
+            self.btn_start.setText("Stop")
+        else:
+            self.btn_start.setText("Start")
+            
+    def _update_lbl_status(self):
+        if isinstance(self.state, SessionState.Ready):
+            self.lbl_status.setText("Ready - <a href=\"fill_placeholders\">Edit Information</a>")
+            self.lbl_status.setStyleSheet("QLabel { color: black; }")
+        elif isinstance(self.state, SessionState.Running):
+            if isinstance(self.state, SessionState.FinishingProcessing):
+                self.lbl_status.setText(f"Finishing processing ({self.state.processing_progress*100:.0f}%)...")
+                self.lbl_status.setStyleSheet("QLabel { color: orange; }")
+            elif isinstance(self.state, SessionState.FinishingRecording):
+                self.lbl_status.setText("Finishing recording...")
+                self.lbl_status.setStyleSheet("QLabel { color: green; }")
+            else:
+                self.lbl_status.setText("Recording...")
+                self.lbl_status.setStyleSheet("QLabel { color: green; }")
+        elif isinstance(self.state, SessionState.NotReady):
+            if isinstance(self.state, SessionState.MissingInfo):
+                self.lbl_status.setText("Not Ready: <a href=\"fill_placeholders\">Missing Information</a>")
+            else:
+                self.lbl_status.setText(f"Not Ready: {self.state.reason}")
+            self.lbl_status.setStyleSheet("QLabel { color: red; }")
+        elif isinstance(self.state, SessionState.Error):
+            if isinstance(self.state, SessionState.ConfigError):
+                self.lbl_status.setText(f"Config Error: <a href=\"config_error\">{self.state.message}</a>")
+            elif isinstance(self.state, SessionState.InvalidPlaceholders):
+                self.lbl_status.setText(f"Error: invalid placeholders: {', '.join(self.state.invalid_placeholders)}")
+            else:
+                self.lbl_status.setText(f"Error: {self.state.message}")
+            self.lbl_status.setStyleSheet("QLabel { color: red; }")
+        else:
+            self.lbl_status.setText("")
+            self.lbl_status.setStyleSheet("QLabel { color: black; }")
+
+    def _ensure_timer_running(self, start_time: datetime):
+        if not self.timer.isActive():
+            self.start_time = start_time
+            self.timer.start(1000)  # Update every second
+        else:
+            self.start_time = start_time
+
+    def _stop_timer(self, stop_time: Optional[datetime] = None):
+        self.timer.stop()
+        if stop_time is None:
+            self.lbl_recording_time.setText("00:00:00")
+            return
+
+        elapsed = stop_time - self.start_time
+        time_str = str(elapsed).split(".")[0]  # Format as HH:MM:SS
+        self.lbl_recording_time.setText(time_str)
+
+    def _update_timer(self):
+        elapsed = datetime.now() - self.start_time
+        time_str = str(elapsed).split(".")[0]  # Format as HH:MM:SS
+        self.lbl_recording_time.setText(time_str)
 
     def _configure_group(self):
         self.edit_group.emit(self.group_id)
@@ -73,7 +153,7 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
         if not self.session_id:
             return
         print(f"Recording {self.session_id} {self.state}")
-        if self.state == "recording":
+        if isinstance(self.state, SessionState.Running):
             self.recording_stop.emit(self.group_id, self.session_id)
         else:
             self.recording_start.emit(self.group_id, self.session_id)

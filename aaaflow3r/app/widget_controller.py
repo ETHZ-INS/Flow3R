@@ -93,6 +93,8 @@ class WidgetController(QObject):
         widget = self._source_widgets.pop(source_id, None)
         if widget:
             widget.set_handle(None)
+            if widget.recording_controls_widget:
+                widget.recording_controls_widget.setParent(self._bottom_widget)
             self._dock_window.removeDockWidget(widget)
             widget.deleteLater()
 
@@ -129,7 +131,7 @@ class WidgetController(QObject):
     @Slot(str)
     def create_recording_controls_widget(self, group_id: str) -> None:
         assert group_id not in self._recording_control_widgets
-        widget = RecordingControlsWidget(group_id, "Unknown")
+        widget = RecordingControlsWidget(group_id, "Unknown", parent=self._bottom_widget)
         widget.recording_start.connect(self._controller.start_recording)
         widget.recording_stop.connect(self._controller.stop_recording)
         widget.active_session_requested.connect(self._controller.send_active_session_snapshot)

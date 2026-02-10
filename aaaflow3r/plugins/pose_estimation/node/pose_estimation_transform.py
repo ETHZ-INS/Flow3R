@@ -1,6 +1,5 @@
 from typing import Optional, List
 
-import numpy as np
 import reactivex as rx
 from reactivex import operators as ops
 

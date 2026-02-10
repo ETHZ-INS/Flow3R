@@ -1,6 +1,7 @@
 import os
 import sys
 
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from aaaflow3r.app.api.plugins.plugins import PluginAPI
@@ -23,6 +24,7 @@ if __name__ == "__main__":
     sys.excepthook = exception_hook
 
     app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon("res/flow3r.png"))
 
     api = PluginAPI()
     core_plugin = CorePlugin()

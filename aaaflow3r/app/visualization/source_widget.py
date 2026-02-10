@@ -90,7 +90,6 @@ class SourceWidget(QDockWidget):
     def set_recording_controls_widget(self, widget: Optional[RecordingControlsWidget]):
         if self.recording_controls_widget:
             self.bottom_widget.layout().removeWidget(self.recording_controls_widget)
-            self.recording_controls_widget.setParent(None)
 
         self.recording_controls_widget = widget
 

@@ -1,22 +1,25 @@
 import uuid
+from concurrent.futures import Future
 from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Dict, Optional, Iterator, List, Tuple, Any
 
 from PySide6.QtCore import QObject, Signal
+import reactivex as rx
 from reactivex import Subject
 from reactivex.scheduler import EventLoopScheduler
-from reactivex.subject import ReplaySubject
 
 from aaaflow3r.app.api.app.app_context import AppContext
 from aaaflow3r.app.config.app_config import AppConfig
 from aaaflow3r.app.config.group_config import GroupConfig
-from aaaflow3r.app.config.view.app_config_view import AppConfigView
+from aaaflow3r.app.session_state import SessionStateBase, SessionState
 from aaaflow3r.app.widget_service import WidgetService, SessionWidgetServiceWrapper
 from aaaflow3r.core.pipeline.abc.pipeline import IPipeline
 from aaaflow3r.core.pipeline.abc.pipeline_type import IPipelineType
 from aaaflow3r.core.pipeline.pipeline_config import PipelineConfig
+from aaaflow3r.core.placeholder.simple_placeholder_provider import SimplePlaceholderProvider
 from aaaflow3r.core.source.abc.source import ISource
 from aaaflow3r.core.source.abc.source_type import ISourceType
 from aaaflow3r.core.source.source_config import SourceConfig
@@ -27,17 +30,14 @@ from aaaflow3r.core.visualization.abc.visualizer_handle import IVisualizerHandle
 class ErrorSource(ISource):
     def __init__(self, exc: Exception):
         self._exc = exc
-        self._descriptor = ReplaySubject(1)
-        self._observable = ReplaySubject(1)
-        self._stream = Stream(self._descriptor, self._observable)
+        self._stream = Stream(rx.throw(exc), rx.throw(exc))
 
     @property
     def stream(self) -> Stream:
         return self._stream
 
     def open(self):
-        self._descriptor.on_error(self._exc)
-        self._observable.on_error(self._exc)
+        pass
 
     def close(self):
         pass
@@ -45,23 +45,50 @@ class ErrorSource(ISource):
 
 @dataclass
 class Recording:
-    start: Subject = None
-    stop: Subject = None
+    start: Subject
+    stop: Subject
+    start_time: Optional[datetime] = None
+    stop_time: Optional[datetime] = None
+    primary_finished: bool = False
+    secondary_finished: bool = False
+    finished: bool = False
+    progress: Tuple[int, int] = (0, 0)
 
 
 @dataclass
 class Session:
     group_id: str
     session_id: str
+    recording_number: int
     recording: Optional[Recording] = None
+
+    def get_placeholder_provider(self) -> SimplePlaceholderProvider:
+        start_time = self.recording.start_time if self.recording and self.recording.start_time else datetime.now()
+        return SimplePlaceholderProvider({
+            "recording_number": self.recording_number,
+            "start_time": start_time.strftime("%Y%m%d%H%M%S")
+        })
 
 
 @dataclass
 class Group:
     group_id: str
     sessions: Dict[str, Session] = field(default_factory=dict)
+    recording_number: int = 0
     active_session_id: Optional[str] = None
     pipeline: Optional[IPipeline] = None
+
+    @property
+    def active_session(self) -> Optional[Session]:
+        return self.sessions.get(self.active_session_id)
+
+    def new_session(self, active: bool = True):
+        self.recording_number += 1
+        session_id = str(uuid.uuid4())
+        self.sessions[session_id] = Session(self.group_id, session_id, self.recording_number)
+        if active:
+            self.active_session_id = session_id
+        return session_id
 
 
 @dataclass(frozen=True)
@@ -88,6 +115,8 @@ class ChangeSet:
     group_name_changed: List[Tuple[str, str]]
     group_pipeline_changed: List[Tuple[str, Optional[str], Optional[str]]]  # group_id, old_pid, new_pid
 
+    group_controls_changed: List[Tuple[str, str, Optional[str]]]  # group_id
+
 
 def diff_by_id(old_map: Dict[str, Any], new_map: Dict[str, Any]):
     old_ids = set(old_map)
@@ -105,6 +134,15 @@ def diff_by_id(old_map: Dict[str, Any], new_map: Dict[str, Any]):
         if old_map[_id] != new_map[_id]
     ]
     return added, removed, updated
+
+
+def determine_location(sources: List[SourceConfig]) -> Tuple[str, Optional[str]]:
+    if len(sources) == 0:
+        return "hidden", None
+    elif len(sources) == 1:
+        return "source", sources[0].id
+    else:
+        return "bottom", None
 
 
 def diff_config(old: AppConfig, new: AppConfig) -> ChangeSet:
@@ -133,6 +171,18 @@ def diff_config(old: AppConfig, new: AppConfig) -> ChangeSet:
         if old_gc.pipeline_id != new_gc.pipeline_id:
             group_pipeline_changed.append((new_gc.id, old_gc.pipeline_id, new_gc.pipeline_id))
 
+    group_controls_changed: List[Tuple[str, str, Optional[str]]] = []
+    for gid, new_gc in new.groups.items():
+        old_sources = [sc for sc in old.sources.values() if sc.group_id == gid]
+        new_sources = [sc for sc in new.sources.values() if sc.group_id == gid]
+
+        old_location, old_source_id = determine_location(old_sources)
+        new_location, new_source_id = determine_location(new_sources)
+
+        if gid in [g.id for g in groups_added] or old_location != new_location or old_source_id != new_source_id:
+            group_controls_changed.append((gid, new_location, new_source_id))
+
+
     return ChangeSet(
         groups_added=groups_added,
         groups_removed=groups_removed,
@@ -150,10 +200,14 @@ def diff_config(old: AppConfig, new: AppConfig) -> ChangeSet:
         source_group_changed=source_group_changed,
         group_name_changed=group_name_changed,
         group_pipeline_changed=group_pipeline_changed,
+
+        group_controls_changed=group_controls_changed
     )
 
 
 class Controller(QObject):
+    log_message = Signal(str)
+
     config_snapshot = Signal(AppConfig)
     config_changed = Signal(AppConfig)  # AppConfig
 
@@ -171,11 +225,13 @@ class Controller(QObject):
     pipeline_changed = Signal(PipelineConfig)
     pipeline_removed = Signal(str)
 
-    active_session_snapshot = Signal(str, str)  # group_id, session_id
-    active_session_changed = Signal(str, str)  # group_id, session_id
-    session_state_changed = Signal(str, str, str)  # group_id, session_id, state
+    active_session_snapshot = Signal(str, str, SessionStateBase)  # group_id, session_id, state
+    active_session_changed = Signal(str, str, SessionStateBase)  # group_id, session_id, state
+    session_state_changed = Signal(str, str, SessionStateBase)  # group_id, session_id, state
 
-    recording_finished = Signal(str, str)  # group_id, session_id
+    primary_finished = Signal(str, str, object)  # group_id, session_id, exc
+    secondary_finished = Signal(str, str, object)  # group_id, session_id, exc
+    progress_updated = Signal(str, str, Tuple[int, int])
 
     def __init__(self, source_types: Dict[str, ISourceType], pipeline_types: Dict[str, IPipelineType], widget_service: WidgetService):
         super().__init__()
@@ -195,7 +251,9 @@ class Controller(QObject):
 
         self.groups: Dict[str, Group] = {}
 
-        self.recording_finished.connect(self._recording_finished)
+        self.primary_finished.connect(self._primary_finished)
+        self.secondary_finished.connect(self._secondary_finished)
+        self.progress_updated.connect(self._progress_updated)
 
     @property
     def config(self) -> AppConfig:
@@ -253,7 +311,8 @@ class Controller(QObject):
     def send_active_session_snapshot(self, group_id: str):
         group = self.groups.get(group_id)
         if group and group.active_session_id:
-            self.active_session_snapshot.emit(group_id, group.active_session_id)
+            state = self._get_session_state(group_id, group.active_session_id)
+            self.active_session_snapshot.emit(group_id, group.active_session_id, state)
 
     def add_source(self, source_config: SourceConfig):
         with self.transaction() as config:
@@ -317,8 +376,8 @@ class Controller(QObject):
 
     def assign_group(self, source_id: str, group_id: Optional[str]):
         with self.transaction() as config:
-            assert source_id in config.sources
-            assert group_id is None or group_id in config.groups
+            assert source_id in config.sources, f"SourceConfig {source_id} not found"
+            assert group_id is None or group_id in config.groups, f"GroupConfig {group_id} not found"
 
             source_config = config.sources[source_id]
             source_config.group_id = group_id
@@ -365,13 +424,13 @@ class Controller(QObject):
             group.pipeline = None
 
         if pipeline_config:
+            placeholder_provider = group.active_session.get_placeholder_provider()
             pipeline_type = self.pipeline_types.get(pipeline_config.pipeline_type)
             group.pipeline = pipeline_type.get_pipeline_factory()()
-            group.pipeline.configure(AppContext(SessionWidgetServiceWrapper(self.widget_service, group_id, "preview")), pipeline_config.active_config)
+            app_context = AppContext(SessionWidgetServiceWrapper(self.widget_service, group_id, "preview"))
+            group.pipeline.configure(app_context, pipeline_config.active_config.resolve(placeholder_provider))
 
     def start_recording(self, group_id: str, session_id: str):
-        print(self.config)
-        print(f"start_recording({group_id}, {session_id})")
         group = self.groups.get(group_id)
         assert group is not None, f"Group {group_id} not found"
 
@@ -381,10 +440,8 @@ class Controller(QObject):
         assert session is not None, f"Session {session_id} not found for group {group_id}"
 
         if session.recording:
-            print("Recording already started")
             return
 
-        print(f"Starting recording for group {group_id} session {session_id}")
         from reactivex import operators as ops
 
         start = Subject()
@@ -397,25 +454,59 @@ class Controller(QObject):
         source_observables = [s.stream.observable.pipe(ops.publish()) for s in sources]
         source_streams = [Stream(desc, obs.pipe(ops.skip_until(start), ops.take_until(session.recording.stop))) for desc, obs in zip(source_descriptors, source_observables)]
 
-        print("Building pipeline...")
+        start_time = datetime.now()
+
         try:
-            pipeline_sub = group.pipeline.build(AppContext(SessionWidgetServiceWrapper(self.widget_service, group_id, session_id)), source_streams)
+            session.recording.start_time = start_time
+            placeholder_provider = session.get_placeholder_provider()
+            group_config = self.config.groups[group_id]
+            pipeline_config = self.config.pipelines[group_config.pipeline_id]
+            app_context = AppContext(SessionWidgetServiceWrapper(self.widget_service, group_id, session_id))
+            group.pipeline.configure(app_context, pipeline_config.active_config.resolve(placeholder_provider))
+            pipeline_sub = group.pipeline.build(app_context, source_streams)
         except:
             print(self.config)
             raise
-        pipeline_sub.primary_done.subscribe(lambda _: self.recording_finished.emit(group_id, session_id))
-        print("Pipeline built")
 
-        print("Connecting...")
+        def _primary_done(fut: Future):
+            exc = fut.exception()
+            self.primary_finished.emit(group_id, session_id, exc)
+
+        def _secondary_done(fut: Future):
+            exc = fut.exception()
+            self.secondary_finished.emit(group_id, session_id, exc)
+
+        def _progress_updated(progress: Tuple[int, int]):
+            self.progress_updated.emit(group_id, session_id, progress)
+
+        pipeline_sub.primary_done.add_done_callback(_primary_done)
+        pipeline_sub.secondary_done.add_done_callback(_secondary_done)
+        if pipeline_sub.progress:
+            pipeline_sub.progress.subscribe(_progress_updated)
+
         for obs in source_observables:
             obs.connect()
-        print("Connected")
 
         session.recording.start.on_next(None)
         self._update_session_state(group_id, session_id)
 
     def stop_recording(self, group_id: str, session_id: str):
-        pass
+        print(f"stop_recording({group_id}, {session_id})")
+
+        group = self.groups.get(group_id)
+        assert group is not None, f"Group {group_id} not found"
+
+        session = group.sessions.get(session_id)
+        assert session is not None, f"Session {session_id} not found for group {group_id}"
+
+        if session.recording and not session.recording.stop_time:
+            session.recording.stop_time = datetime.now()
+            session.recording.stop.on_next(None)
+
+        self._update_session_state(group_id, session_id)
+
+    def _primary_finished(self, group_id: str, session_id: str, exc: Optional[Exception]):
+        print(f"_primary_finished({group_id}, {session_id}, {exc})")
         group = self.groups.get(group_id)
         assert group is not None, f"Group {group_id} not found"
 
@@ -423,7 +514,48 @@ class Controller(QObject):
         assert session is not None, f"Session {session_id} not found for group {group_id}"
 
         if session.recording:
-            session.recording.stop.on_next(None)
+            if session.recording.primary_finished:
+                return
+
+            print("Session primary done.")
+            session.recording.primary_finished = True
+
+            if session.recording.secondary_finished:
+                self._recording_finished(group_id, session_id)
+
+        self._update_session_state(group_id, session_id)
+
+    def _secondary_finished(self, group_id: str, session_id: str, exc: Optional[Exception]):
+        print(f"_secondary_finished({group_id}, {session_id}, {exc})")
+        group = self.groups.get(group_id)
+        assert group is not None, f"Group {group_id} not found"
+
+        session = group.sessions.get(session_id)
+        assert session is not None, f"Session {session_id} not found for group {group_id}"
+
+        if session.recording:
+            if session.recording.secondary_finished:
+                return
+
+            print("Session secondary done.")
+            session.recording.secondary_finished = True
+
+            if session.recording.primary_finished:
+                self._recording_finished(group_id, session_id)
+
+        self._update_session_state(group_id, session_id)
+
+    def _progress_updated(self, group_id: str, session_id: str, progress: Tuple[int, int]):
+        group = self.groups.get(group_id)
+        assert group is not None, f"Group {group_id} not found"
+
+        session = group.sessions.get(session_id)
+        assert session is not None, f"Session {session_id} not found for group {group_id}"
+
+        if session.recording:
+            session.recording.progress = progress
+
+        self._update_session_state(group_id, session_id)
 
     def _recording_finished(self, group_id: str, session_id: str):
         group = self.groups.get(group_id)
@@ -432,9 +564,16 @@ class Controller(QObject):
         session = group.sessions.get(session_id)
         assert session is not None, f"Session {session_id} not found for group {group_id}"
 
-        session.recording = None
+        if not session.recording:
+            return
 
-        self._open_new_session(group_id)
+        if session.recording.finished:
+            return
+
+        session.recording.finished = True
+
+        group.new_session()
+        self._update_active_session(group_id)
         self._update_session_state(group_id, session_id)
 
     def _apply_changes(self, changes: ChangeSet, old: AppConfig, new: AppConfig):
@@ -492,6 +631,9 @@ class Controller(QObject):
 
         for sc in changes.sources_added:
             self._start_preview(sc)
+
+        for gid, location, source_id in changes.group_controls_changed:
+            self.widget_service.set_recording_controls_location(gid, location, source_id)
 
         # --- 6) ensure active sessions for groups that need it ---
         touched_groups = set(changes.groups_removed) | {gc.id for gc in changes.groups_added}
@@ -558,34 +700,51 @@ class Controller(QObject):
             source_widget_handle.unsubscribe()
             source_widget_handle.dispose()
 
-    def _open_new_session(self, group_id: str):
-        session_id = str(uuid.uuid4())
-        session = Session(group_id, session_id)
-        self.groups[group_id].sessions[session_id] = session
-        print(f"Setting active session for group {group_id} to {session_id}")
-        self.groups[group_id].active_session_id = session_id
-        self._update_active_session(group_id)
-
     def _ensure_active_session(self, group_id: str):
         group = self.groups.get(group_id)
         assert group is not None, f"Group {group_id} not found"
         if group.active_session_id is None:
-            self._open_new_session(group_id)
+            group.new_session()
+            self._update_active_session(group_id)
 
-    def _update_active_session(self, group_id: str):
-        active_session_id = self.groups[group_id].active_session_id
-        self.active_session_changed.emit(group_id, active_session_id)
-
-    def _update_session_state(self, group_id: str, session_id: str):
+    def _get_session_state(self, group_id: str, session_id: str):
         group = self.groups.get(group_id)
         assert group is not None, f"Group {group_id} not found"
 
         session = group.sessions.get(session_id)
         assert session is not None, f"Session {session_id} not found for group {group_id}"
 
-        state = "idle"
+        print(session)
+
         if session.recording:
-            state = "recording"
+            print("Has recording")
+            if session.recording.start_time:
+                print("Has start time")
+                if session.recording.stop_time:
+                    print("Has stop time")
+                    if session.recording.primary_finished:
+                        print("Has primary finished")
+                        if session.recording.secondary_finished:
+                            print("Has secondary finished")
+                            return SessionState.Finished(start_time=session.recording.start_time, end_time=session.recording.stop_time)
+                        else:
+                            return SessionState.FinishingProcessing(start_time=session.recording.start_time, end_time=session.recording.stop_time)
+                    else:
+                        return SessionState.FinishingRecording(start_time=session.recording.start_time, end_time=session.recording.stop_time)
+                else:
+                    return SessionState.Running(start_time=session.recording.start_time)
+            else:
+                return SessionState.Ready()
+        else:
+            return SessionState.Ready()
+
+    def _update_active_session(self, group_id: str):
+        active_session_id = self.groups[group_id].active_session_id
+        state = self._get_session_state(group_id, active_session_id)
+        self.active_session_changed.emit(group_id, active_session_id, state)
+
+    def _update_session_state(self, group_id: str, session_id: str):
+        state = self._get_session_state(group_id, session_id)
         self.session_state_changed.emit(group_id, session_id, state)
 
     def _emit_entity_signals(self, changes: ChangeSet):
@@ -605,7 +764,7 @@ class Controller(QObject):
 
         for pc in changes.pipelines_added:
             self.pipeline_added.emit(deepcopy(pc))
-        for pc in changes.pipelines_updated:
-            self.pipeline_changed.emit(deepcopy(pc))
+        for old_pc, new_pc in changes.pipelines_updated:
+            self.pipeline_changed.emit(deepcopy(new_pc))
         for pid in changes.pipelines_removed:
             self.pipeline_removed.emit(pid)

@@ -129,7 +129,6 @@ class VideoSegmentWriter(Transform[VideoFormat, VideoFrame, VideoSegmentFormat, 
 
                 # write frame
                 self._frame_metas.append(FrameMeta.from_meta(fr))
-                print("Writing frame: ", fr.frame_index)
                 self._writer.write(fr)
 
             def on_error(e: Exception):

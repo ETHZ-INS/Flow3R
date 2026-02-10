@@ -1,7 +1,9 @@
 from copy import deepcopy
+from datetime import datetime
 
 from PySide6 import QtWidgets, QtCore
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import QThread, Signal, Slot
+from PySide6.QtGui import QColor, Qt, QTextCursor, QTextCharFormat
 from PySide6.QtWidgets import QMainWindow, QDialog
 
 from aaaflow3r.app.api.plugins.plugins import PluginAPI
@@ -21,17 +23,25 @@ from aaaflow3r.core.pipeline.pipeline_config import PipelineConfig
 from aaaflow3r.core.source.source_config import SourceConfig
 
 
+LOG_COLORS = {
+    "INFO": QColor("black"),
+    "WARNING": QColor("orange"),
+    "ERROR": QColor("red"),
+}
+
+
 class MainWindow(Ui_WelfareRecorder, QMainWindow):
-    add_source = Signal(object)  # source config
-    edit_source = Signal(object)  # source config
+    source_added = Signal(object)  # source config
+    source_edited = Signal(object)  # source config
 
-    add_group = Signal(object)  # group config
-    edit_group = Signal(object)  # group config
+    group_added = Signal(object)  # group config
+    group_edited = Signal(object)  # group config
 
-    add_pipeline = Signal(object)  # pipeline config
-    edit_pipeline = Signal(object)  # pipeline config
+    pipeline_added = Signal(object)  # pipeline config
+    pipeline_edited = Signal(object)  # pipeline config
 
-    stop_recording = Signal(str, str)
+    group_assigned_to_source = Signal(str, object)  # source_id, group_id
+    pipeline_assigned_to_group = Signal(str, object)  # group_id, pipeline_id
 
     def __init__(self, plugin_api: PluginAPI, parent=None):
         super(MainWindow, self).__init__(parent)
@@ -54,6 +64,11 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         vbox.addWidget(self.frm_footer)
 
         self.setCentralWidget(inner)
+
+        self.txt_log.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        self.txt_log.viewport().setCursor(Qt.CursorShape.ArrowCursor)  # ensure arrow, not I-beam
+        self.txt_log.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.txt_log.document().setMaximumBlockCount(200)
 
         self.plugin_api = plugin_api
 
@@ -92,20 +107,49 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         self.action_add_group.triggered.connect(self._add_group)
         self.action_add_pipeline.triggered.connect(self._add_pipeline)
 
-        self.add_source.connect(self.controller.add_source)
-        self.edit_source.connect(self.controller.edit_source)
+        self.source_added.connect(self.controller.add_source)
+        self.source_edited.connect(self.controller.edit_source)
 
-        self.add_group.connect(self.controller.add_group)
-        self.edit_group.connect(self.controller.edit_group)
+        self.group_added.connect(self.controller.add_group)
+        self.group_edited.connect(self.controller.edit_group)
 
-        self.add_pipeline.connect(self.controller.add_pipeline)
-        self.edit_pipeline.connect(self.controller.edit_pipeline)
+        self.pipeline_added.connect(self.controller.add_pipeline)
+        self.pipeline_edited.connect(self.controller.edit_pipeline)
 
-        self.stop_recording.connect(self.controller.stop_recording)
+        self.group_assigned_to_source.connect(self.controller.assign_group)
+        self.pipeline_assigned_to_group.connect(self.controller.assign_pipeline)
 
+        self.controller.log_message.connect(self.add_log_entry)
         self.controller.config_changed.connect(self._config_changed)
 
         self._config: AppConfig = deepcopy(self.controller.config)
+
+        self.add_log_entry("Application started", "INFO")
+
+    @Slot(str, str)
+    def add_log_entry(self, message: str, level: str = "INFO"):
+        edit = self.txt_log
+        sb = edit.verticalScrollBar()
+        stick = (sb.value() == sb.maximum())
+
+        cursor = edit.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+
+        # new line BEFORE the entry, not after the previous one
+        if not edit.document().isEmpty():
+            cursor.insertBlock()
+
+        fmt = QTextCharFormat()
+        fmt.setForeground(LOG_COLORS.get(level, QColor("black")))
+
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        cursor.insertText(f"{timestamp} [{level}] {message}", fmt)
+
+        edit.setTextCursor(cursor)
+
+        # snap to bottom only if user was already at bottom
+        if stick:
+            sb.setValue(sb.maximum())
 
     def _list_sources(self):
         source_types = list(self.plugin_api.source_types.get_source_types().values())
@@ -121,7 +165,7 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         res = dialog.exec()
 
         if res == QDialog.DialogCode.Accepted:
-            self.add_source.emit(source_config)
+            self.source_added.emit(source_config)
 
     def _edit_source(self, source_id: str):
         source_config = self._config.sources.get(source_id)
@@ -133,7 +177,7 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         res = dialog.exec()
 
         if res == QDialog.DialogCode.Accepted:
-            self.edit_source.emit(source_config)
+            self.source_edited.emit(source_config)
 
     def _list_groups(self):
         group_list_dialog = GroupListDialog(self.controller)
@@ -147,7 +191,7 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         res = dialog.exec()
 
         if res == QDialog.DialogCode.Accepted:
-            self.add_group.emit(group_config)
+            self.group_added.emit(group_config)
 
     def _edit_group(self, group_id: str):
         group_config = self._config.groups.get(group_id)
@@ -158,7 +202,7 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         res = dialog.exec()
 
         if res == QDialog.DialogCode.Accepted:
-            self.edit_group.emit(group_config)
+            self.group_edited.emit(group_config)
 
     def _list_pipelines(self):
         pipeline_types = list(self.plugin_api.pipeline_types.get_pipeline_types().values())
@@ -174,7 +218,7 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         res = dialog.exec()
 
         if res == QDialog.DialogCode.Accepted:
-            self.add_pipeline.emit(pipeline_config)
+            self.pipeline_added.emit(pipeline_config)
 
     def _edit_pipeline(self):
         pipeline_config = self._config.pipeline
@@ -184,19 +228,10 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         res = dialog.exec()
 
         if res == QDialog.DialogCode.Accepted:
-            self.edit_pipeline.emit(pipeline_config)
+            self.pipeline_edited.emit(pipeline_config)
 
     def _config_changed(self, config):
         self._config = config
 
     def keyPressEvent(self, event):
-        if event.key() == QtCore.Qt.Key.Key_A:
-            self.widget_controller.create_source_widget("source1")
-        elif event.key() == QtCore.Qt.Key.Key_B:
-            self.widget_controller.create_recording_controls_widget("group1")
-        elif event.key() == QtCore.Qt.Key.Key_C:
-            self.widget_controller.set_recording_controls_widget_location("group1", "bottom")
-        elif event.key() == QtCore.Qt.Key.Key_D:
-            self.widget_controller.set_recording_controls_widget_location("group1", "hidden")
-        elif event.key() == QtCore.Qt.Key.Key_E:
-            self.widget_controller.set_recording_controls_widget_location("group1", "source", "source1")
+        pass
