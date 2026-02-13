@@ -11,7 +11,7 @@ from aaaflow3r.plugins.pose_estimation.pipeline.pose_estimation.pipeline import 
 class PoseEstimationPipelineType(IPipelineType[PoseEstimationConfig, PoseEstimationPipeline]):
     @property
     def name(self) -> str:
-        return "PoseEstimation"
+        return "Pose Estimation"
 
     def get_config_factory(self) -> Callable[[], PoseEstimationConfig]:
         return PoseEstimationConfig

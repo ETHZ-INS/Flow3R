@@ -1,3 +1,4 @@
+from concurrent.futures import Future
 from pathlib import Path
 from typing import List, Optional
 
@@ -20,7 +21,7 @@ from aaaflow3r.plugins.core.node.video_segment_concatenator import VideoSegmentC
 from aaaflow3r.plugins.core.node.video_segment_reader import VideoSegmentReader
 from aaaflow3r.plugins.core.node.video_segment_writer import VideoSegmentWriter
 from aaaflow3r.plugins.core.node.video_spool import VideoSpool
-from aaaflow3r.plugins.core.util.video_writer import VideoWriterSink
+from aaaflow3r.plugins.core.node.video_writer_sink import VideoWriterSink
 from aaaflow3r.plugins.pose_estimation.node.pose_estimation_transform import PoseEstimationTransform
 from aaaflow3r.plugins.pose_estimation.node.pose_render_transform import PoseRenderTransform
 from aaaflow3r.plugins.pose_estimation.node.pose_results_writer import PoseResultsWriterSink
@@ -102,7 +103,7 @@ class PoseEstimationPipeline(IPipeline[PoseEstimationConfig]):
 
         disposable = CompositeDisposable(video_writer_sub, vis_video_writer_sub, pose_results_writer_sub, pose_vis_widget_sub)
         primary_done = video_writer_sub.done
-        secondary_done = rx.zip(vis_video_writer_sub.done, pose_results_writer_sub.done).pipe(ops.take(1))
+        secondary_done = rx.zip(vis_video_writer_sub.done, pose_results_writer_sub.done)
 
         return PipelineSubscription(disposable, primary_done, secondary_done)
 

@@ -6,7 +6,8 @@ from PySide6.QtWidgets import QMenu, QWidget
 
 from aaaflow3r.app.config.group_config import GroupConfig
 from aaaflow3r.app.layout.recording_controls_widget import Ui_RecordingControlsWidget
-from aaaflow3r.app.session_state import SessionStateBase, SessionState
+from aaaflow3r.app.session_state import SessionStateBase, Ready, Running, AcquisitionFinished, FinishingProcessing, \
+    FinishingRecording, NotReady, MissingInfo, Error, ConfigError, InvalidPlaceholders
 
 
 class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
@@ -26,7 +27,7 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
         self.group_id = group_id
         self.group_name: Optional[str] = None
         self.session_id: Optional[str] = None
-        self.state: SessionStateBase = SessionState.NotReady()
+        self.state: SessionStateBase = NotReady()
 
         self.start_time: Optional[datetime] = None
         self.timer = QTimer(self)
@@ -71,51 +72,51 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
         self.state = state
         self._update_lbl_status()
 
-        if isinstance(state, SessionState.Ready):
+        if isinstance(state, Ready):
             self.btn_start.setText("Start")
-        elif isinstance(state, SessionState.Running):
+        elif isinstance(state, Running):
             self.btn_start.setText("Stop")
 
-        if isinstance(state, SessionState.Running):
+        if isinstance(state, Running):
             self._ensure_timer_running(state.start_time)
-        elif isinstance(state, SessionState.AcquisitionFinished):
+        elif isinstance(state, AcquisitionFinished):
             self._stop_timer(state.end_time)
         else:
             self._stop_timer()
 
     def _update_btn_start(self):
-        enabled = self.session_id is not None and isinstance(self.state, (SessionState.Ready, SessionState.Running))
+        enabled = self.session_id is not None and isinstance(self.state, (Ready, Running))
         self.btn_start.setEnabled(enabled)
 
-        if isinstance(self.state, SessionState.Running):
+        if isinstance(self.state, Running):
             self.btn_start.setText("Stop")
         else:
             self.btn_start.setText("Start")
             
     def _update_lbl_status(self):
-        if isinstance(self.state, SessionState.Ready):
+        if isinstance(self.state, Ready):
             self.lbl_status.setText("Ready - <a href=\"fill_placeholders\">Edit Information</a>")
             self.lbl_status.setStyleSheet("QLabel { color: black; }")
-        elif isinstance(self.state, SessionState.Running):
-            if isinstance(self.state, SessionState.FinishingProcessing):
+        elif isinstance(self.state, Running):
+            if isinstance(self.state, FinishingProcessing):
                 self.lbl_status.setText(f"Finishing processing ({self.state.processing_progress*100:.0f}%)...")
                 self.lbl_status.setStyleSheet("QLabel { color: orange; }")
-            elif isinstance(self.state, SessionState.FinishingRecording):
+            elif isinstance(self.state, FinishingRecording):
                 self.lbl_status.setText("Finishing recording...")
                 self.lbl_status.setStyleSheet("QLabel { color: green; }")
             else:
                 self.lbl_status.setText("Recording...")
                 self.lbl_status.setStyleSheet("QLabel { color: green; }")
-        elif isinstance(self.state, SessionState.NotReady):
-            if isinstance(self.state, SessionState.MissingInfo):
+        elif isinstance(self.state, NotReady):
+            if isinstance(self.state, MissingInfo):
                 self.lbl_status.setText("Not Ready: <a href=\"fill_placeholders\">Missing Information</a>")
             else:
                 self.lbl_status.setText(f"Not Ready: {self.state.reason}")
             self.lbl_status.setStyleSheet("QLabel { color: red; }")
-        elif isinstance(self.state, SessionState.Error):
-            if isinstance(self.state, SessionState.ConfigError):
+        elif isinstance(self.state, Error):
+            if isinstance(self.state, ConfigError):
                 self.lbl_status.setText(f"Config Error: <a href=\"config_error\">{self.state.message}</a>")
-            elif isinstance(self.state, SessionState.InvalidPlaceholders):
+            elif isinstance(self.state, InvalidPlaceholders):
                 self.lbl_status.setText(f"Error: invalid placeholders: {', '.join(self.state.invalid_placeholders)}")
             else:
                 self.lbl_status.setText(f"Error: {self.state.message}")
@@ -133,7 +134,7 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
 
     def _stop_timer(self, stop_time: Optional[datetime] = None):
         self.timer.stop()
-        if stop_time is None:
+        if stop_time is None or self.start_time is None:
             self.lbl_recording_time.setText("00:00:00")
             return
 
@@ -142,6 +143,7 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
         self.lbl_recording_time.setText(time_str)
 
     def _update_timer(self):
+        assert self.start_time is not None
         elapsed = datetime.now() - self.start_time
         time_str = str(elapsed).split(".")[0]  # Format as HH:MM:SS
         self.lbl_recording_time.setText(time_str)
@@ -153,7 +155,7 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
         if not self.session_id:
             return
         print(f"Recording {self.session_id} {self.state}")
-        if isinstance(self.state, SessionState.Running):
+        if isinstance(self.state, Running):
             self.recording_stop.emit(self.group_id, self.session_id)
         else:
             self.recording_start.emit(self.group_id, self.session_id)

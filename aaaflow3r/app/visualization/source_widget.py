@@ -88,6 +88,7 @@ class SourceWidget(QDockWidget):
             visualizer.set_handle(self.handle)
 
     def set_recording_controls_widget(self, widget: Optional[RecordingControlsWidget]):
+        # TODO: When assigning source to a new group, the old recording controls widget is not destroyed and shows up as a ghost
         if self.recording_controls_widget:
             self.bottom_widget.layout().removeWidget(self.recording_controls_widget)
 

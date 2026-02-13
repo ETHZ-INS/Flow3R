@@ -2,6 +2,7 @@ import uuid
 from dataclasses import dataclass, field, replace
 from typing import Any, Dict, Optional
 
+from aaaflow3r.core.pipeline.abc.pipeline_config import IPipelineConfig
 from aaaflow3r.core.placeholder.abc.placeholder_provider import IPlaceholderProvider
 
 
@@ -13,7 +14,7 @@ class PipelineConfig:
     sub_configs: Dict[str, Any] = field(default_factory=dict)
 
     @property
-    def active_config(self) -> Any:
+    def active_config(self) -> IPipelineConfig:
         return self.sub_configs[self.pipeline_type]
 
     def get_sub_config(self, pipeline_type: str) -> Optional[Any]:

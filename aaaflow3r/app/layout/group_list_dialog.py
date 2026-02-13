@@ -68,6 +68,11 @@ class Ui_GroupListDialog(object):
 
         self.gridLayout.addWidget(self.btn_edit, 1, 0, 1, 1)
 
+        self.btn_configure_pipelines = QPushButton(self.frm_camera_list_buttons)
+        self.btn_configure_pipelines.setObjectName(u"btn_configure_pipelines")
+
+        self.gridLayout.addWidget(self.btn_configure_pipelines, 1, 2, 1, 1)
+
 
         self.verticalLayout.addWidget(self.frm_camera_list_buttons)
 
@@ -92,5 +97,6 @@ class Ui_GroupListDialog(object):
         self.btn_remove.setText(QCoreApplication.translate("GroupListDialog", u"Remove Group", None))
         self.btn_add.setText(QCoreApplication.translate("GroupListDialog", u"Add Group", None))
         self.btn_edit.setText(QCoreApplication.translate("GroupListDialog", u"Edit Group", None))
+        self.btn_configure_pipelines.setText(QCoreApplication.translate("GroupListDialog", u"Configure Pipelines", None))
     # retranslateUi
 

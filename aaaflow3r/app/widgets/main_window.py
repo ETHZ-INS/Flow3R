@@ -41,7 +41,7 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
     pipeline_edited = Signal(object)  # pipeline config
 
     group_assigned_to_source = Signal(str, object)  # source_id, group_id
-    pipeline_assigned_to_group = Signal(str, object)  # group_id, pipeline_id
+    pipeline_assignment_changed = Signal(str, object, object)  # group_id, pipeline_ids, source_mapping
 
     def __init__(self, plugin_api: PluginAPI, parent=None):
         super(MainWindow, self).__init__(parent)
@@ -117,7 +117,7 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         self.pipeline_edited.connect(self.controller.edit_pipeline)
 
         self.group_assigned_to_source.connect(self.controller.assign_group)
-        self.pipeline_assigned_to_group.connect(self.controller.assign_pipeline)
+        self.pipeline_assignment_changed.connect(self.controller.set_pipeline_assignment)
 
         self.controller.log_message.connect(self.add_log_entry)
         self.controller.config_changed.connect(self._config_changed)

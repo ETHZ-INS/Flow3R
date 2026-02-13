@@ -1,4 +1,4 @@
-from typing import Protocol, TypeVar, Callable
+from typing import Protocol, TypeVar, Callable, Tuple
 
 from PySide6.QtWidgets import QWidget
 
@@ -13,7 +13,7 @@ class ISourceType(Protocol[TConfig, TDesc, TData]):
     @property
     def name(self) -> str: ...
     @property
-    def category(self) -> str: ...
+    def category(self) -> Tuple[str, ...]: ...
     @property
     def visualizer_type(self) -> str: ...
     @property

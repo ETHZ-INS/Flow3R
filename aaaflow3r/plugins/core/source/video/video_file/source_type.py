@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, Tuple
 
 import numpy as np
 from PySide6.QtWidgets import QWidget
@@ -17,8 +17,8 @@ class VideoFileSourceType(ISourceType[VideoFileSourceConfig, VideoFormat, VideoF
         return "Video File"
 
     @property
-    def category(self) -> str:
-        return "Video"
+    def category(self) -> Tuple[str, ...]:
+        return ("Video",)
 
     @property
     def visualizer_type(self) -> str:

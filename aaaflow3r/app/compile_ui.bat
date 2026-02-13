@@ -20,6 +20,7 @@ echo Compiling Dialogs...
 pyside6-uic "ui/SourceListDialog.ui" -o "layout/source_list_dialog.py"
 pyside6-uic "ui/GroupListDialog.ui" -o "layout/group_list_dialog.py"
 pyside6-uic "ui/GroupEditDialog.ui" -o "layout/group_edit_dialog.py"
+pyside6-uic "ui/PipelineAssignmentDialog.ui" -o "layout/pipeline_assignment_dialog.py"
 :: pyside6-uic "ui/VariablePreparationDialog.ui" -o "app/layout/variable_preparation_dialog.py"
 :: pyside6-uic "ui/TextEditorDialog.ui" -o "app/layout/text_editor_dialog.py"
 :: pyside6-uic "ui/VariableListDialog.ui" -o "app/layout/variable_list_dialog.py"

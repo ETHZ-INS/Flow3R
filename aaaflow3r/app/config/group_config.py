@@ -1,6 +1,6 @@
 import uuid
 from dataclasses import dataclass, field
-from typing import ClassVar, Dict
+from typing import ClassVar, Dict, Optional, Set
 
 from aaaflow3r.app.config.recording_config import RecordingConfig
 
@@ -16,4 +16,7 @@ class GroupConfig:
     name: str = "New Group"
     active: bool = True
     recording_config: RecordingConfig = field(default_factory=RecordingConfig)
-    pipeline_id: str = None
+    pipeline_id: Optional[str] = None
+
+    pipeline_ids: Set[str] = field(default_factory=set)
+    source_mapping: Dict[str, Dict[str, str]] = field(default_factory=dict)  # pipeline_id -> input_name -> source_id

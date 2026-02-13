@@ -11,6 +11,7 @@ from aaaflow3r.app.config.group_config import GroupConfig
 from aaaflow3r.app.controller import Controller
 from aaaflow3r.app.layout.group_list_dialog import Ui_GroupListDialog
 from aaaflow3r.app.widgets.group_edit_dialog import GroupEditDialog
+from aaaflow3r.app.widgets.pipeline_assignment_dialog import PipelineAssignmentDialog
 
 
 class GroupListModel(QAbstractListModel):
@@ -158,7 +159,7 @@ class GroupListDialog(Ui_GroupListDialog, QDialog):
     group_edited = Signal(GroupConfig)
     group_removed = Signal(str)
 
-    pipeline_assigned_to_group = Signal(str, object)  # group_id, pipeline_id
+    pipeline_assignment_changed = Signal(str, object, object)  # group_id, pipeline_ids, source_mapping
 
     def __init__(self, controller: Controller, parent=None):
         super().__init__(parent)
@@ -193,12 +194,13 @@ class GroupListDialog(Ui_GroupListDialog, QDialog):
         self.group_edited.connect(self.controller.edit_group)
         self.group_removed.connect(self.controller.remove_group)
 
-        self.pipeline_assigned_to_group.connect(self.controller.assign_pipeline)
+        self.pipeline_assignment_changed.connect(self.controller.set_pipeline_assignment)
 
         self.btn_add.clicked.connect(self.add_group)
         self.btn_edit.clicked.connect(self.edit_group)
         self.lst_groups.doubleClicked.connect(self.edit_group)
         self.btn_remove.clicked.connect(self.remove_group)
+        self.btn_configure_pipelines.clicked.connect(self.configure_pipelines)
 
         self.config_snapshot_requested.emit()
 
@@ -221,9 +223,17 @@ class GroupListDialog(Ui_GroupListDialog, QDialog):
             return
         self.btn_edit.setEnabled(True)
 
+    def update_btn_configure_pipelines(self):
+        index = self.lst_groups.currentIndex()
+        if not index.isValid():
+            self.btn_edit.setEnabled(False)
+            return
+        self.btn_configure_pipelines.setEnabled(True)
+
     def _selected_group_changed(self):
         self.update_btn_remove()
         self.update_btn_edit()
+        self.update_btn_configure_pipelines()
 
     def add_group(self):
         group_config = GroupConfig()
@@ -268,7 +278,25 @@ class GroupListDialog(Ui_GroupListDialog, QDialog):
         return msb.exec_() == QtWidgets.QMessageBox.StandardButton.Yes
 
     def assign_pipeline_to_group(self, group_id: str, pipeline_id: str):
-        self.pipeline_assigned_to_group.emit(group_id, pipeline_id)
+        group_config = self._config.groups.get(group_id)
+        group_config.pipeline_ids.add(pipeline_id)
+
+        dialog = PipelineAssignmentDialog(group_config, self._config.sources, self._config.pipelines)
+        res = dialog.exec()
+        if res == QDialog.DialogCode.Accepted:
+            self.pipeline_assignment_changed.emit(group_id, group_config.pipeline_ids, group_config.source_mapping)
+
+    def configure_pipelines(self):
+        index = self.lst_groups.currentIndex()
+        if not index.isValid():
+            return
+
+        group_config = index.data(GroupListModel.GroupRole)
+        dialog = PipelineAssignmentDialog(group_config, self._config.sources, self._config.pipelines)
+        dialog.setWindowTitle("Configure Pipelines")
+        res = dialog.exec()
+        if res == QDialog.DialogCode.Accepted:
+            self.pipeline_assignment_changed.emit(group_config.id, group_config.pipeline_ids, group_config.source_mapping)
 
     def _show_context_menu(self, pos):
         idx = self.lst_groups.indexAt(pos)

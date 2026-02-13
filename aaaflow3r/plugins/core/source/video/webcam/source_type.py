@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, Tuple
 
 from PySide6.QtWidgets import QWidget
 from py3r.media.types import VideoFrame
@@ -16,8 +16,8 @@ class WebcamSourceType(ISourceType[WebcamSourceConfig, VideoFormat, VideoFrame])
         return "Webcam"
 
     @property
-    def category(self) -> str:
-        return "Video"
+    def category(self) -> Tuple[str, ...]:
+        return "Video", "Camera"
 
     @property
     def visualizer_type(self) -> str:

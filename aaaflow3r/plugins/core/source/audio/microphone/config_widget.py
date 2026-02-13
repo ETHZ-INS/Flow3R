@@ -15,7 +15,7 @@ class MicrophoneSourceConfigWidget(QWidget):
 
         self.spn_sample_rate = QSpinBox()
         self.spn_sample_rate.setRange(0, 1_000_000)
-        self.spn_sample_rate.setValue(self.config.device_index)
+        self.spn_sample_rate.setValue(self.config.sample_rate)
 
         self.layout = QFormLayout(self)
         self.layout.addRow("Device", self.spn_device)

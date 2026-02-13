@@ -37,7 +37,7 @@ class RecordAudioPipeline(IPipeline[RecordAudioConfig]):
         visualizer_sub = visualizer_sink.subscribe(shared_source)
 
         disposable = CompositeDisposable(audio_writer_sub, visualizer_sub)
-        primary_done = rx.merge(audio_writer_sub.done, visualizer_sub.done).pipe(ops.take(1))
+        primary_done = rx.zip(audio_writer_sub.done, visualizer_sub.done)
         return PipelineSubscription(disposable, primary_done)
 
     def dispose(self):

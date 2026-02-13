@@ -14,7 +14,7 @@ from aaaflow3r.core.streaming.stream import Stream
 from aaaflow3r.core.visualization.abc.visualizer_handle import IVisualizerHandle
 from aaaflow3r.core.visualization.visualizer_sink import VisualizerSink
 from aaaflow3r.plugins.core.pipeline.record_video.config import RecordVideoConfig
-from aaaflow3r.plugins.core.node.video_writer import VideoWriterSink
+from aaaflow3r.plugins.core.node.video_writer_sink import VideoWriterSink
 
 
 class RecordVideoPipeline(IPipeline[RecordVideoConfig]):
@@ -28,14 +28,14 @@ class RecordVideoPipeline(IPipeline[RecordVideoConfig]):
     def configure(self, app_context: IAppContext, config: RecordVideoConfig):
         self._config = config
         if not self._widget_handle:
-            self._widget_handle = app_context.widget_service.get_visualizer_handle("my_video")
+            self._widget_handle = app_context.widget_service.get_visualizer_handle("Video Preview")
 
     def build(self, app_context: IAppContext, sources: List[IStream]) -> PipelineSubscription:
         assert len(sources) == 1
         source = sources[0]
 
         video_writer_sink = VideoWriterSink(Path(self._config.video_file))
-        visualizer_sink = VisualizerSink(app_context.widget_service, "my_video")
+        visualizer_sink = VisualizerSink(app_context.widget_service, "Video Preview")
 
         shared_source = Stream(source.descriptor, source.observable.pipe(ops.observe_on(self._main_scheduler), ops.share()))
         video_writer_stream = Stream(source.descriptor, shared_source.observable.pipe(ops.observe_on(self._writer_scheduler)))
@@ -44,7 +44,7 @@ class RecordVideoPipeline(IPipeline[RecordVideoConfig]):
         visualizer_sub = visualizer_sink.subscribe(shared_source)
 
         disposable = CompositeDisposable(video_writer_sub, visualizer_sub)
-        primary_done: Future = rx.zip(video_writer_sub.done, visualizer_sub.done).pipe(ops.take(1), ops.to_future(Future))
+        primary_done = rx.zip(video_writer_sub.done, visualizer_sub.done).pipe(ops.take(1))
         return PipelineSubscription(disposable, primary_done)
 
     def dispose(self):

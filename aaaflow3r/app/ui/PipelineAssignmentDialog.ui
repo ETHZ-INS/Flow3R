@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>GroupListDialog</class>
- <widget class="QDialog" name="GroupListDialog">
+ <class>PipelineAssignmentDialog</class>
+ <widget class="QDialog" name="PipelineAssignmentDialog">
   <property name="geometry">
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>423</width>
-    <height>471</height>
+    <width>400</width>
+    <height>313</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -16,8 +16,14 @@
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
     <widget class="QLabel" name="label">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
      <property name="text">
-      <string>### Groups</string>
+      <string>### Group Pipelines</string>
      </property>
      <property name="textFormat">
       <enum>Qt::MarkdownText</enum>
@@ -25,33 +31,17 @@
     </widget>
    </item>
    <item>
-    <widget class="QListView" name="lst_groups">
-     <property name="editTriggers">
-      <set>QAbstractItemView::NoEditTriggers</set>
-     </property>
-     <property name="defaultDropAction">
-      <enum>Qt::CopyAction</enum>
-     </property>
-     <property name="selectionBehavior">
-      <enum>QAbstractItemView::SelectRows</enum>
-     </property>
-    </widget>
+    <widget class="QTreeView" name="tree_inputs"/>
    </item>
    <item>
-    <widget class="QFrame" name="frm_camera_list_buttons">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
+    <widget class="QFrame" name="frame">
      <property name="frameShape">
       <enum>QFrame::NoFrame</enum>
      </property>
      <property name="frameShadow">
       <enum>QFrame::Raised</enum>
      </property>
-     <layout class="QGridLayout" name="gridLayout">
+     <layout class="QHBoxLayout" name="horizontalLayout">
       <property name="leftMargin">
        <number>0</number>
       </property>
@@ -64,31 +54,32 @@
       <property name="bottomMargin">
        <number>0</number>
       </property>
-      <item row="0" column="2">
-       <widget class="QPushButton" name="btn_remove">
+      <item>
+       <widget class="QToolButton" name="btn_add_pipeline">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="focusPolicy">
+         <enum>Qt::StrongFocus</enum>
+        </property>
         <property name="text">
-         <string>Remove Group</string>
+         <string>Add Pipeline</string>
+        </property>
+        <property name="popupMode">
+         <enum>QToolButton::MenuButtonPopup</enum>
+        </property>
+        <property name="arrowType">
+         <enum>Qt::NoArrow</enum>
         </property>
        </widget>
       </item>
-      <item row="0" column="0">
-       <widget class="QPushButton" name="btn_add">
+      <item>
+       <widget class="QPushButton" name="btn_remove_pipeline">
         <property name="text">
-         <string>Add Group</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="0">
-       <widget class="QPushButton" name="btn_edit">
-        <property name="text">
-         <string>Edit Group</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="2">
-       <widget class="QPushButton" name="btn_configure_pipelines">
-        <property name="text">
-         <string>Configure Pipelines</string>
+         <string>Remove Pipeline</string>
         </property>
        </widget>
       </item>
@@ -112,7 +103,7 @@
   <connection>
    <sender>buttonBox</sender>
    <signal>accepted()</signal>
-   <receiver>GroupListDialog</receiver>
+   <receiver>PipelineAssignmentDialog</receiver>
    <slot>accept()</slot>
    <hints>
     <hint type="sourcelabel">
@@ -128,7 +119,7 @@
   <connection>
    <sender>buttonBox</sender>
    <signal>rejected()</signal>
-   <receiver>GroupListDialog</receiver>
+   <receiver>PipelineAssignmentDialog</receiver>
    <slot>reject()</slot>
    <hints>
     <hint type="sourcelabel">

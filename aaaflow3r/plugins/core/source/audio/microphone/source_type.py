@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, Tuple
 
 from PySide6.QtWidgets import QWidget
 
@@ -15,8 +15,8 @@ class MicrophoneSourceType(ISourceType[MicrophoneSourceConfig, AudioFormat, Audi
         return "Microphone"
 
     @property
-    def category(self) -> str:
-        return "Audio"
+    def category(self) -> Tuple[str, ...]:
+        return "Audio", "Microphone"
 
     @property
     def visualizer_type(self) -> str:

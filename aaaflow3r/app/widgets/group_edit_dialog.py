@@ -6,7 +6,7 @@ from aaaflow3r.app.layout.group_edit_dialog import Ui_GroupEditDialog
 
 
 class GroupEditDialog(Ui_GroupEditDialog, QDialog):
-    def __init__(self, config: GroupConfig = None, parent=None):
+    def __init__(self, config: GroupConfig, parent=None):
         super().__init__(parent)
         self.setupUi(self)
 
