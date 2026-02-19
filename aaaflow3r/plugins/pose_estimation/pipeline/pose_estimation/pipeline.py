@@ -1,9 +1,6 @@
-from concurrent.futures import Future
 from pathlib import Path
 from typing import List, Optional
 
-from py3r.pose.yolo.model.staged_yolo_pose_model import StagedYoloPoseModel
-from py3r.pose.yolo.model.yolo_pose_model import YoloPoseModel
 from reactivex import operators as ops
 
 import reactivex as rx
@@ -27,27 +24,19 @@ from aaaflow3r.plugins.pose_estimation.node.pose_render_transform import PoseRen
 from aaaflow3r.plugins.pose_estimation.node.pose_results_writer import PoseResultsWriterSink
 from aaaflow3r.plugins.pose_estimation.node.video_pacer import VideoPacer
 from aaaflow3r.plugins.pose_estimation.pipeline.pose_estimation.config import PoseEstimationConfig
-from aaaflow3r.plugins.pose_estimation.util.pose_model_service import PoseModelService
-
+from aaaflow3r.plugins.pose_estimation.settings.pose_estimation_models.settings import PoseEstimationModelConfig
+from aaaflow3r.plugins.pose_estimation.util.pose_model_service import PoseModelService, PoseModelLease
 
 pose_model_service = PoseModelService()
 
 
-class MockPoseModelService:
-    def get_instance_types(self, pose_model_id: str):
-        return YoloPoseModel.load_instance_types(Path("C:/Users/Me/AppData/Local/ETH3RHub/models/bohaceklab/pose_estimation/mouse/mouse_top_main"))
-
-    def get_pose_model(self, pose_model_id: str):
-        model = YoloPoseModel.from_folder(
-            Path("C:/Users/Me/AppData/Local/ETH3RHub/models/bohaceklab/pose_estimation/mouse/mouse_top_main"))
-        staged_model = StagedYoloPoseModel(model, max_batch=16, input_channels=1)
-        return staged_model
-
-
 class PoseEstimationPipeline(IPipeline[PoseEstimationConfig]):
     def __init__(self):
-        self._widget_handle: Optional[IVisualizerHandle] = None
         self._config: Optional[PoseEstimationConfig] = None
+        self._widget_handle: Optional[IVisualizerHandle] = None
+
+        self._current_model_config: Optional[PoseEstimationModelConfig] = None
+        self._model_lease: Optional[PoseModelLease] = None
 
         self._main_scheduler = EventLoopScheduler()
         self._pose_estimation_scheduler = EventLoopScheduler()
@@ -55,9 +44,21 @@ class PoseEstimationPipeline(IPipeline[PoseEstimationConfig]):
 
     def configure(self, session_context: ISessionContext, config: PoseEstimationConfig):
         print("PoseEstimationPipeline.configure", config)
-        self._config = config
         if not self._widget_handle:
             self._widget_handle = session_context.widget_service.get_visualizer_handle("Pose Preview")
+
+        pose_models_settings = session_context.settings.get(("pose_estimation", "models"))
+        assert pose_models_settings is not None
+        pose_model_config = pose_models_settings.models[config.pose_model_id]
+
+        if not self._config or pose_model_config != self._current_model_config:
+            if self._model_lease:
+                self._model_lease.dispose()
+
+            self._model_lease = pose_model_service.get_model(pose_model_config)
+
+        self._config = config
+        self._current_model_config = pose_model_config
 
     def build(self, session_context: ISessionContext, sources: List[IStream]) -> PipelineSubscription:
         assert len(sources) == 1
@@ -76,10 +77,7 @@ class PoseEstimationPipeline(IPipeline[PoseEstimationConfig]):
 
         do_nothing_sink = DoNothingSink()
 
-        pose_models_settings = session_context.settings.get(("pose_estimation", "models"))
-        assert pose_models_settings is not None
-        pose_model_config = pose_models_settings.models[self._config.pose_model_id]
-        pose_estimation_transform = PoseEstimationTransform(pose_model_service, pose_model_config, batch_size=16)
+        pose_estimation_transform = PoseEstimationTransform(pose_model_service, self._current_model_config, batch_size=16)
         pose_render_transform = PoseRenderTransform()
         pose_preview_pacer = VideoPacer(buffer_size=150)
 
@@ -116,5 +114,10 @@ class PoseEstimationPipeline(IPipeline[PoseEstimationConfig]):
         return PipelineSubscription(disposable, primary_done, secondary_done)
 
     def dispose(self):
+        if self._model_lease:
+            self._model_lease.dispose()
+            self._model_lease = None
+
         if self._widget_handle:
             self._widget_handle.dispose()
+            self._widget_handle = None
