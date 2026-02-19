@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QApplication
 from aaaflow3r.app.api.plugins.plugins import PluginAPI
 from aaaflow3r.app.widgets.main_window import MainWindow
 from aaaflow3r.plugins.core.plugin import CorePlugin
+from aaaflow3r.plugins.grimace.plugin import GrimacePlugin
 from aaaflow3r.plugins.pose_estimation.plugin import PoseEstimationPlugin
 
 if __name__ == "__main__":
@@ -30,6 +31,9 @@ if __name__ == "__main__":
 
     pose_estimation_plugin = PoseEstimationPlugin()
     pose_estimation_plugin.initialize(api)
+
+    grimace_plugin = GrimacePlugin()
+    grimace_plugin.initialize(api)
 
     window = MainWindow(api)
     window.setWindowTitle("Flow3R")

@@ -5,12 +5,13 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, Optional, Iterator, List, Tuple, Any, Set
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, Slot
 import reactivex as rx
 from reactivex import Subject
 from reactivex.scheduler import EventLoopScheduler
 
-from aaaflow3r.app.api.app.app_context import AppContext
+from aaaflow3r.app.api.app.session_context import SessionContext
+from aaaflow3r.app.api.app.settings_view import SettingsView
 from aaaflow3r.app.config.app_config import AppConfig
 from aaaflow3r.app.config.group_config import GroupConfig
 from aaaflow3r.app.session_state import SessionStateBase, Finished, FinishingProcessing, FinishingRecording, Running, \
@@ -94,27 +95,32 @@ class Group:
 
 @dataclass(frozen=True)
 class ChangeSet:
+    settings_changed: Dict[Tuple[str, ...], Any]
+
     # groups
-    groups_added: List[GroupConfig]
-    groups_removed: List[str]
-    groups_updated: List[Tuple[GroupConfig, GroupConfig]]  # (old, new)
+    groups_added: Dict[str, GroupConfig]
+    groups_removed: Set[str]
+    groups_updated: Dict[str, Tuple[GroupConfig, GroupConfig]]  # (old, new)
 
     # sources
-    sources_added: List[SourceConfig]
-    sources_removed: List[str]
-    sources_updated: List[Tuple[SourceConfig, SourceConfig]]
+    sources_added: Dict[str, SourceConfig]
+    sources_removed: Set[str]
+    sources_updated: Dict[str, Tuple[SourceConfig, SourceConfig]]
 
     # pipelines
-    pipelines_added: List[PipelineConfig]
-    pipelines_removed: List[str]
-    pipelines_updated: List[Tuple[PipelineConfig, PipelineConfig]]
+    pipelines_added: Dict[str, PipelineConfig]
+    pipelines_removed: Set[str]
+    pipelines_updated: Dict[str, Tuple[PipelineConfig, PipelineConfig]]
 
     # derived / important semantic changes
     source_name_changed: List[Tuple[str, str]]  # source_id, new_name
     source_group_changed: List[Tuple[str, Optional[str], Optional[str]]]  # source_id, old_gid, new_gid
 
     group_name_changed: List[Tuple[str, str]]
-    group_pipeline_changed: List[str]  # group_id
+
+    group_pipeline_added: Set[Tuple[str, str]]
+    group_pipeline_removed: Set[Tuple[str, str]]
+    group_pipeline_updated: Set[Tuple[str, str]]
 
     group_controls_changed: List[Tuple[str, str, Optional[str]]]  # group_id
 
@@ -127,13 +133,13 @@ def diff_by_id(old_map: Dict[str, Any], new_map: Dict[str, Any]):
     removed_ids = old_ids - new_ids
     kept_ids = old_ids & new_ids
 
-    added = [new_map[_id] for _id in added_ids]
-    removed = list(removed_ids)
-    updated = [
-        (old_map[_id], new_map[_id])
+    added = {_id: new_map[_id] for _id in added_ids}
+    removed = set(removed_ids)
+    updated = {
+        _id: (old_map[_id], new_map[_id])
         for _id in kept_ids
         if old_map[_id] != new_map[_id]
-    ]
+    }
     return added, removed, updated
 
 
@@ -147,30 +153,51 @@ def determine_location(sources: List[SourceConfig]) -> Tuple[str, Optional[str]]
 
 
 def diff_config(old: AppConfig, new: AppConfig) -> ChangeSet:
+    settings_changed = {k: v for k, v in new.settings.items() if old.settings.get(k) != v}
+
     groups_added, groups_removed, groups_updated = diff_by_id(old.groups, new.groups)
     sources_added, sources_removed, sources_updated = diff_by_id(old.sources, new.sources)
     pipelines_added, pipelines_removed, pipelines_updated = diff_by_id(old.pipelines, new.pipelines)
 
+    for pipeline_config in new.pipelines.values():
+        settings_dependencies = pipeline_config.active_config.settings_dependencies
+        if any(dep in settings_changed for dep in settings_dependencies):
+            pipelines_updated[pipeline_config.id] = (old.pipelines[pipeline_config.id], pipeline_config)
+
     # semantic changes you care about (these drive runtime operations)
     source_name_changed: List[Tuple[str, str]] = []
-    for old_sc, new_sc in sources_updated:
+    for old_sc, new_sc in sources_updated.values():
         if old_sc.name != new_sc.name:
             source_name_changed.append((new_sc.id, new_sc.name))
 
     source_group_changed: List[Tuple[str, Optional[str], Optional[str]]] = []
-    for old_sc, new_sc in sources_updated:
+    for old_sc, new_sc in sources_updated.values():
         if old_sc.group_id != new_sc.group_id:
             source_group_changed.append((new_sc.id, old_sc.group_id, new_sc.group_id))
 
     group_name_changed: List[Tuple[str, str]] = []
-    for old_gc, new_gc in groups_updated:
+    for old_gc, new_gc in groups_updated.values():
         if old_gc.name != new_gc.name:
             group_name_changed.append((new_gc.id, new_gc.name))
 
-    group_pipeline_changed: List[str] = []
-    for old_gc, new_gc in groups_updated:
-        if old_gc.pipeline_ids != new_gc.pipeline_ids or old_gc.source_mapping != new_gc.source_mapping:
-            group_pipeline_changed.append(new_gc.id)
+    group_pipeline_added: Set[Tuple[str, str]] = set()
+    group_pipeline_removed: Set[Tuple[str, str]] = set()
+    group_pipeline_updated: Set[Tuple[str, str]] = set()
+    for old_gc, new_gc in groups_updated.values():
+        for pipeline_id in new_gc.pipeline_ids:
+            if pipeline_id not in old_gc.pipeline_ids:
+                group_pipeline_added.add((new_gc.id, pipeline_id))
+        for pipeline_id in old_gc.pipeline_ids:
+            if pipeline_id not in new_gc.pipeline_ids:
+                group_pipeline_removed.add((new_gc.id, pipeline_id))
+
+    for new_gc in new.groups.values():
+        old_gc = old.groups.get(new_gc.id)
+        if old_gc is None:
+            continue
+        for pipeline_id in new_gc.pipeline_ids:
+            if pipeline_id in old_gc.pipeline_ids and pipeline_id in pipelines_updated:
+                group_pipeline_updated.add((new_gc.id, pipeline_id))
 
     group_controls_changed: List[Tuple[str, str, Optional[str]]] = []
     for gid, new_gc in new.groups.items():
@@ -180,11 +207,13 @@ def diff_config(old: AppConfig, new: AppConfig) -> ChangeSet:
         old_location, old_source_id = determine_location(old_sources)
         new_location, new_source_id = determine_location(new_sources)
 
-        if gid in [g.id for g in groups_added] or old_location != new_location or old_source_id != new_source_id:
+        if gid in [g.id for g in groups_added.values()] or old_location != new_location or old_source_id != new_source_id:
             group_controls_changed.append((gid, new_location, new_source_id))
 
 
     return ChangeSet(
+        settings_changed=settings_changed,
+
         groups_added=groups_added,
         groups_removed=groups_removed,
         groups_updated=groups_updated,
@@ -200,7 +229,10 @@ def diff_config(old: AppConfig, new: AppConfig) -> ChangeSet:
         source_name_changed=source_name_changed,
         source_group_changed=source_group_changed,
         group_name_changed=group_name_changed,
-        group_pipeline_changed=group_pipeline_changed,
+
+        group_pipeline_added=group_pipeline_added,
+        group_pipeline_removed=group_pipeline_removed,
+        group_pipeline_updated=group_pipeline_updated,
 
         group_controls_changed=group_controls_changed
     )
@@ -208,6 +240,9 @@ def diff_config(old: AppConfig, new: AppConfig) -> ChangeSet:
 
 class Controller(QObject):
     log_message = Signal(str)
+
+    settings_snapshot = Signal(object)  # settings state
+    settings_changed = Signal(object)  # subset of state that changed
 
     config_snapshot = Signal(AppConfig)
     config_changed = Signal(AppConfig)  # AppConfig
@@ -301,14 +336,31 @@ class Controller(QObject):
         self.config_changed.emit(deepcopy(self._config))
         self._emit_entity_signals(changes)
 
-    def config_snapshot_requested(self):
+    @Slot()
+    def send_settings_snapshot(self) -> None:
+        self.settings_snapshot.emit(deepcopy(self._config.settings))
+
+    @Slot()
+    def send_config_snapshot(self):
         self.config_snapshot.emit(deepcopy(self.config))
 
+    @Slot(str)
     def send_source_snapshot(self, source_id: str):
-        self.source_snapshot.emit(self.config.sources[source_id])
+        self.source_snapshot.emit(deepcopy(self.config.sources[source_id]))
 
+    @Slot(str)
     def send_group_snapshot(self, group_id: str):
-        self.group_snapshot.emit(self.config.groups[group_id])
+        self.group_snapshot.emit(deepcopy(self.config.groups[group_id]))
+
+    @Slot(dict)
+    def set_settings(self, patch: Dict[Tuple[str, ...], Any]) -> None:
+        assert all(isinstance(k, tuple) for k in patch.keys())
+
+        # apply changes
+        with self.transaction() as config:
+            print(f"set_settings: {patch}")
+            for key_path, value in patch.items():
+                config.settings[key_path] = deepcopy(value)
 
     def send_active_session_snapshot(self, group_id: str):
         group = self.groups.get(group_id)
@@ -430,70 +482,6 @@ class Controller(QObject):
             group_config.pipeline_ids = pipeline_ids
             group_config.source_mapping = source_mapping or {}
 
-#    def start_recording(self, group_id: str, session_id: str):
-#        group_config = self.config.groups[group_id]
-#        assert group_config.pipeline_id is not None
-#
-#        pipeline_config = self.config.pipelines[group_config.pipeline_id]
-#
-#        group = self.groups.get(group_id)
-#        assert group is not None, f"Group {group_id} not found"
-#
-#        assert group.pipeline is not None, f"Pipeline not set up for group {group_id}"
-#
-#        session = group.sessions.get(session_id)
-#        assert session is not None, f"Session {session_id} not found for group {group_id}"
-#
-#        if session.recording:
-#            return
-#
-#        from reactivex import operators as ops
-#
-#        start = Subject()
-#        stop = Subject()
-#        session.recording = Recording(start, stop)
-#
-#        source_configs = [sc for sc in self.config.sources.values() if sc.group_id == group_id]
-#        sources = [self.sources[sc.id] for sc in source_configs]
-#        source_descriptors = [s.stream.descriptor for s in sources]
-#        source_observables = [s.stream.observable.pipe(ops.publish()) for s in sources]
-#        source_streams = [Stream(desc, obs.pipe(ops.skip_until(start), ops.take_until(session.recording.stop))) for desc, obs in zip(source_descriptors, source_observables)]
-#
-#        start_time = datetime.now()
-#
-#        try:
-#            session.recording.start_time = start_time
-#            placeholder_provider = session.get_placeholder_provider()
-#            app_context = AppContext(SessionWidgetServiceWrapper(self.widget_service, group_id, session_id))
-#            group.pipeline.configure(app_context, pipeline_config.active_config.resolve(placeholder_provider))
-#            pipeline_sub = group.pipeline.build(app_context, source_streams)
-#            session.recording.pipeline_sub = pipeline_sub
-#        except:
-#            print(self.config)
-#            raise
-#
-#        def _primary_done(fut: Future):
-#            exc = fut.exception()
-#            self.primary_finished.emit(group_id, session_id, exc)
-#
-#        def _secondary_done(fut: Future):
-#            exc = fut.exception()
-#            self.secondary_finished.emit(group_id, session_id, exc)
-#
-#        def _progress_updated(progress: Tuple[int, int]):
-#            self.progress_updated.emit(group_id, session_id, progress)
-#
-#        pipeline_sub.primary_done.add_done_callback(_primary_done)
-#        pipeline_sub.secondary_done.add_done_callback(_secondary_done)
-#        if pipeline_sub.progress:
-#            pipeline_sub.progress.subscribe(_progress_updated)
-#
-#        for obs in source_observables:
-#            obs.connect()
-#
-#        session.recording.start.on_next(None)
-#        self._update_session_state(group_id, session_id)
-
     def start_recording(self, group_id: str, session_id: str):
         group_config = self.config.groups[group_id]
         source_configs = [sc for sc in self.config.sources.values() if sc.group_id == group_id]
@@ -551,13 +539,16 @@ class Controller(QObject):
         try:
             session.recording.start_time = start_time
             placeholder_provider = session.get_placeholder_provider()
-            app_context = AppContext(SessionWidgetServiceWrapper(self.widget_service, group_id, session_id))
+
+            widget_service = SessionWidgetServiceWrapper(self.widget_service, group_id, session_id)
+            settings_view = SettingsView(self.config.settings)
+            session_context = SessionContext(widget_service, settings_view)
 
             pipeline_subs = []
             for pipeline_config in pipeline_configs:
                 pipeline = group.pipelines[pipeline_config.id]
-                pipeline.configure(app_context, pipeline_config.active_config.resolve(placeholder_provider))
-                sub = pipeline.build(app_context, list(source_streams[pipeline_config.id].values()))
+                pipeline.configure(session_context, pipeline_config.active_config.resolve(placeholder_provider))
+                sub = pipeline.build(session_context, list(source_streams[pipeline_config.id].values()))
                 pipeline_subs.append(sub)
 
             session.recording.pipeline_sub = CompositePipelineSubscription(pipeline_subs)
@@ -682,7 +673,7 @@ class Controller(QObject):
 
     def _apply_changes(self, changes: ChangeSet, old: AppConfig, new: AppConfig):
         sources_requiring_rebuild = [
-            new_sc for old_sc, new_sc in changes.sources_updated
+            new_sc for old_sc, new_sc in changes.sources_updated.values()
             if self._source_requires_rebuild(old_sc, new_sc)
         ]
 
@@ -699,36 +690,26 @@ class Controller(QObject):
             self._teardown_group(gid)
 
         # --- 3) create added groups/sources ---
-        for gc in changes.groups_added:
+        for gc in changes.groups_added.values():
             self._setup_group(new.groups[gc.id])
 
-        for sc in changes.sources_added:
+        for sc in changes.sources_added.values():
             self._setup_source(new.sources[sc.id])
 
         # --- 4) apply updates ---
-        # pipelines: if a pipeline config changed, you might need to refresh all groups using it
-        # You can precompute impacted groups.
-#        impacted_groups = {}
-#
-#        for gc in changes.groups_added:
-#            impacted_groups[gc.id] = new.pipelines.get(gc.pipeline_id)
-#
-#        for gid, old_pid, new_pid in changes.group_pipeline_changed:
-#            pipeline_config = new.pipelines[new_pid] if new_pid is not None else None
-#            impacted_groups[gid] = pipeline_config
-#
-#        # If pipeline configs changed, re-setup groups that reference them.
-#        changed_pipeline_ids = {new_pc.id for (_, new_pc) in changes.pipelines_updated}
-#        removed_pipeline_ids = set(changes.pipelines_removed)
-#        if changed_pipeline_ids or removed_pipeline_ids:
-#            for gid, gc in new.groups.items():
-#                if gc.pipeline_id in changed_pipeline_ids or gc.pipeline_id in removed_pipeline_ids:
-#                    impacted_groups[gid] = new.pipelines.get(gc.pipeline_id)
+        for group_id in changes.groups_added:
+            for pipeline_id in new.groups[group_id].pipeline_ids:
+                pipeline_config = new.pipelines[pipeline_id]
+                self._setup_pipeline(group_id, pipeline_config)
 
-        for gid in changes.group_pipeline_changed:
-            group_config = new.groups[gid]
-            pipeline_configs = [new.pipelines[pid] for pid in group_config.pipeline_ids]
-            self._setup_pipelines(gid, pipeline_configs)  # your existing method, but it should be idempotent
+        print("group_pipeline_updated", changes.group_pipeline_updated)
+
+        for group_id, pipeline_id in changes.group_pipeline_added | changes.group_pipeline_updated:
+            pipeline_config = new.pipelines[pipeline_id]
+            self._setup_pipeline(group_id, pipeline_config)
+
+        for group_id, pipeline_id in changes.group_pipeline_removed:
+            self._teardown_pipeline(group_id, pipeline_id)
 
         # source edits may require teardown/setup; you can choose “patch” vs “rebuild”
         for sc in sources_requiring_rebuild:
@@ -738,7 +719,7 @@ class Controller(QObject):
         for sc in sources_requiring_rebuild:
             self._start_preview(sc)
 
-        for sc in changes.sources_added:
+        for sc in changes.sources_added.values():
             self._start_preview(sc)
 
         for gid, location, source_id in changes.group_controls_changed:
@@ -804,22 +785,32 @@ class Controller(QObject):
             source_widget_handle.unsubscribe()
             source_widget_handle.dispose()
 
-    def _setup_pipelines(self, group_id: str, pipeline_configs: List[PipelineConfig]):
+    def _setup_pipeline(self, group_id: str, pipeline_config: PipelineConfig):
         assert group_id in self.groups
 
         group = self.groups[group_id]
 
-        for pipeline_id, pipeline in group.pipelines.items():
-            pipeline.dispose()
-        group.pipelines = {}
+        pipeline = group.pipelines.get(pipeline_config.id)
+        if not pipeline:
+            pipeline_type = self.pipeline_types.get(pipeline_config.pipeline_type)
+            pipeline_factory = pipeline_type.get_pipeline_factory()
+            pipeline = pipeline_factory()
+            group.pipelines[pipeline_config.id] = pipeline
 
         placeholder_provider = group.active_session.get_placeholder_provider()
-        app_context = AppContext(SessionWidgetServiceWrapper(self.widget_service, group_id, "preview"))
-        for pipeline_config in pipeline_configs or []:
-            pipeline_type = self.pipeline_types.get(pipeline_config.pipeline_type)
-            pipeline = pipeline_type.get_pipeline_factory()()
-            pipeline.configure(app_context, pipeline_config.active_config.resolve(placeholder_provider))
-            group.pipelines[pipeline_config.id] = pipeline
+
+        widget_service = SessionWidgetServiceWrapper(self.widget_service, group_id, "preview")
+        settings_view = SettingsView(self.config.settings)
+        session_context = SessionContext(widget_service, settings_view)
+
+        pipeline.configure(session_context, pipeline_config.active_config.resolve(placeholder_provider))
+        group.pipelines[pipeline_config.id] = pipeline
+
+    def _teardown_pipeline(self, group_id: str, pipeline_id: str):
+        group = self.groups[group_id]
+        pipeline = group.pipelines.pop(pipeline_id, None)
+        if pipeline:
+            pipeline.dispose()
 
     def _ensure_active_session(self, group_id: str):
         group = self.groups.get(group_id)
@@ -865,23 +856,27 @@ class Controller(QObject):
         self.session_state_changed.emit(group_id, session_id, state)
 
     def _emit_entity_signals(self, changes: ChangeSet):
-        for gc in changes.groups_added:
+        if changes.settings_changed:
+            print("Sending settings changed signal")
+            self.settings_changed.emit(deepcopy(changes.settings_changed))
+
+        for gc in changes.groups_added.values():
             self.group_added.emit(deepcopy(gc))
-        for old_gc, new_gc in changes.groups_updated:
+        for old_gc, new_gc in changes.groups_updated.values():
             self.group_changed.emit(deepcopy(new_gc))
         for gid in changes.groups_removed:
             self.group_removed.emit(gid)
 
-        for sc in changes.sources_added:
+        for sc in changes.sources_added.values():
             self.source_added.emit(deepcopy(sc))
-        for old_sc, new_sc in changes.sources_updated:
+        for old_sc, new_sc in changes.sources_updated.values():
             self.source_changed.emit(deepcopy(new_sc))
         for sid in changes.sources_removed:
             self.source_removed.emit(sid)
 
-        for pc in changes.pipelines_added:
+        for pc in changes.pipelines_added.values():
             self.pipeline_added.emit(deepcopy(pc))
-        for old_pc, new_pc in changes.pipelines_updated:
+        for old_pc, new_pc in changes.pipelines_updated.values():
             self.pipeline_changed.emit(deepcopy(new_pc))
         for pid in changes.pipelines_removed:
             self.pipeline_removed.emit(pid)

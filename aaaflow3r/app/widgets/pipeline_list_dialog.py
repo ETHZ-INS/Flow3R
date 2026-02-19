@@ -7,9 +7,10 @@ from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QDialog, QStyledItemDelegate, QStyle
 
 from aaaflow3r.app.config.app_config import AppConfig
-from aaaflow3r.app.controller import Controller
+from aaaflow3r.app.controller.controller import Controller
 from aaaflow3r.app.layout.pipeline_list_dialog import Ui_PipelineListDialog
 from aaaflow3r.app.widgets.pipeline_config_dialog import PipelineConfigDialog
+from aaaflow3r.core.api.app.app_context import IAppContext
 from aaaflow3r.core.pipeline.pipeline_config import PipelineConfig
 
 
@@ -126,10 +127,11 @@ class PipelineListDialog(Ui_PipelineListDialog, QDialog):
     pipeline_edited = Signal(PipelineConfig)
     pipeline_removed = Signal(str)
 
-    def __init__(self, controller: Controller, pipeline_types, parent=None):
+    def __init__(self, app_context: IAppContext, controller: Controller, pipeline_types, parent=None):
         super().__init__(parent)
         self.setupUi(self)
 
+        self.app_context = app_context
         self.controller = controller
         self.pipeline_types = pipeline_types
 
@@ -141,7 +143,7 @@ class PipelineListDialog(Ui_PipelineListDialog, QDialog):
 
         self.lst_pipelines.selectionModel().selectionChanged.connect(self._selected_pipeline_changed)
 
-        self.config_snapshot_requested.connect(self.controller.config_snapshot_requested)
+        self.config_snapshot_requested.connect(self.controller.send_config_snapshot)
 
         self.controller.config_snapshot.connect(self.pipeline_list_model._config_snapshot)
 
@@ -182,7 +184,7 @@ class PipelineListDialog(Ui_PipelineListDialog, QDialog):
 
     def add_pipeline(self):
         pipeline_config = PipelineConfig()
-        dialog = PipelineConfigDialog(self.pipeline_types, pipeline_config)
+        dialog = PipelineConfigDialog(self.app_context, self.pipeline_types, pipeline_config)
         dialog.setWindowTitle("Add Pipeline")
         res = dialog.exec()
 
@@ -195,7 +197,7 @@ class PipelineListDialog(Ui_PipelineListDialog, QDialog):
             return
 
         pipeline = deepcopy(index.data(PipelineListModel.PipelineRole))
-        dialog = PipelineConfigDialog(self.pipeline_types, pipeline)
+        dialog = PipelineConfigDialog(self.app_context, self.pipeline_types, pipeline)
         dialog.setWindowTitle("Edit Pipeline")
         res = dialog.exec()
 

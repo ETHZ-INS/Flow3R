@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QDialog, QStyledItemDelegate, QStyle, QMenu
 
 from aaaflow3r.app.config.app_config import AppConfig
 from aaaflow3r.app.config.group_config import GroupConfig
-from aaaflow3r.app.controller import Controller
+from aaaflow3r.app.controller.controller import Controller
 from aaaflow3r.app.layout.group_list_dialog import Ui_GroupListDialog
 from aaaflow3r.app.widgets.group_edit_dialog import GroupEditDialog
 from aaaflow3r.app.widgets.pipeline_assignment_dialog import PipelineAssignmentDialog
@@ -178,7 +178,7 @@ class GroupListDialog(Ui_GroupListDialog, QDialog):
         self.lst_groups.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.lst_groups.customContextMenuRequested.connect(self._show_context_menu)
 
-        self.config_snapshot_requested.connect(self.controller.config_snapshot_requested)
+        self.config_snapshot_requested.connect(self.controller.send_config_snapshot)
 
         self.controller.config_snapshot.connect(self.group_list_model._config_snapshot)
         self.controller.config_snapshot.connect(self.group_delegate.set_config)

@@ -1,11 +1,17 @@
-from aaaflow3r.core.api.app.widget_service import IWidgetService
-from flow3r.core.app.app_context import IAppContext
+from aaaflow3r.core.api.app.app_context import IAppContext
+from aaaflow3r.core.api.app.navigator_service import INavigatorService
+from aaaflow3r.core.api.app.settings_service import ISettingsService
 
 
 class AppContext(IAppContext):
-    def __init__(self, widget_service: IWidgetService):
-        self._widget_service = widget_service
+    def __init__(self, navigator_service: INavigatorService, settings_service: ISettingsService):
+        self._navigator_service = navigator_service
+        self._settings_service = settings_service
 
     @property
-    def widget_service(self) -> IWidgetService:
-        return self._widget_service
+    def navigator_service(self) -> INavigatorService:
+        return self._navigator_service
+
+    @property
+    def settings_service(self) -> ISettingsService:
+        return self._settings_service

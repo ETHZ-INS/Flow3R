@@ -1,5 +1,5 @@
 from dataclasses import dataclass, replace
-from typing import List
+from typing import List, Set, Tuple
 
 from aaaflow3r.core.pipeline.abc.pipeline_config import PipelineConfigBase
 from aaaflow3r.core.placeholder.abc.placeholder_provider import IPlaceholderProvider
@@ -10,7 +10,11 @@ from aaaflow3r.core.placeholder.placeholder_formatter import PlaceholderFormatte
 class PoseEstimationConfig(PipelineConfigBase):
     video_file: str = "my_video.mp4"
     pose_results_file: str = "pose_results.csv"
-    pose_model_folder: str = ""
+    pose_model_id: str = None
+
+    @property
+    def settings_dependencies(self) -> Set[Tuple[str, ...]]:
+        return {("pose_estimation", "models")}
 
     def resolve(self, placeholder_provider: IPlaceholderProvider) -> "PoseEstimationConfig":
         video_file = PlaceholderFormatter(self.video_file).format(**placeholder_provider.get_placeholder_values())

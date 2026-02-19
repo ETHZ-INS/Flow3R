@@ -1,16 +1,19 @@
 from copy import deepcopy
 from datetime import datetime
+from typing import Tuple
 
-from PySide6 import QtWidgets, QtCore
 from PySide6.QtCore import QThread, Signal, Slot
 from PySide6.QtGui import QColor, Qt, QTextCursor, QTextCharFormat
-from PySide6.QtWidgets import QMainWindow, QDialog
+from PySide6.QtWidgets import QMainWindow, QDialog, QWidget, QVBoxLayout
 
+from aaaflow3r.app.api.app.app_context import AppContext
+from aaaflow3r.app.api.app.settings_service import SettingsService
 from aaaflow3r.app.api.plugins.plugins import PluginAPI
 from aaaflow3r.app.config.app_config import AppConfig
 from aaaflow3r.app.config.group_config import GroupConfig
 from aaaflow3r.app.layout.main_window import Ui_WelfareRecorder
-from aaaflow3r.app.controller import Controller
+from aaaflow3r.app.controller.controller import Controller
+from aaaflow3r.app.api.app.navigator_service import NavigatorService
 from aaaflow3r.app.widget_controller import WidgetController
 from aaaflow3r.app.widget_service import WidgetService
 from aaaflow3r.app.widgets.group_edit_dialog import GroupEditDialog
@@ -31,6 +34,8 @@ LOG_COLORS = {
 
 
 class MainWindow(Ui_WelfareRecorder, QMainWindow):
+    settings_changed = Signal(object)  # settings object
+
     source_added = Signal(object)  # source config
     source_edited = Signal(object)  # source config
 
@@ -49,8 +54,8 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         self.setupUi(self)
         self.setStyleSheet("QPushButton:disabled {color: gray}")
 
-        inner = QtWidgets.QWidget()
-        vbox = QtWidgets.QVBoxLayout(inner)
+        inner = QWidget()
+        vbox = QVBoxLayout(inner)
         vbox.setContentsMargins(0, 0, 0, 0)
         vbox.setSpacing(2)
 
@@ -71,6 +76,10 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         self.txt_log.document().setMaximumBlockCount(200)
 
         self.plugin_api = plugin_api
+        self._build_settings_menus()
+
+        settings_menus = {menu.path: menu for menu in self.plugin_api.settings_menus.get_settings_menus().values()}
+        self.navigator_service = NavigatorService(settings_menus)
 
         self.widget_controller = WidgetController(self.dock_window, self.frm_recordings)
         self.widget_service = WidgetService()
@@ -94,6 +103,11 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         self.widget_controller._main_window = self
         self.widget_controller.set_controller(self.controller)
 
+        self.settings_service = SettingsService(self.controller)
+
+        self.app_context = AppContext(self.navigator_service, self.settings_service)
+        self.navigator_service.set_app_context(self.app_context)
+
         self.worker_thread = QThread()
         self.controller.moveToThread(self.worker_thread)
         self.worker_thread.setObjectName("SourceControllerThread")
@@ -106,6 +120,8 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         self.action_add_source.triggered.connect(self._add_source)
         self.action_add_group.triggered.connect(self._add_group)
         self.action_add_pipeline.triggered.connect(self._add_pipeline)
+
+        self.settings_changed.connect(self.controller.set_settings)
 
         self.source_added.connect(self.controller.add_source)
         self.source_edited.connect(self.controller.edit_source)
@@ -126,6 +142,23 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
 
         self.add_log_entry("Application started", "INFO")
 
+    def _build_settings_menus(self):
+        top_level_menu = self.menuBar().addMenu("Settings")
+
+        menus = {}
+        def _get_menu(path: Tuple[str, ...]):
+            if path in menus:
+                return menus[path]
+            else:
+                if len(path) == 0:
+                    return top_level_menu
+                return _get_menu(path[:-1]).addMenu(path[-1])
+
+        for settings_menu in self.plugin_api.settings_menus.get_settings_menus().values():
+            parent_menu = _get_menu(settings_menu.path[:-1])
+            action = parent_menu.addAction(settings_menu.path[-1])
+            action.triggered.connect(lambda _, path=settings_menu.path: self._open_settings_menu(path))
+
     @Slot(str, str)
     def add_log_entry(self, message: str, level: str = "INFO"):
         edit = self.txt_log
@@ -135,7 +168,6 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         cursor = edit.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
 
-        # new line BEFORE the entry, not after the previous one
         if not edit.document().isEmpty():
             cursor.insertBlock()
 
@@ -150,6 +182,9 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         # snap to bottom only if user was already at bottom
         if stick:
             sb.setValue(sb.maximum())
+
+    def _open_settings_menu(self, path: Tuple[str, ...]):
+        self.navigator_service.open(path)
 
     def _list_sources(self):
         source_types = list(self.plugin_api.source_types.get_source_types().values())
@@ -193,42 +228,21 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         if res == QDialog.DialogCode.Accepted:
             self.group_added.emit(group_config)
 
-    def _edit_group(self, group_id: str):
-        group_config = self._config.groups.get(group_id)
-        assert group_config is not None
-
-        dialog = GroupEditDialog(group_config)
-        dialog.setWindowTitle("Edit Group")
-        res = dialog.exec()
-
-        if res == QDialog.DialogCode.Accepted:
-            self.group_edited.emit(group_config)
-
     def _list_pipelines(self):
         pipeline_types = list(self.plugin_api.pipeline_types.get_pipeline_types().values())
-        pipeline_list_dialog = PipelineListDialog(self.controller, pipeline_types)
+        pipeline_list_dialog = PipelineListDialog(self.app_context, self.controller, pipeline_types)
         pipeline_list_dialog.setWindowTitle("Pipelines")
         pipeline_list_dialog.exec()
 
     def _add_pipeline(self):
         pipeline_config = PipelineConfig()
         pipeline_types = list(self.plugin_api.pipeline_types.get_pipeline_types().values())
-        dialog = PipelineConfigDialog(pipeline_types, pipeline_config, self)
+        dialog = PipelineConfigDialog(self.app_context, pipeline_types, pipeline_config, self)
         dialog.setWindowTitle("Add pipeline")
         res = dialog.exec()
 
         if res == QDialog.DialogCode.Accepted:
             self.pipeline_added.emit(pipeline_config)
-
-    def _edit_pipeline(self):
-        pipeline_config = self._config.pipeline
-        pipeline_types = list(self.plugin_api.pipeline_types.get_pipeline_types().values())
-        dialog = PipelineConfigDialog(pipeline_types, pipeline_config, self)
-        dialog.setWindowTitle("Edit pipeline")
-        res = dialog.exec()
-
-        if res == QDialog.DialogCode.Accepted:
-            self.pipeline_edited.emit(pipeline_config)
 
     def _config_changed(self, config):
         self._config = config

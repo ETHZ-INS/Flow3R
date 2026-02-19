@@ -8,7 +8,7 @@ from reactivex import operators as ops
 from reactivex.disposable import CompositeDisposable
 from reactivex.scheduler import EventLoopScheduler
 
-from aaaflow3r.core.api.app.app_context import IAppContext
+from aaaflow3r.core.api.app.session_context import ISessionContext
 from aaaflow3r.core.pipeline.abc.pipeline import IPipeline, PipelineSubscription
 from aaaflow3r.core.streaming.abc.stream import IStream
 from aaaflow3r.core.streaming.stream import Stream
@@ -28,12 +28,12 @@ class RecordVideoWithAudioPipeline(IPipeline[RecordVideoWithAudioConfig]):
         self._main_scheduler = EventLoopScheduler()
         self._writer_scheduler = EventLoopScheduler()
 
-    def configure(self, app_context: IAppContext, config: RecordVideoWithAudioConfig):
+    def configure(self, session_context: ISessionContext, config: RecordVideoWithAudioConfig):
         self._config = config
         if not self._widget_handle:
-            self._widget_handle = app_context.widget_service.get_visualizer_handle("Video Preview")
+            self._widget_handle = session_context.widget_service.get_visualizer_handle("Video Preview")
 
-    def build(self, app_context: IAppContext, sources: List[IStream]) -> PipelineSubscription:
+    def build(self, session_context: ISessionContext, sources: List[IStream]) -> PipelineSubscription:
         assert len(sources) == 2
         video_source = sources[0]
         audio_source = sources[1]
@@ -46,7 +46,7 @@ class RecordVideoWithAudioPipeline(IPipeline[RecordVideoWithAudioConfig]):
         audio_writer_transform = AudioWriterTransform(temp_audio_file)
         video_audio_muxer_sink = VideoAudioMuxerSink(Path(self._config.video_file))
 
-        visualizer_sink = VisualizerSink(app_context.widget_service, "Video Preview")
+        visualizer_sink = VisualizerSink(session_context.widget_service, "Video Preview")
 
         shared_video_source = Stream(video_source.descriptor, video_source.observable.pipe(ops.observe_on(self._main_scheduler), ops.share()))
 

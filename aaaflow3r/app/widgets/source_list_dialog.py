@@ -7,7 +7,7 @@ from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QDialog, QStyledItemDelegate, QStyle, QMenu
 
 from aaaflow3r.app.config.app_config import AppConfig
-from aaaflow3r.app.controller import Controller
+from aaaflow3r.app.controller.controller import Controller
 from aaaflow3r.app.layout.source_list_dialog import Ui_SourceListDialog
 from aaaflow3r.app.widgets.source_config_dialog import SourceConfigDialog
 
@@ -179,7 +179,7 @@ class SourceListDialog(Ui_SourceListDialog, QDialog):
         self.lst_sources.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.lst_sources.customContextMenuRequested.connect(self._show_context_menu)
 
-        self.config_snapshot_requested.connect(self.controller.config_snapshot_requested)
+        self.config_snapshot_requested.connect(self.controller.send_config_snapshot)
 
         self.controller.config_snapshot.connect(self.source_list_model._config_snapshot)
         self.controller.config_snapshot.connect(self.source_delegate.set_config)

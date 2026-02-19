@@ -10,7 +10,7 @@ import reactivex as rx
 from reactivex.disposable import CompositeDisposable
 from reactivex.scheduler import EventLoopScheduler
 
-from aaaflow3r.core.api.app.app_context import IAppContext
+from aaaflow3r.core.api.app.session_context import ISessionContext
 from aaaflow3r.core.pipeline.abc.pipeline import IPipeline, PipelineSubscription
 from aaaflow3r.core.streaming.abc.stream import IStream
 from aaaflow3r.core.streaming.stream import Stream
@@ -27,6 +27,10 @@ from aaaflow3r.plugins.pose_estimation.node.pose_render_transform import PoseRen
 from aaaflow3r.plugins.pose_estimation.node.pose_results_writer import PoseResultsWriterSink
 from aaaflow3r.plugins.pose_estimation.node.video_pacer import VideoPacer
 from aaaflow3r.plugins.pose_estimation.pipeline.pose_estimation.config import PoseEstimationConfig
+from aaaflow3r.plugins.pose_estimation.util.pose_model_service import PoseModelService
+
+
+pose_model_service = PoseModelService()
 
 
 class MockPoseModelService:
@@ -49,12 +53,13 @@ class PoseEstimationPipeline(IPipeline[PoseEstimationConfig]):
         self._pose_estimation_scheduler = EventLoopScheduler()
         self._writer_scheduler = EventLoopScheduler()
 
-    def configure(self, app_context: IAppContext, config: PoseEstimationConfig):
+    def configure(self, session_context: ISessionContext, config: PoseEstimationConfig):
+        print("PoseEstimationPipeline.configure", config)
         self._config = config
         if not self._widget_handle:
-            self._widget_handle = app_context.widget_service.get_visualizer_handle("Pose Preview")
+            self._widget_handle = session_context.widget_service.get_visualizer_handle("Pose Preview")
 
-    def build(self, app_context: IAppContext, sources: List[IStream]) -> PipelineSubscription:
+    def build(self, session_context: ISessionContext, sources: List[IStream]) -> PipelineSubscription:
         assert len(sources) == 1
         source = sources[0]
 
@@ -71,7 +76,10 @@ class PoseEstimationPipeline(IPipeline[PoseEstimationConfig]):
 
         do_nothing_sink = DoNothingSink()
 
-        pose_estimation_transform = PoseEstimationTransform(MockPoseModelService(), "my_model", batch_size=16)
+        pose_models_settings = session_context.settings_service[("pose_estimation", "models")]
+        assert pose_models_settings is not None
+        pose_model_config = pose_models_settings.models[self._config.pose_model_id]
+        pose_estimation_transform = PoseEstimationTransform(pose_model_service, pose_model_config, batch_size=16)
         pose_render_transform = PoseRenderTransform()
         pose_preview_pacer = VideoPacer(buffer_size=150)
 
@@ -81,7 +89,7 @@ class PoseEstimationPipeline(IPipeline[PoseEstimationConfig]):
         pose_results_file = Path(self._config.pose_results_file)
         pose_results_writer = PoseResultsWriterSink(pose_results_file)
 
-        visualizer_sink = VisualizerSink(app_context.widget_service, "Pose Preview")
+        visualizer_sink = VisualizerSink(session_context.widget_service, "Pose Preview")
 
         pose_input_stream = Stream(source.descriptor, spool_stream.observable.pipe(ops.observe_on(self._pose_estimation_scheduler)))
         pose_stream = pose_estimation_transform.pipe(pose_input_stream)

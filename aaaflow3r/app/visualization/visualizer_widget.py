@@ -8,6 +8,8 @@ from aaaflow3r.plugins.core.typing.audio import AudioFormat
 from aaaflow3r.plugins.core.typing.video import VideoFormat
 from aaaflow3r.plugins.core.visualization.audio.spectogram.widget import SpectrogramWidget
 from aaaflow3r.plugins.core.visualization.video.widget import VideoWidget
+from aaaflow3r.plugins.grimace.typing.grimace_result import GrimaceResultFormat
+from aaaflow3r.plugins.grimace.visualization.grimace_results.widget import GrimaceResultsWidget
 
 
 class VisualizerWidget(QDockWidget):
@@ -43,6 +45,7 @@ class VisualizerWidget(QDockWidget):
 
     @Slot(object)
     def _desc_changed(self, desc: Optional[Any]):
+        print("Desc changed", desc)
         self.desc = desc
         if isinstance(desc, VideoFormat):
             if not isinstance(self._visualizer, VideoWidget):
@@ -52,5 +55,8 @@ class VisualizerWidget(QDockWidget):
         elif isinstance(desc, AudioFormat):
             if not isinstance(self._visualizer, SpectrogramWidget):
                 self.set_visualizer(SpectrogramWidget())
+        elif isinstance(desc, GrimaceResultFormat):
+            if not isinstance(self._visualizer, GrimaceResultsWidget):
+                self.set_visualizer(GrimaceResultsWidget())
         else:
             self.set_visualizer(None)

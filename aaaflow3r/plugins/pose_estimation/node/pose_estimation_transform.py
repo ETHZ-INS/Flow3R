@@ -1,31 +1,37 @@
 from typing import Optional, List
 
 import reactivex as rx
+from py3r.pose.yolo.model.staged_yolo_pose_model import StagedYoloPoseModel
 from reactivex import operators as ops
 
 from py3r.media.types import VideoFrame
-from py3r.pose.core.model.pose_model import PoseModel
 from py3r.pose.core.types import VideoFramePoses
 
 from aaaflow3r.core.streaming.abc.transform import Transform
 from aaaflow3r.plugins.core.typing.video import VideoFormat
 from aaaflow3r.plugins.pose_estimation.typing.pose_format import PoseFormat
+from aaaflow3r.plugins.pose_estimation.util.pose_model_service import PoseModelService, PoseModelLease
 
 
 class PoseEstimationTransform(Transform[VideoFormat, VideoFrame, PoseFormat, VideoFramePoses]):
-    def __init__(self, pose_model_service, pose_model_id, batch_size: int = 1):
+    def __init__(self, pose_model_service: PoseModelService, pose_model_config, batch_size: int = 1):
         self._pose_model_service = pose_model_service
-        self._pose_model_id = pose_model_id
+        self._pose_model_config = pose_model_config
         self._batch_size = batch_size
 
-        self._instance_types = pose_model_service.get_instance_types(pose_model_id)
-        self._pose_model: Optional[PoseModel] = None
+        self._instance_types = pose_model_service.get_instance_types(self._pose_model_config)
+        self._pose_model_lease: Optional[PoseModelLease] = None
+        self._pose_model = None
 
     def setup(self, desc_in: VideoFormat) -> None:
-        self._pose_model = self._pose_model_service.get_pose_model(self._pose_model_id)
+        self._pose_model_lease = self._pose_model_service.get_model(self._pose_model_config)
+        self._pose_model = StagedYoloPoseModel(self._pose_model_lease.model, max_batch=self._batch_size, input_channels=1)
 
     def cleanup(self) -> None:
-        self._pose_model = None
+        if self._pose_model_lease is not None:
+            self._pose_model = None
+            self._pose_model_lease.dispose()
+            self._pose_model_lease = None
 
     def infer_descriptor(self, desc_in: VideoFormat) -> PoseFormat:
         return PoseFormat(self._instance_types)

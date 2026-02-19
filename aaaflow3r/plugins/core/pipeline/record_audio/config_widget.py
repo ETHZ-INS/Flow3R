@@ -1,10 +1,11 @@
 from PySide6.QtWidgets import QWidget, QLineEdit, QFormLayout
 
+from aaaflow3r.core.api.app.app_context import IAppContext
 from aaaflow3r.plugins.core.pipeline.record_audio.config import RecordAudioConfig
 
 
 class RecordAudioConfigWidget(QWidget):
-    def __init__(self, config: RecordAudioConfig, parent=None):
+    def __init__(self, app_context: IAppContext, config: RecordAudioConfig, parent=None):
         super().__init__(parent)
 
         self.config = config

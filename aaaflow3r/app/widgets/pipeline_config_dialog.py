@@ -3,14 +3,16 @@ from typing import List, Dict, Optional
 from PySide6.QtWidgets import QDialog, QComboBox, QVBoxLayout, QWidget, QLineEdit, QDialogButtonBox, QFormLayout, \
     QSizePolicy
 
+from aaaflow3r.core.api.app.app_context import IAppContext
 from aaaflow3r.core.pipeline.abc.pipeline_type import IPipelineType
 from aaaflow3r.core.pipeline.pipeline_config import PipelineConfig
 
 
 class PipelineConfigDialog(QDialog):
-    def __init__(self, pipeline_types: List[IPipelineType], config: PipelineConfig = None, parent=None):
+    def __init__(self, app_context: IAppContext, pipeline_types: List[IPipelineType], config: PipelineConfig = None, parent=None):
         super().__init__(parent)
 
+        self.app_context = app_context
         self.pipeline_types = pipeline_types
         self.config = config
 
@@ -72,7 +74,7 @@ class PipelineConfigDialog(QDialog):
 
         widget = self._widget_cache.get(pipeline_type.name)
         if not widget:
-            widget = widget_factory(config, self)
+            widget = widget_factory(self.app_context, config, self)
             self._widget_cache[pipeline_type.name] = widget
 
         widget.setParent(self.content)

@@ -5,7 +5,7 @@ import reactivex as rx
 from reactivex import operators as ops
 from reactivex.disposable import CompositeDisposable
 
-from aaaflow3r.core.api.app.app_context import IAppContext
+from aaaflow3r.core.api.app.session_context import ISessionContext
 from aaaflow3r.core.pipeline.abc.pipeline import IPipeline, PipelineSubscription
 from aaaflow3r.core.streaming.abc.stream import IStream
 from aaaflow3r.core.streaming.stream import Stream
@@ -20,17 +20,17 @@ class RecordAudioPipeline(IPipeline[RecordAudioConfig]):
         self._widget_handle: Optional[IVisualizerHandle] = None
         self._config: Optional[RecordAudioConfig] = None
 
-    def configure(self, app_context: IAppContext, config: RecordAudioConfig):
+    def configure(self, session_context: ISessionContext, config: RecordAudioConfig):
         self._config = config
         if not self._widget_handle:
-            self._widget_handle = app_context.widget_service.get_visualizer_handle("my_audio")
+            self._widget_handle = session_context.widget_service.get_visualizer_handle("my_audio")
 
-    def build(self, app_context: IAppContext, sources: List[IStream]) -> PipelineSubscription:
+    def build(self, session_context: ISessionContext, sources: List[IStream]) -> PipelineSubscription:
         assert len(sources) == 1
         source = sources[0]
 
         audio_writer_sink = AudioWriterSink(Path(self._config.audio_file))
-        visualizer_sink = VisualizerSink(app_context.widget_service, "my_audio")
+        visualizer_sink = VisualizerSink(session_context.widget_service, "my_audio")
 
         shared_source = Stream(source.descriptor, source.observable.pipe(ops.share()))
         audio_writer_sub = audio_writer_sink.subscribe(shared_source)

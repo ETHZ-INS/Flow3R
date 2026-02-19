@@ -1,4 +1,3 @@
-from concurrent.futures import Future
 from pathlib import Path
 from typing import List, Optional
 
@@ -7,7 +6,7 @@ from reactivex import operators as ops
 from reactivex.disposable import CompositeDisposable
 from reactivex.scheduler import EventLoopScheduler
 
-from aaaflow3r.core.api.app.app_context import IAppContext
+from aaaflow3r.core.api.app.session_context import ISessionContext
 from aaaflow3r.core.pipeline.abc.pipeline import IPipeline, PipelineSubscription
 from aaaflow3r.core.streaming.abc.stream import IStream
 from aaaflow3r.core.streaming.stream import Stream
@@ -25,17 +24,17 @@ class RecordVideoPipeline(IPipeline[RecordVideoConfig]):
         self._main_scheduler = EventLoopScheduler()
         self._writer_scheduler = EventLoopScheduler()
 
-    def configure(self, app_context: IAppContext, config: RecordVideoConfig):
+    def configure(self, session_context: ISessionContext, config: RecordVideoConfig):
         self._config = config
         if not self._widget_handle:
-            self._widget_handle = app_context.widget_service.get_visualizer_handle("Video Preview")
+            self._widget_handle = session_context.widget_service.get_visualizer_handle("Video Preview")
 
-    def build(self, app_context: IAppContext, sources: List[IStream]) -> PipelineSubscription:
+    def build(self, session_context: ISessionContext, sources: List[IStream]) -> PipelineSubscription:
         assert len(sources) == 1
         source = sources[0]
 
         video_writer_sink = VideoWriterSink(Path(self._config.video_file))
-        visualizer_sink = VisualizerSink(app_context.widget_service, "Video Preview")
+        visualizer_sink = VisualizerSink(session_context.widget_service, "Video Preview")
 
         shared_source = Stream(source.descriptor, source.observable.pipe(ops.observe_on(self._main_scheduler), ops.share()))
         video_writer_stream = Stream(source.descriptor, shared_source.observable.pipe(ops.observe_on(self._writer_scheduler)))

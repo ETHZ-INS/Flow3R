@@ -85,7 +85,6 @@ class VideoSegmentReader(Transform[VideoSegmentFormat, VideoSegment, VideoFormat
                         # IMPORTANT: overwrite/attach the meta so downstream sees “as if live”
                         # adapt to your VideoFrame structure
                         frame = frame.with_meta(meta)
-                        print("Read frame:", frame.frame_index)
                         observer.on_next(frame)
 
                     # Optionally verify there are no extra frames beyond metas

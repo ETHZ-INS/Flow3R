@@ -2,6 +2,7 @@ from typing import Callable
 
 from PySide6.QtWidgets import QWidget
 
+from aaaflow3r.core.api.app.app_context import IAppContext
 from aaaflow3r.core.pipeline.abc.pipeline_type import IPipelineType
 from aaaflow3r.plugins.core.pipeline.record_video.config import RecordVideoConfig
 from aaaflow3r.plugins.core.pipeline.record_video.config_widget import RecordVideoConfigWidget
@@ -16,7 +17,7 @@ class RecordVideoPipelineType(IPipelineType[RecordVideoConfig, RecordVideoPipeli
     def get_config_factory(self) -> Callable[[], RecordVideoConfig]:
         return RecordVideoConfig
 
-    def get_config_widget_factory(self) -> Callable[[RecordVideoConfig, QWidget], QWidget]:
+    def get_config_widget_factory(self) -> Callable[[IAppContext, RecordVideoConfig, QWidget], QWidget]:
         return RecordVideoConfigWidget
 
     def get_pipeline_factory(self) -> Callable[[], RecordVideoPipeline]:
