@@ -76,7 +76,7 @@ class PoseEstimationPipeline(IPipeline[PoseEstimationConfig]):
 
         do_nothing_sink = DoNothingSink()
 
-        pose_models_settings = session_context.settings_service[("pose_estimation", "models")]
+        pose_models_settings = session_context.settings.get(("pose_estimation", "models"))
         assert pose_models_settings is not None
         pose_model_config = pose_models_settings.models[self._config.pose_model_id]
         pose_estimation_transform = PoseEstimationTransform(pose_model_service, pose_model_config, batch_size=16)
