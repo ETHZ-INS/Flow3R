@@ -59,7 +59,6 @@ class VisualizerHandle(QObject, IVisualizerHandle[TDesc, TData], metaclass=QVisu
         self.unsubscribe()
 
     def _on_desc(self, desc: TDesc):
-        print(f"Got descriptor: {desc}")
         self._desc = desc
         self.desc_changed.emit(desc)
 

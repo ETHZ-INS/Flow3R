@@ -17,7 +17,7 @@ class AudioVizConfig:
     repaint_hz: int = 60          # max repaint rate
 
 
-class AudioWidget(QtWidgets.QWidget):
+class WaveformWidget(QtWidgets.QWidget):
     """
     Dumb widget: shows a rolling waveform for streamed audio chunks.
     Connect a source's chunk signal to push_chunk().

@@ -7,7 +7,8 @@ from aaaflow3r.plugins.core.source.audio.audio_file.source_type import AudioFile
 from aaaflow3r.plugins.core.source.audio.microphone.source_type import MicrophoneSourceType
 from aaaflow3r.plugins.core.source.video.video_file.source_type import VideoFileSourceType
 from aaaflow3r.plugins.core.source.video.webcam.source_type import WebcamSourceType
-from aaaflow3r.plugins.core.visualization.audio.visualizer_type import AudioVisualizerType
+from aaaflow3r.plugins.core.visualization.audio.spectogram.visualizer_type import SpectrogramVisualizerType
+from aaaflow3r.plugins.core.visualization.audio.waveform.visualizer_type import WaveformVisualizerType
 from aaaflow3r.plugins.core.visualization.video.visualizer_type import VideoVisualizerType
 
 
@@ -19,7 +20,8 @@ class CorePlugin(IPlugin):
         api.source_types.register(AudioFileSourceType())
 
         api.visualizer_types.register(VideoVisualizerType())
-        api.visualizer_types.register(AudioVisualizerType())
+        api.visualizer_types.register(WaveformVisualizerType())
+        api.visualizer_types.register(SpectrogramVisualizerType())
 
         api.pipeline_types.register(RecordVideoPipelineType())
         api.pipeline_types.register(RecordAudioPipelineType())

@@ -147,7 +147,8 @@ def determine_location(sources: List[SourceConfig]) -> Tuple[str, Optional[str]]
     if len(sources) == 0:
         return "hidden", None
     elif len(sources) == 1:
-        return "source", sources[0].id
+        #return "source", sources[0].id
+        return "bottom", None
     else:
         return "bottom", None
 
@@ -160,6 +161,9 @@ def diff_config(old: AppConfig, new: AppConfig) -> ChangeSet:
     pipelines_added, pipelines_removed, pipelines_updated = diff_by_id(old.pipelines, new.pipelines)
 
     for pipeline_config in new.pipelines.values():
+        if pipeline_config.id not in old.pipelines:
+            continue
+
         settings_dependencies = pipeline_config.active_config.settings_dependencies
         if any(dep in settings_changed for dep in settings_dependencies):
             pipelines_updated[pipeline_config.id] = (old.pipelines[pipeline_config.id], pipeline_config)
@@ -430,7 +434,6 @@ class Controller(QObject):
 
     def assign_group(self, source_id: str, group_id: Optional[str]):
         with self.transaction() as config:
-            print(config.sources)
             assert source_id in config.sources, f"SourceConfig {source_id} not found"
             assert group_id is None or group_id in config.groups, f"GroupConfig {group_id} not found"
 
@@ -696,17 +699,20 @@ class Controller(QObject):
         for sc in changes.sources_added.values():
             self._setup_source(new.sources[sc.id])
 
+        for gid in new.groups:
+            self._ensure_active_session(gid)
+
         # --- 4) apply updates ---
         for group_id in changes.groups_added:
             for pipeline_id in new.groups[group_id].pipeline_ids:
                 pipeline_config = new.pipelines[pipeline_id]
-                self._setup_pipeline(group_id, pipeline_config)
+                self._setup_pipeline(group_id, pipeline_config, new.settings)
 
         print("group_pipeline_updated", changes.group_pipeline_updated)
 
         for group_id, pipeline_id in changes.group_pipeline_added | changes.group_pipeline_updated:
             pipeline_config = new.pipelines[pipeline_id]
-            self._setup_pipeline(group_id, pipeline_config)
+            self._setup_pipeline(group_id, pipeline_config, new.settings)
 
         for group_id, pipeline_id in changes.group_pipeline_removed:
             self._teardown_pipeline(group_id, pipeline_id)
@@ -724,9 +730,6 @@ class Controller(QObject):
 
         for gid, location, source_id in changes.group_controls_changed:
             self.widget_service.set_recording_controls_location(gid, location, source_id)
-
-        for gid in new.groups:
-            self._ensure_active_session(gid)
 
     def _source_requires_rebuild(self, old_sc: SourceConfig, new_sc: SourceConfig) -> bool:
         return old_sc.active_config != new_sc.active_config
@@ -785,7 +788,7 @@ class Controller(QObject):
             source_widget_handle.unsubscribe()
             source_widget_handle.dispose()
 
-    def _setup_pipeline(self, group_id: str, pipeline_config: PipelineConfig):
+    def _setup_pipeline(self, group_id: str, pipeline_config: PipelineConfig, settings):
         assert group_id in self.groups
 
         group = self.groups[group_id]
@@ -800,7 +803,7 @@ class Controller(QObject):
         placeholder_provider = group.active_session.get_placeholder_provider()
 
         widget_service = SessionWidgetServiceWrapper(self.widget_service, group_id, "preview")
-        settings_view = SettingsView(self.config.settings)
+        settings_view = SettingsView(settings)
         session_context = SessionContext(widget_service, settings_view)
 
         pipeline.configure(session_context, pipeline_config.active_config.resolve(placeholder_provider))
@@ -857,7 +860,6 @@ class Controller(QObject):
 
     def _emit_entity_signals(self, changes: ChangeSet):
         if changes.settings_changed:
-            print("Sending settings changed signal")
             self.settings_changed.emit(deepcopy(changes.settings_changed))
 
         for gc in changes.groups_added.values():
@@ -880,3 +882,21 @@ class Controller(QObject):
             self.pipeline_changed.emit(deepcopy(new_pc))
         for pid in changes.pipelines_removed:
             self.pipeline_removed.emit(pid)
+
+    @Slot(str)
+    def save_config(self, config_file: str):
+        import pickle
+        with open(config_file, "wb") as f:
+            pickle.dump(self.config, f)
+
+    @Slot(str)
+    def load_config(self, config_file: str):
+        import pickle
+        with open(config_file, "rb") as f:
+            new_config = pickle.load(f)
+
+        with self.transaction() as config:
+            config.settings = new_config.settings
+            config.groups = new_config.groups
+            config.sources = new_config.sources
+            config.pipelines = new_config.pipelines

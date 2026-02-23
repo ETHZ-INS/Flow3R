@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Optional, Literal, Tuple
+from typing import Dict, Optional, Literal, Tuple, List
 
 from PySide6.QtCore import QObject, Slot, Qt, Signal
 from PySide6.QtWidgets import QMainWindow, QWidget
@@ -10,6 +10,7 @@ from aaaflow3r.app.visualization.source_widget import SourceWidget
 from aaaflow3r.app.visualization.visualizer_widget import VisualizerWidget
 from aaaflow3r.app.widgets.recording_controls_widget import RecordingControlsWidget
 from aaaflow3r.core.visualization.abc.visualizer_handle import IVisualizerHandle
+from aaaflow3r.core.visualization.abc.visualizer_type import IVisualizerType
 
 
 @dataclass
@@ -28,10 +29,12 @@ class WidgetController(QObject):
     source_snapshot_requested = Signal(str)
     group_snapshot_requested = Signal(str)
 
-    def __init__(self, dock_window: QMainWindow, bottom_widget: QWidget):
+    def __init__(self, dock_window: QMainWindow, bottom_widget: QWidget, visualizer_types: List[IVisualizerType]):
         super().__init__()
         self._dock_window = dock_window
         self._bottom_widget = bottom_widget
+        self._visualizer_types = visualizer_types
+
         self._main_window = None
         self._controller = None
 
@@ -71,7 +74,7 @@ class WidgetController(QObject):
     @Slot(str)
     def create_source_widget(self, source_id: str) -> None:
         assert source_id not in self._source_widgets
-        widget = SourceWidget(source_id, self._dock_window)
+        widget = SourceWidget(self._visualizer_types, source_id, self._dock_window)
         widget.setObjectName("source_widget_" + source_id)
         widget.setup_source.connect(self._controller.setup_source)
         widget.edit_source.connect(self._main_window._edit_source)
@@ -107,7 +110,7 @@ class WidgetController(QObject):
     @Slot(str, str, bool)
     def create_visualizer_widget(self, group_id: str, widget_id: str) -> None:
         assert (group_id, widget_id) not in self._visualizer_widgets
-        widget = VisualizerWidget(self._dock_window)
+        widget = VisualizerWidget(self._visualizer_types, self._dock_window)
         widget.setObjectName("visualizer_widget_" + group_id + "_" + widget_id)
         widget.setWindowTitle(widget_id)
         self._visualizer_widgets[(group_id, widget_id)] = widget

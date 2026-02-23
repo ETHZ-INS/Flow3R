@@ -1,10 +1,11 @@
 from copy import deepcopy
 from datetime import datetime
-from typing import Tuple
+from pathlib import Path
+from typing import Tuple, Optional
 
 from PySide6.QtCore import QThread, Signal, Slot
 from PySide6.QtGui import QColor, Qt, QTextCursor, QTextCharFormat
-from PySide6.QtWidgets import QMainWindow, QDialog, QWidget, QVBoxLayout
+from PySide6.QtWidgets import QMainWindow, QDialog, QWidget, QVBoxLayout, QFileDialog
 
 from aaaflow3r.app.api.app.app_context import AppContext
 from aaaflow3r.app.api.app.settings_service import SettingsService
@@ -34,6 +35,9 @@ LOG_COLORS = {
 
 
 class MainWindow(Ui_WelfareRecorder, QMainWindow):
+    config_loaded = Signal(str)
+    config_saved = Signal(str)
+
     settings_changed = Signal(object)  # settings object
 
     source_added = Signal(object)  # source config
@@ -78,10 +82,12 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         self.plugin_api = plugin_api
         self._build_settings_menus()
 
+        self.config_file: Optional[str] = None
+
         settings_menus = {menu.path: menu for menu in self.plugin_api.settings_menus.get_settings_menus().values()}
         self.navigator_service = NavigatorService(settings_menus)
 
-        self.widget_controller = WidgetController(self.dock_window, self.frm_recordings)
+        self.widget_controller = WidgetController(self.dock_window, self.frm_recordings, list(self.plugin_api.visualizer_types.get_visualizer_types().values()))
         self.widget_service = WidgetService()
         self.widget_service.source_handle_added.connect(self.widget_controller.add_source_handle)
         self.widget_service.source_handle_removed.connect(self.widget_controller.remove_source_handle)
@@ -113,6 +119,10 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         self.worker_thread.setObjectName("SourceControllerThread")
         self.worker_thread.start()
 
+        self.action_save_project.triggered.connect(self.save_project)
+        self.action_load_project.triggered.connect(self.load_project)
+        self.action_save_project_as.triggered.connect(self.save_project_as)
+
         self.action_list_sources.triggered.connect(self._list_sources)
         self.action_list_groups.triggered.connect(self._list_groups)
         self.action_list_pipelines.triggered.connect(self._list_pipelines)
@@ -120,6 +130,9 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         self.action_add_source.triggered.connect(self._add_source)
         self.action_add_group.triggered.connect(self._add_group)
         self.action_add_pipeline.triggered.connect(self._add_pipeline)
+
+        self.config_saved.connect(self.controller.save_config)
+        self.config_loaded.connect(self.controller.load_config)
 
         self.settings_changed.connect(self.controller.set_settings)
 
@@ -246,6 +259,68 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
 
     def _config_changed(self, config):
         self._config = config
+
+    def _select_save_file(self):
+        if self.config_file is None:
+            # Default path when opening the file dialog
+            selected_file = str(Path.home() / "project.wrc")
+        else:
+            selected_file = str(self.config_file)
+
+        file_filter = "Welfare Recorder Config Files (*.wrc)"
+        selected_file, _ = QFileDialog.getSaveFileName(self, "Save Project", selected_file, file_filter)
+
+        return Path(selected_file) if selected_file else None
+
+    def _select_load_file(self):
+        if self.config_file is None:
+            # Default path when opening the file dialog
+            directory = str(Path.home())
+        else:
+            directory = str(self.config_file)
+
+        file_filter = "Welfare Recorder Config Files (*.wrc)"
+        selected_file, _ = QFileDialog.getOpenFileName(self, "Load Project", directory, file_filter)
+
+        return Path(selected_file) if selected_file else None
+
+    def save_project(self):
+        if self.config_file is None:
+            self.save_project_as()
+            return
+
+        geometry = self.saveGeometry()
+        window_state = self.saveState()
+
+        dock_window_geometry = self.dock_window.saveGeometry()
+        dock_window_state = self.dock_window.saveState()
+
+        ui_state = {
+            "geometry": bytes(geometry),
+            "window_state": bytes(window_state),
+            "dock_window_geometry": bytes(dock_window_geometry),
+            "dock_window_state": bytes(dock_window_state)
+        }
+
+        self.config_saved.emit(str(self.config_file))
+
+    def save_project_as(self):
+        selected_file = self._select_save_file()
+        if not selected_file:
+            return
+        self.config_file = selected_file
+        self.save_project()
+
+    def load_project(self, config_file: Path = None):
+        if config_file:
+            selected_file = config_file
+        else:
+            selected_file = self._select_load_file()
+            if not selected_file:
+                return
+
+        self.config_file = selected_file
+        self.config_loaded.emit(str(self.config_file))
 
     def keyPressEvent(self, event):
         pass
