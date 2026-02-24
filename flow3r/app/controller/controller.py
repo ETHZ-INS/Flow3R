@@ -14,9 +14,9 @@ from flow3r.app.api.app.session_context import SessionContext
 from flow3r.app.api.app.settings_view import SettingsView
 from flow3r.app.config.app_config import AppConfig
 from flow3r.app.config.group_config import GroupConfig
-from flow3r.app.session_state import SessionStateBase, Finished, FinishingProcessing, FinishingRecording, Running, \
+from flow3r.app.controller.session_state import SessionStateBase, Finished, FinishingProcessing, FinishingRecording, Running, \
     Ready, NotReady
-from flow3r.app.widget_service import WidgetService, SessionWidgetServiceWrapper
+from flow3r.app.api.app.widget_service import WidgetService, SessionWidgetServiceWrapper
 from flow3r.core.pipeline.abc.pipeline import IPipeline, PipelineSubscription, CompositePipelineSubscription
 from flow3r.core.pipeline.abc.pipeline_type import IPipelineType
 from flow3r.core.pipeline.pipeline_config import PipelineConfig
