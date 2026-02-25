@@ -78,7 +78,7 @@ class PoseEstimationPipeline(IPipeline[PoseEstimationConfig]):
 
         do_nothing_sink = DoNothingSink()
 
-        pose_estimation_transform = PoseEstimationTransform(pose_model_service, self._current_model_config, batch_size=64)
+        pose_estimation_transform = PoseEstimationTransform(pose_model_service, self._current_model_config, batch_size=32)
         pose_render_transform = PoseRenderTransform()
         pose_preview_pacer = VideoPacer(buffer_size=150)
 

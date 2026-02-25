@@ -1,5 +1,6 @@
 from flow3r.core.api.plugins.plugins import IPluginAPI
 from flow3r.core.plugin.plugin import IPlugin
+from flow3r.plugins.pose_estimation.pipeline.mouse_pose_estimation.pipeline_type import MousePoseEstimationPipelineType
 from flow3r.plugins.pose_estimation.pipeline.pose_estimation.pipeline_type import PoseEstimationPipelineType
 from flow3r.plugins.pose_estimation.settings.pose_estimation_models.entry import PoseEstimationModelsSettingsMenu
 from flow3r.plugins.pose_estimation.settings.pose_estimation_models.settings import PoseEstimationModelsSettings
@@ -14,3 +15,4 @@ class PoseEstimationPlugin(IPlugin):
         api.visualizer_types.register(PoseVisualizerType())
 
         api.pipeline_types.register(PoseEstimationPipelineType())
+        api.pipeline_types.register(MousePoseEstimationPipelineType())

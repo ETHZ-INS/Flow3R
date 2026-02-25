@@ -23,7 +23,7 @@ from flow3r.plugins.pose_estimation.node.pose_estimation_transform import PoseEs
 from flow3r.plugins.pose_estimation.node.pose_render_transform import PoseRenderTransform
 from flow3r.plugins.pose_estimation.node.pose_results_writer import PoseResultsWriterSink
 from flow3r.plugins.pose_estimation.node.video_pacer import VideoPacer
-from flow3r.plugins.pose_estimation.pipeline.pose_estimation.config import PoseEstimationConfig
+from flow3r.plugins.pose_estimation.pipeline.mouse_pose_estimation.config import MousePoseEstimationConfig
 from flow3r.plugins.pose_estimation.settings.pose_estimation_models.settings import PoseEstimationModelConfig
 from flow3r.plugins.pose_estimation.util.pose_model_service import PoseModelService, PoseModelLease
 
@@ -35,31 +35,42 @@ _pose_estimation_scheduler = EventLoopScheduler()
 _writer_scheduler = EventLoopScheduler()
 
 
-class PoseEstimationPipeline(IPipeline[PoseEstimationConfig]):
+class MousePoseEstimationPipeline(IPipeline[MousePoseEstimationConfig]):
     def __init__(self):
-        self._config: Optional[PoseEstimationConfig] = None
+        self._config: Optional[MousePoseEstimationConfig] = None
         self._widget_handle: Optional[IVisualizerHandle] = None
 
-        self._current_model_config: Optional[PoseEstimationModelConfig] = None
-        self._model_lease: Optional[PoseModelLease] = None
+        self._current_mouse_model_config: Optional[PoseEstimationModelConfig] = None
+        self._current_env_model_config: Optional[PoseEstimationModelConfig] = None
 
-    def configure(self, session_context: ISessionContext, config: PoseEstimationConfig):
+        self._mouse_model_lease: Optional[PoseModelLease] = None
+        self._env_model_lease: Optional[PoseModelLease] = None
+
+    def configure(self, session_context: ISessionContext, config: MousePoseEstimationConfig):
         print("PoseEstimationPipeline.configure", config)
         if not self._widget_handle:
             self._widget_handle = session_context.widget_service.get_visualizer_handle("Pose Preview")
 
         pose_models_settings = session_context.settings.get(("pose_estimation", "models"))
         assert pose_models_settings is not None
-        pose_model_config = pose_models_settings.models[config.pose_model_id]
+        mouse_pose_model_config = pose_models_settings.models[config.mouse_pose_model_id]
+        env_pose_model_config = pose_models_settings.models[config.env_pose_model_id] if config.env_pose_model_id else None
 
-        if not self._config or pose_model_config != self._current_model_config:
-            if self._model_lease:
-                self._model_lease.dispose()
+        if not self._config or mouse_pose_model_config != self._current_mouse_model_config:
+            if self._mouse_model_lease:
+                self._mouse_model_lease.dispose()
 
-            self._model_lease = pose_model_service.get_model(pose_model_config)
+            self._mouse_model_lease = pose_model_service.get_model(mouse_pose_model_config)
+
+        if not self._config or env_pose_model_config != self._current_env_model_config:
+            if self._env_model_lease:
+                self._env_model_lease.dispose()
+
+            self._env_model_lease = pose_model_service.get_model(env_pose_model_config) if env_pose_model_config else None
 
         self._config = config
-        self._current_model_config = pose_model_config
+        self._current_mouse_model_config = mouse_pose_model_config
+        self._current_env_model_config = env_pose_model_config
 
     def build(self, session_context: ISessionContext, sources: List[IStream]) -> PipelineSubscription:
         assert len(sources) == 1
@@ -78,7 +89,14 @@ class PoseEstimationPipeline(IPipeline[PoseEstimationConfig]):
 
         do_nothing_sink = DoNothingSink()
 
-        pose_estimation_transform = PoseEstimationTransform(pose_model_service, self._current_model_config, batch_size=32)
+        assert self._current_mouse_model_config is not None
+
+        if self._current_env_model_config is None:
+            pose_model_configs = self._current_mouse_model_config
+        else:
+            pose_model_configs = (self._current_mouse_model_config, self._current_env_model_config)
+
+        pose_estimation_transform = PoseEstimationTransform(pose_model_service, pose_model_configs, batch_size=32)
         pose_render_transform = PoseRenderTransform()
         pose_preview_pacer = VideoPacer(buffer_size=150)
 
@@ -115,9 +133,13 @@ class PoseEstimationPipeline(IPipeline[PoseEstimationConfig]):
         return PipelineSubscription(disposable, primary_done, secondary_done)
 
     def dispose(self):
-        if self._model_lease:
-            self._model_lease.dispose()
-            self._model_lease = None
+        if self._mouse_model_lease:
+            self._mouse_model_lease.dispose()
+            self._mouse_model_lease = None
+
+        if self._env_model_lease:
+            self._env_model_lease.dispose()
+            self._env_model_lease = None
 
         if self._widget_handle:
             self._widget_handle.dispose()
