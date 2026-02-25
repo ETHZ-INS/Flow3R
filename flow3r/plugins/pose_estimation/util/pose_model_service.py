@@ -1,7 +1,7 @@
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Hashable, Union, Tuple
 
 import torch
 from py3r.pose.core.model.composite_pose_model import CompositePoseModel
@@ -15,7 +15,7 @@ from flow3r.plugins.pose_estimation.settings.pose_estimation_models.settings imp
 @dataclass
 class _Entry:
     model: Any
-    id: str
+    key: Hashable
     refcount: int = 0
 
 
@@ -35,42 +35,54 @@ class PoseModelLease(Disposable):
         self._dispose_cb()
 
 
+class CompositePoseModelLease(PoseModelLease):
+    def __init__(self, model: CompositePoseModel, leases: List[PoseModelLease]):
+        def _dispose():
+            for lease in leases:
+                lease.dispose()
+
+        super().__init__(model, _dispose)
+        self._leases = leases
+
+
 class PoseModelService:
     def __init__(self):
-        self._lock = threading.Lock()
-        self._models: Dict[str, _Entry] = {}
+        self._lock = threading.RLock()
+        self._models: Dict[Hashable, _Entry] = {}
 
-    def get_instance_types(self, model_config: PoseEstimationModelConfig) -> List[PoseInstanceType]:
-        #return YoloPoseModel.load_instance_types(Path(model_config.model_identifier))
-        return YoloPoseModel.load_instance_types(Path("C:/Users/Me/AppData/Local/ETH3RHub/models/bohaceklab/pose_estimation/environment/environment_main"))
+    def get_instance_types(self, model_config: Union[PoseEstimationModelConfig, Tuple[PoseEstimationModelConfig, ...]]) -> List[PoseInstanceType]:
+        if isinstance(model_config, tuple):
+            return [instance_type for config in model_config for instance_type in self.get_instance_types(config)]
+        return YoloPoseModel.load_instance_types(Path(model_config.model_identifier))
 
-    def get_model(self, model_config: PoseEstimationModelConfig) -> PoseModelLease:
+    def get_model(self, model_config: Union[PoseEstimationModelConfig, Tuple[PoseEstimationModelConfig, ...]]) -> PoseModelLease:
         with self._lock:
-            model_id = model_config.model_identifier
-            if model_id not in self._models:
+            if isinstance(model_config, tuple):
+                leases = [self.get_model(config) for config in model_config]
+                models = [lease.model for lease in leases]
+                return CompositePoseModelLease(CompositePoseModel(models), leases)
+
+            model_key = model_config.key
+            if model_key not in self._models:
                 model = self._build_model(model_config)
-                self._models[model_id] = _Entry(model, model_id)
-            entry = self._models[model_id]
+                self._models[model_key] = _Entry(model, model_key)
+            entry = self._models[model_key]
             entry.refcount += 1
-            return PoseModelLease(entry.model, lambda: self._release_model(entry.id))
+            return PoseModelLease(entry.model, lambda: self._release_model(entry.key))
 
-    def _release_model(self, model_id: str):
+    def _release_model(self, model_key: Hashable):
         with self._lock:
-            entry = self._models[model_id]
+            entry = self._models[model_key]
             entry.refcount -= 1
             if entry.refcount == 0:
-                self._teardown_model(entry.model)
-                del self._models[model_id]
+                self._teardown_model(entry)
+                del self._models[model_key]
 
     def _build_model(self, model_config: PoseEstimationModelConfig) -> Any:
-        print(f"Loading pose model from {model_config.model_identifier}")
-        #model_a = YoloPoseModel.from_folder(Path(model_config.model_identifier))
-        model_b = YoloPoseModel.from_folder(Path("C:/Users/Me/AppData/Local/ETH3RHub/models/bohaceklab/pose_estimation/environment/environment_main"))
-        #model = CompositePoseModel([model_a, model_b])
-        return model_b
+        return YoloPoseModel.from_folder(Path(model_config.model_identifier))
 
-    def _teardown_model(self, model: Any):
-        del model
+    def _teardown_model(self, entry: _Entry):
+        del entry.model
         import gc
         gc.collect()
         torch.cuda.empty_cache()

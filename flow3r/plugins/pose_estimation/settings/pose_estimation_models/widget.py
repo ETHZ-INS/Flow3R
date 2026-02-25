@@ -141,7 +141,8 @@ class PoseEstimationModelsSettingsWidget(QWidget):
         dialog = PoseEstimationModelEditDialog(config)
         res = dialog.exec()
         if res == QDialog.DialogCode.Accepted:
-            self.model.set_model(config.id, dialog.config)
+            config = dialog.config
+            self.model.set_model(config.id, config)
             self.app_context.settings_service.set(("pose_estimation", "models"), self.model.settings)
 
     def _remove_model(self):
