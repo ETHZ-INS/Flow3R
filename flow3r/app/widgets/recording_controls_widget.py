@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from PySide6.QtCore import Signal, Slot, QTimer
@@ -6,8 +6,9 @@ from PySide6.QtWidgets import QMenu, QWidget
 
 from flow3r.app.config.group_config import GroupConfig
 from flow3r.app.layout.recording_controls_widget import Ui_RecordingControlsWidget
-from flow3r.app.controller.session_state import SessionStateBase, Ready, Running, AcquisitionFinished, FinishingProcessing, \
-    FinishingRecording, NotReady, MissingInfo, Error, ConfigError, InvalidPlaceholders
+from flow3r.app.controller.session_state import SessionStateBase, Ready, Running, AcquisitionFinished, \
+    FinishingProcessing, \
+    FinishingRecording, NotReady, MissingInfo, Error, ConfigError, InvalidPlaceholders, Started
 
 
 class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
@@ -30,6 +31,7 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
         self.state: SessionStateBase = NotReady()
 
         self.start_time: Optional[datetime] = None
+        self.duration: Optional[float] = None
         self.timer = QTimer(self)
 
         self.context_menu = QMenu(self)
@@ -77,10 +79,11 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
         elif isinstance(state, Running):
             self.btn_start.setText("Stop")
 
-        if isinstance(state, Running):
-            self._ensure_timer_running(state.start_time)
+        if isinstance(state, Running) and not isinstance(state, AcquisitionFinished):
+            self._ensure_timer_running(state.start_time, state.duration)
         elif isinstance(state, AcquisitionFinished):
-            self._stop_timer(state.end_time)
+            print("Acquisition finished, stopping timer")
+            self._stop_timer(state.stop_time)
         else:
             self._stop_timer()
 
@@ -97,7 +100,7 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
         if isinstance(self.state, Ready):
             self.lbl_status.setText("Ready - <a href=\"fill_placeholders\">Edit Information</a>")
             self.lbl_status.setStyleSheet("QLabel { color: black; }")
-        elif isinstance(self.state, Running):
+        elif isinstance(self.state, Started):
             if isinstance(self.state, FinishingProcessing):
                 self.lbl_status.setText(f"Finishing processing ({self.state.processing_progress*100:.0f}%)...")
                 self.lbl_status.setStyleSheet("QLabel { color: orange; }")
@@ -125,12 +128,12 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
             self.lbl_status.setText("")
             self.lbl_status.setStyleSheet("QLabel { color: black; }")
 
-    def _ensure_timer_running(self, start_time: datetime):
+    def _ensure_timer_running(self, start_time: datetime, duration: Optional[float] = None):
+        self.start_time = start_time
+        self.duration = duration
+
         if not self.timer.isActive():
-            self.start_time = start_time
-            self.timer.start(1000)  # Update every second
-        else:
-            self.start_time = start_time
+            self.timer.start(100)  # Update 10 times a second
 
     def _stop_timer(self, stop_time: Optional[datetime] = None):
         self.timer.stop()
@@ -145,7 +148,13 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
     def _update_timer(self):
         assert self.start_time is not None
         elapsed = datetime.now() - self.start_time
+        if self.duration is not None:
+            if elapsed.total_seconds() > self.duration:
+                self._stop_recording()
         time_str = str(elapsed).split(".")[0]  # Format as HH:MM:SS
+        if self.duration is not None:
+            duration = timedelta(seconds=self.duration)
+            time_str += f"/{str(duration).split('.')[0]}"
         self.lbl_recording_time.setText(time_str)
 
     def _configure_group(self):
@@ -159,6 +168,11 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
             self.recording_stop.emit(self.group_id, self.session_id)
         else:
             self.recording_start.emit(self.group_id, self.session_id)
+
+    def _stop_recording(self):
+        if not self.session_id:
+            return
+        self.recording_stop.emit(self.group_id, self.session_id)
 
     def _status_link_clicked(self, link: str):
         self.goto.emit([link])

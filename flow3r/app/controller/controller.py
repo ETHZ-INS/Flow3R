@@ -50,6 +50,7 @@ class Recording:
     stop: Subject
     start_time: Optional[datetime] = None
     stop_time: Optional[datetime] = None
+    duration: Optional[float] = None
     pipeline_sub: Optional[PipelineSubscription] = None
     primary_finished: bool = False
     secondary_finished: bool = False
@@ -512,7 +513,8 @@ class Controller(QObject):
 
         start = Subject()
         stop = Subject()
-        session.recording = Recording(start, stop)
+        duration = group_config.recording_config.recording_duration if group_config.recording_config.recording_mode == "timed" else None
+        session.recording = Recording(start, stop, duration=duration)
 
         source_observables = []
         source_streams: Dict[str, Dict[str, Stream]] = {}
@@ -832,17 +834,20 @@ class Controller(QObject):
         assert session is not None, f"Session {session_id} not found for group {group_id}"
 
         if session.recording:
-            if session.recording.start_time:
-                if session.recording.stop_time:
+            start_time = session.recording.start_time
+            stop_time = session.recording.stop_time
+            duration = session.recording.duration
+            if start_time:
+                if stop_time:
                     if session.recording.primary_finished:
                         if session.recording.secondary_finished:
-                            return Finished(start_time=session.recording.start_time, end_time=session.recording.stop_time)
+                            return Finished(start_time=start_time, stop_time=stop_time, end_time=None, duration=duration)
                         else:
-                            return FinishingProcessing(start_time=session.recording.start_time, end_time=session.recording.stop_time)
+                            return FinishingProcessing(start_time=start_time, stop_time=stop_time, duration=duration)
                     else:
-                        return FinishingRecording(start_time=session.recording.start_time, end_time=session.recording.stop_time)
+                        return FinishingRecording(start_time=start_time, stop_time=stop_time, duration=duration)
                 else:
-                    return Running(start_time=session.recording.start_time)
+                    return Running(start_time=start_time, duration=duration)
             else:
                 return Ready()
         else:

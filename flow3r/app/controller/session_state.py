@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 
 class SessionStateBase:
@@ -9,19 +9,24 @@ class SessionStateBase:
 @dataclass(kw_only=True, frozen=True)
 class Started(SessionStateBase):
     start_time: datetime
+    duration: Optional[float] = None
 
 @dataclass(kw_only=True, frozen=True)
-class AcquisitionFinished(SessionStateBase):
+class AcquisitionFinished:
+    stop_time: datetime
+
+@dataclass(kw_only=True, frozen=True)
+class ProcessingFinished:
     end_time: datetime
 
 @dataclass(kw_only=True, frozen=True)
 class Running(Started): pass
 
 @dataclass(kw_only=True, frozen=True)
-class FinishingRecording(Running, AcquisitionFinished): pass
+class FinishingRecording(Started, AcquisitionFinished): pass
 
 @dataclass(kw_only=True, frozen=True)
-class FinishingProcessing(Running, AcquisitionFinished):
+class FinishingProcessing(Started, AcquisitionFinished):
     processing_progress: float = 1.0
 
 @dataclass(kw_only=True, frozen=True)
@@ -30,7 +35,7 @@ class Ready(SessionStateBase): pass
     #non_empty_folders: List[Path] = field(default_factory=list)
 
 @dataclass(kw_only=True, frozen=True)
-class Finished(Started, AcquisitionFinished): pass
+class Finished(Started, AcquisitionFinished, ProcessingFinished): pass
 
 @dataclass(kw_only=True, frozen=True)
 class NotReady(SessionStateBase):
