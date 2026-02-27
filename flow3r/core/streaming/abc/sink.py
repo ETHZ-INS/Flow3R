@@ -56,7 +56,7 @@ class Sink(Generic[TDesc, TData], ABC):
     @abstractmethod
     def cleanup(self) -> None: ...
 
-    def subscribe(self, stream: IStream[TData, TDesc]) -> SinkSubscription:
+    def subscribe(self, stream: IStream[TDesc, TData]) -> SinkSubscription:
         closed = False
         data_sub: Optional[DisposableBase] = None
         desc_sub: Optional[DisposableBase] = None

@@ -26,8 +26,9 @@ class PoseEstimationTransform(Transform[VideoFormat, VideoFrame, PoseFormat, Vid
         self._pose_model = None
 
     def setup(self, desc_in: VideoFormat) -> None:
+        channels = 1 if desc_in.fmt == "mono8" else 3
         self._pose_model_lease = self._pose_model_service.get_model(self._pose_model_config)
-        self._pose_model = StagedYoloPoseModel(self._pose_model_lease.model, max_batch=self._batch_size, input_channels=1)
+        self._pose_model = StagedYoloPoseModel(self._pose_model_lease.model, max_batch=self._batch_size, input_channels=channels)
 
     def cleanup(self) -> None:
         if self._pose_model_lease is not None:

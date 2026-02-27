@@ -4,6 +4,7 @@ from reactivex import operators as ops
 from py3r.media.types import VideoFrame
 
 from flow3r.core.streaming.abc.stream import IStream
+from flow3r.core.streaming.abc.transform import ITransform
 from flow3r.core.streaming.stream import Stream
 from flow3r.plugins.core.node.video_segment_concatenator import VideoSegmentConcatenator
 from flow3r.plugins.core.node.video_segment_reader import VideoSegmentReader
@@ -22,20 +23,20 @@ blocking backpressure without slowing down the acquisition
 The frames read live from the video chunks are identical to the frames read from the final video file, 
 so processing can be rerun if necessary and yield the exact same results
 """
-class VideoSpool:
+class VideoSpool(ITransform[VideoFormat, VideoFrame, VideoFormat, VideoFrame]):
     def __init__(self, writer: VideoSegmentWriter, reader: VideoSegmentReader, concatenator: VideoSegmentConcatenator):
         self._writer = writer
         self._reader = reader
         self._concatenator = concatenator
 
-    def pipe(self, input_stream: IStream[VideoFormat, VideoFrame]) -> Stream[VideoFormat, VideoFrame]:
-        segment_stream = self._writer.pipe(input_stream)
+    def pipe(self, stream: IStream[VideoFormat, VideoFrame]) -> Stream[VideoFormat, VideoFrame]:
+        segment_stream = self._writer.pipe(stream)
         segment_stream = Stream(segment_stream.descriptor, segment_stream.observable.pipe(ops.share()))
         concatenator_subscription = self._concatenator.subscribe(segment_stream)
 
         output_stream = self._reader.pipe(segment_stream)
 
-        wrapped_output_data = rx.using(lambda: concatenator_subscription, lambda sub: output_stream.observable)
+        wrapped_output_data = rx.using(lambda: concatenator_subscription, lambda _: output_stream.observable)
         wrapped_output_stream = Stream(output_stream.descriptor, wrapped_output_data)
 
         return wrapped_output_stream

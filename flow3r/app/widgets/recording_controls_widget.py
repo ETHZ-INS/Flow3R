@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QMenu, QWidget
 
 from flow3r.app.config.group_config import GroupConfig
 from flow3r.app.layout.recording_controls_widget import Ui_RecordingControlsWidget
-from flow3r.app.session_state import SessionStateBase, Ready, Running, AcquisitionFinished, FinishingProcessing, \
+from flow3r.app.controller.session_state import SessionStateBase, Ready, Running, AcquisitionFinished, FinishingProcessing, \
     FinishingRecording, NotReady, MissingInfo, Error, ConfigError, InvalidPlaceholders
 
 

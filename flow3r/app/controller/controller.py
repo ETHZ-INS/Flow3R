@@ -273,6 +273,8 @@ class Controller(QObject):
     secondary_finished = Signal(str, str, object)  # group_id, session_id, exc
     progress_updated = Signal(str, str, object)  # group_id, session_id, progress
 
+    config_loaded = Signal(object)  # window layout
+
     def __init__(self, source_types: Dict[str, ISourceType], pipeline_types: Dict[str, IPipelineType], widget_service: WidgetService):
         super().__init__()
 
@@ -883,20 +885,22 @@ class Controller(QObject):
         for pid in changes.pipelines_removed:
             self.pipeline_removed.emit(pid)
 
-    @Slot(str)
-    def save_config(self, config_file: str):
+    @Slot(str, object)
+    def save_config(self, config_file: str, ui_state: object):
         import pickle
         with open(config_file, "wb") as f:
-            pickle.dump(self.config, f)
+            pickle.dump((self.config, ui_state), f)
 
     @Slot(str)
     def load_config(self, config_file: str):
         import pickle
         with open(config_file, "rb") as f:
-            new_config = pickle.load(f)
+            new_config, ui_state = pickle.load(f)
 
         with self.transaction() as config:
             config.settings = new_config.settings
             config.groups = new_config.groups
             config.sources = new_config.sources
             config.pipelines = new_config.pipelines
+
+        self.config_loaded.emit(ui_state)

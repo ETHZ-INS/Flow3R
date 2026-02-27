@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 from typing import Protocol, Optional, Callable
 
@@ -9,9 +10,8 @@ from reactivex.disposable import Disposable
 from reactivex.scheduler import EventLoopScheduler
 
 from flow3r.core.streaming.abc.transform import Transform
-from flow3r.plugins.core.node.video_segment_writer import VideoSegment
 from flow3r.plugins.core.typing.video import VideoFormat
-from flow3r.plugins.core.typing.video_segment import VideoSegmentFormat
+from flow3r.plugins.core.typing.video_segment import VideoSegmentFormat, VideoSegment
 
 
 class IVideoReader(Protocol):
@@ -86,6 +86,8 @@ class VideoSegmentReader(Transform[VideoSegmentFormat, VideoSegment, VideoFormat
                         # adapt to your VideoFrame structure
                         frame = frame.with_meta(meta)
                         observer.on_next(frame)
+
+                        time.sleep(0.01)
 
                     # Optionally verify there are no extra frames beyond metas
                     # extra = reader.read()

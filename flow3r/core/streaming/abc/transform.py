@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Generic, Optional, TypeVar
+from typing import Generic, Optional, TypeVar, Protocol
 
 import reactivex as rx
 from reactivex import operators as ops
@@ -15,6 +15,10 @@ TDescIn = TypeVar("TDescIn")
 TDataIn = TypeVar("TDataIn")
 TDescOut = TypeVar("TDescOut")
 TDataOut = TypeVar("TDataOut")
+
+
+class ITransform(Protocol[TDescIn, TDataIn, TDescOut, TDataOut]):
+    def pipe(self, stream: IStream[TDescIn, TDataIn]) -> Stream[TDescOut, TDataOut]: ...
 
 
 class Transform(Generic[TDescIn, TDataIn, TDescOut, TDataOut], ABC):

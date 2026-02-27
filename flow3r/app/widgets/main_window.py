@@ -15,8 +15,8 @@ from flow3r.app.config.group_config import GroupConfig
 from flow3r.app.layout.main_window import Ui_WelfareRecorder
 from flow3r.app.controller.controller import Controller
 from flow3r.app.api.app.navigator_service import NavigatorService
-from flow3r.app.widget_controller import WidgetController
-from flow3r.app.widget_service import WidgetService
+from flow3r.app.controller.widget_controller import WidgetController
+from flow3r.app.api.app.widget_service import WidgetService
 from flow3r.app.widgets.group_edit_dialog import GroupEditDialog
 from flow3r.app.widgets.group_list_dialog import GroupListDialog
 from flow3r.app.widgets.pipeline_config_dialog import PipelineConfigDialog
@@ -36,7 +36,7 @@ LOG_COLORS = {
 
 class MainWindow(Ui_WelfareRecorder, QMainWindow):
     config_loaded = Signal(str)
-    config_saved = Signal(str)
+    config_saved = Signal(str, object)
 
     settings_changed = Signal(object)  # settings object
 
@@ -150,6 +150,8 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
 
         self.controller.log_message.connect(self.add_log_entry)
         self.controller.config_changed.connect(self._config_changed)
+
+        self.controller.config_loaded.connect(self._project_loaded)
 
         self._config: AppConfig = deepcopy(self.controller.config)
 
@@ -302,7 +304,7 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
             "dock_window_state": bytes(dock_window_state)
         }
 
-        self.config_saved.emit(str(self.config_file))
+        self.config_saved.emit(str(self.config_file), ui_state)
 
     def save_project_as(self):
         selected_file = self._select_save_file()
@@ -321,6 +323,21 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
 
         self.config_file = selected_file
         self.config_loaded.emit(str(self.config_file))
+
+    def _project_loaded(self, ui_state: dict):
+        geometry = ui_state.get("geometry")
+        window_state = ui_state.get("window_state")
+        dock_window_geometry = ui_state.get("dock_window_geometry")
+        dock_window_state = ui_state.get("dock_window_state")
+
+        if geometry:
+            self.restoreGeometry(geometry)
+        if window_state:
+            self.restoreState(window_state)
+        if dock_window_geometry:
+            self.dock_window.restoreGeometry(dock_window_geometry)
+        if dock_window_state:
+            self.dock_window.restoreState(dock_window_state)
 
     def keyPressEvent(self, event):
         pass

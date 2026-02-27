@@ -8,6 +8,7 @@ from flow3r.app.api.plugins.plugins import PluginAPI
 from flow3r.app.widgets.main_window import MainWindow
 from flow3r.plugins.core.plugin import CorePlugin
 from flow3r.plugins.grimace.plugin import GrimacePlugin
+from flow3r.plugins.homecage.plugin import HomecagePlugin
 from flow3r.plugins.pose_estimation.plugin import PoseEstimationPlugin
 
 if __name__ == "__main__":
@@ -31,6 +32,9 @@ if __name__ == "__main__":
 
     pose_estimation_plugin = PoseEstimationPlugin()
     pose_estimation_plugin.initialize(api)
+
+    homecage_plugin = HomecagePlugin()
+    homecage_plugin.initialize(api)
 
     grimace_plugin = GrimacePlugin()
     grimace_plugin.initialize(api)

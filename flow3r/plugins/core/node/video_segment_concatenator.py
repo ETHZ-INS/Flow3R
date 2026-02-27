@@ -5,11 +5,12 @@ import tempfile
 from pathlib import Path
 
 from flow3r.core.streaming.abc.sink import Sink
-from flow3r.plugins.core.node.video_segment_writer import VideoSegment
-from flow3r.plugins.core.typing.video_segment import VideoSegmentFormat
+from flow3r.plugins.core.typing.video_segment import VideoSegmentFormat, VideoSegment
 
 
 def concat_segments(segments: list[Path], output_file: Path) -> None:
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+
     if len(segments) == 0:
         return
 

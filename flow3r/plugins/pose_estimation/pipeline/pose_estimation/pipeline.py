@@ -27,6 +27,7 @@ from flow3r.plugins.pose_estimation.pipeline.pose_estimation.config import PoseE
 from flow3r.plugins.pose_estimation.settings.pose_estimation_models.settings import PoseEstimationModelConfig
 from flow3r.plugins.pose_estimation.util.pose_model_service import PoseModelService, PoseModelLease
 
+# TODO: Somehow share this between pipelines
 pose_model_service = PoseModelService()
 
 

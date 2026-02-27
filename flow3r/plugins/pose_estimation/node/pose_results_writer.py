@@ -18,6 +18,7 @@ class PoseResultsWriterSink(Sink[VideoFormat, VideoFramePoses]):
         print(f"PoseResultsWriterSink completed")
 
     def setup(self, desc: VideoFormat) -> None:
+        self._results_file.parent.mkdir(parents=True, exist_ok=True)
         self._writer = DynamicPoseCSVWriter(self._results_file)
 
     def on_next(self, item: VideoFramePoses) -> None:
