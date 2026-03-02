@@ -2,7 +2,7 @@ from typing import Optional, Any, List
 
 from PySide6.QtCore import Signal, Qt, Slot, QPoint
 from PySide6.QtGui import QAction
-from PySide6.QtWidgets import QWidget, QStackedWidget, QVBoxLayout, QLabel, QDockWidget, QMenu
+from PySide6.QtWidgets import QWidget, QStackedWidget, QVBoxLayout, QLabel, QDockWidget, QMenu, QSizePolicy
 
 from flow3r.app.config.group_config import GroupConfig
 from flow3r.app.widgets.recording_controls_widget import RecordingControlsWidget
@@ -50,6 +50,8 @@ class SourceWidget(QDockWidget):
 
         self.lbl_error = QLabel(self, text="Error")
         self.lbl_error.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_error.setWordWrap(True)
+        self.lbl_error.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.lbl_error.linkActivated.connect(self._on_link_activated)
         self.content.addWidget(self.lbl_error)
 
@@ -138,6 +140,7 @@ class SourceWidget(QDockWidget):
 
     @Slot(object)
     def _desc_changed(self, desc: Any):
+        print("_desc_changed:", desc)
         self._descriptor = desc
         if self._manually_set_visualizer:
             return
@@ -150,11 +153,14 @@ class SourceWidget(QDockWidget):
     def _error(self, error: Optional[Exception]):
         if error:
             message = str(error)
+            message = message.replace("\n", "<br>")
             message += "<br><a href=\"edit\">Edit Camera</a>"
             message += "<br><a href=\"retry\">Retry</a>"
+            print("Showing error")
             self.lbl_error.setText(message)
             self.content.setCurrentIndex(0)
         else:
+            print("Clearing error")
             self.lbl_error.setText("")
             self.content.setCurrentIndex(1)
 

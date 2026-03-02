@@ -8,6 +8,7 @@ from typing import Dict, Optional, Iterator, List, Tuple, Any, Set
 from PySide6.QtCore import QObject, Signal, Slot
 import reactivex as rx
 from reactivex import Subject
+from reactivex.abc import DisposableBase
 from reactivex.scheduler import EventLoopScheduler
 
 from flow3r.app.api.app.session_context import SessionContext
@@ -45,12 +46,19 @@ class ErrorSource(ISource):
 
 
 @dataclass
+class SourceEntry:
+    source: Optional[ISource] = None
+    widget_handle: Optional[IVisualizerHandle] = None
+
+
+@dataclass
 class Recording:
     start: Subject
     stop: Subject
     start_time: Optional[datetime] = None
     stop_time: Optional[datetime] = None
     duration: Optional[float] = None
+    connections: Optional[List[DisposableBase]] = None
     pipeline_sub: Optional[PipelineSubscription] = None
     primary_finished: bool = False
     secondary_finished: bool = False
@@ -287,11 +295,9 @@ class Controller(QObject):
         self._draft: Optional[AppConfig] = None
         self._in_tx = 0
 
-        self.sources: Dict[str, ISource] = {}
-        self.source_widget_handles: Dict[str, IVisualizerHandle] = {}
-
         self.preview_scheduler = EventLoopScheduler()
 
+        self.sources: Dict[str, SourceEntry] = {}
         self.groups: Dict[str, Group] = {}
 
         self.primary_finished.connect(self._primary_finished)
@@ -525,7 +531,7 @@ class Controller(QObject):
             if len(pipeline_config.active_config.inputs()) == len(source_configs) == 1:
                 input_name = pipeline_config.active_config.inputs()[0]
                 source_config = source_configs[0]
-                source = self.sources[source_config.id]
+                source = self.sources[source_config.id].source
                 descriptor = source.stream.descriptor
                 observable = source.stream.observable.pipe(ops.publish())
                 source_observables.append(observable)
@@ -534,7 +540,7 @@ class Controller(QObject):
             else:
                 for input_name in pipeline_config.active_config.inputs():
                     source_id = group_config.source_mapping[pipeline_config.id][input_name]
-                    source = self.sources[source_id]
+                    source = self.sources[source_id].source
                     descriptor = source.stream.descriptor
                     observable = source.stream.observable.pipe(ops.publish())
                     source_observables.append(observable)
@@ -584,8 +590,10 @@ class Controller(QObject):
         if session.recording.pipeline_sub.progress:
             session.recording.pipeline_sub.progress.subscribe(_progress_updated)
 
+        session.recording.connections = []
         for obs in source_observables:
-            obs.connect()
+            sub = obs.connect()
+            session.recording.connections.append(sub)
 
         session.recording.start.on_next(None)
         self._update_session_state(group_id, session_id)
@@ -601,6 +609,7 @@ class Controller(QObject):
 
         if session.recording and not session.recording.stop_time:
             session.recording.stop_time = datetime.now()
+            print("Sending stop signal to recording pipeline.")
             session.recording.stop.on_next(None)
 
         self._update_session_state(group_id, session_id)
@@ -674,6 +683,9 @@ class Controller(QObject):
 
         session.recording.pipeline_sub.dispose()
 
+        for connection_sub in session.recording.connections:
+            connection_sub.dispose()
+
         group.new_session()
         self._update_active_session(group_id)
         self._update_session_state(group_id, session_id)
@@ -688,6 +700,7 @@ class Controller(QObject):
         for sid in changes.sources_removed:
             self._stop_preview(sid)
             self._teardown_source(sid)
+            self._teardown_source_widget(sid)
 
         for sc in sources_requiring_rebuild:
             self._stop_preview(sc.id)
@@ -697,11 +710,12 @@ class Controller(QObject):
             self._teardown_group(gid)
 
         # --- 3) create added groups/sources ---
-        for gc in changes.groups_added.values():
-            self._setup_group(new.groups[gc.id])
+        for group_config in changes.groups_added.values():
+            self._setup_group(group_config)
 
-        for sc in changes.sources_added.values():
-            self._setup_source(new.sources[sc.id])
+        for source_config in changes.sources_added.values():
+            self._setup_source_widget(source_config)
+            self._setup_source(source_config)
 
         for gid in new.groups:
             self._ensure_active_session(gid)
@@ -712,16 +726,21 @@ class Controller(QObject):
                 pipeline_config = new.pipelines[pipeline_id]
                 self._setup_pipeline(group_id, pipeline_config, new.settings)
 
-        print("group_pipeline_updated", changes.group_pipeline_updated)
+        for group_id, pipeline_id in changes.group_pipeline_updated:
+            old_pipeline_config, new_pipeline_config = old.pipelines[pipeline_id], new.pipelines[pipeline_id]
+            if old_pipeline_config.pipeline_type == new_pipeline_config.pipeline_type:
+                self._configure_pipeline(group_id, new_pipeline_config, new.settings)
+            else:
+                self._teardown_pipeline(group_id, pipeline_id)
+                self._setup_pipeline(group_id, new_pipeline_config, new.settings)
 
-        for group_id, pipeline_id in changes.group_pipeline_added | changes.group_pipeline_updated:
+        for group_id, pipeline_id in changes.group_pipeline_added:
             pipeline_config = new.pipelines[pipeline_id]
             self._setup_pipeline(group_id, pipeline_config, new.settings)
 
         for group_id, pipeline_id in changes.group_pipeline_removed:
             self._teardown_pipeline(group_id, pipeline_id)
 
-        # source edits may require teardown/setup; you can choose “patch” vs “rebuild”
         for sc in sources_requiring_rebuild:
             self._setup_source(sc)
 
@@ -738,27 +757,49 @@ class Controller(QObject):
     def _source_requires_rebuild(self, old_sc: SourceConfig, new_sc: SourceConfig) -> bool:
         return old_sc.active_config != new_sc.active_config
 
+    def _setup_source_widget(self, source_config: SourceConfig):
+        if source_config.id not in self.sources:
+            self.sources[source_config.id] = SourceEntry()
+
+        source_entry = self.sources[source_config.id]
+
+        if not source_entry.widget_handle:
+            source_entry.widget_handle = self.widget_service.get_source_handle(source_config.id, "preview")
+
+    def _teardown_source_widget(self, source_id: str):
+        source_entry = self.sources.pop(source_id, None)
+        if not source_entry or not source_entry.widget_handle:
+            return
+        source_entry.widget_handle.dispose()
+        source_entry.widget_handle = None
+
     def _setup_source(self, source_config: SourceConfig):
-        print(f"_setup_source({source_config.id})")
+        if source_config.id not in self.sources:
+            self.sources[source_config.id] = SourceEntry()
+
+        source_entry = self.sources[source_config.id]
+
         source_type = self.source_types.get(source_config.source_type)
         assert source_type is not None
 
         try:
             source_factory = source_type.get_source_factory()
             source = source_factory(source_config.active_config)
-            print(f"Successfully set up source {source_config.id}:")
         except Exception as e:
-            print(f"Error setting up source {source_config.id}: {e}")
             source = ErrorSource(e)
 
-        self.sources[source_config.id] = source
+        source_entry.source = source
 
         source.open()
 
     def _teardown_source(self, source_id: str):
-        source = self.sources.pop(source_id, None)
-        if source:
-            source.close()
+        print(f"_teardown_source({source_id})")
+        source_entry = self.sources.get(source_id, None)
+        if not source_entry or not source_entry.source:
+            return
+
+        source_entry.source.close()
+        source_entry.source = None
 
     def _setup_group(self, group_config: GroupConfig):
         if group_config.id not in self.groups:
@@ -778,19 +819,23 @@ class Controller(QObject):
         source_type = self.source_types.get(source_config.source_type)
         assert source_type is not None
 
-        source = self.sources.get(source_config.id)
-        assert source is not None
+        source_entry = self.sources.get(source_config.id)
+        assert source_entry is not None
+        assert source_entry.source is not None
+        assert source_entry.widget_handle is not None
 
-        source_widget_handle = self.widget_service.get_source_handle(source_config.id, "preview")
-        self.source_widget_handles[source_config.id] = source_widget_handle
-
-        source_widget_handle.subscribe(source.stream)
+        source_entry.widget_handle.subscribe(source_entry.source.stream)
 
     def _stop_preview(self, source_id: str):
-        source_widget_handle = self.source_widget_handles.pop(source_id, None)
-        if source_widget_handle:
-            source_widget_handle.unsubscribe()
-            source_widget_handle.dispose()
+        print(f"_stop_preview({source_id})")
+        source_entry = self.sources.get(source_id)
+
+        if not source_entry:
+            return
+
+        if source_entry.widget_handle:
+            print("Unsubscribing from source preview")
+            source_entry.widget_handle.unsubscribe()
 
     def _setup_pipeline(self, group_id: str, pipeline_config: PipelineConfig, settings):
         assert group_id in self.groups
@@ -798,11 +843,22 @@ class Controller(QObject):
         group = self.groups[group_id]
 
         pipeline = group.pipelines.get(pipeline_config.id)
-        if not pipeline:
-            pipeline_type = self.pipeline_types.get(pipeline_config.pipeline_type)
-            pipeline_factory = pipeline_type.get_pipeline_factory()
-            pipeline = pipeline_factory()
-            group.pipelines[pipeline_config.id] = pipeline
+        assert pipeline is None
+
+        pipeline_type = self.pipeline_types.get(pipeline_config.pipeline_type)
+        pipeline_factory = pipeline_type.get_pipeline_factory()
+        pipeline = pipeline_factory()
+        group.pipelines[pipeline_config.id] = pipeline
+
+        self._configure_pipeline(group_id, pipeline_config, settings)
+
+    def _configure_pipeline(self, group_id: str, pipeline_config: PipelineConfig, settings):
+        assert group_id in self.groups
+
+        group = self.groups[group_id]
+
+        pipeline = group.pipelines.get(pipeline_config.id)
+        assert pipeline is not None
 
         placeholder_provider = group.active_session.get_placeholder_provider()
 

@@ -77,7 +77,7 @@ class MousePoseEstimationConfigWidget(QWidget):
 
     def _mouse_pose_model_changed(self):
         model_id = self.dpd_mouse_pose_model.itemData(self.dpd_mouse_pose_model.currentIndex())
-        self.config.pose_model_id = model_id
+        self.config.mouse_pose_model_id = model_id
 
     def _env_pose_model_changed(self):
         model_id = self.dpd_env_pose_model.itemData(self.dpd_env_pose_model.currentIndex())

@@ -1,4 +1,4 @@
-from typing import TypeVar, Optional
+from typing import TypeVar, Optional, Any
 
 from PySide6.QtCore import QObject, Signal
 from reactivex.abc import DisposableBase
@@ -11,7 +11,7 @@ TData = TypeVar("TData")
 
 
 class VisualizerHandle(QObject, IVisualizerHandle[TDesc, TData], metaclass=QVisualizerMeta):
-    desc_changed = Signal(str)
+    desc_changed = Signal(object)
     item_changed = Signal(object)
     error_changed = Signal(object)
     completed_changed = Signal()
@@ -27,7 +27,7 @@ class VisualizerHandle(QObject, IVisualizerHandle[TDesc, TData], metaclass=QVisu
         self._completed = False
 
     @property
-    def desc(self) -> str:
+    def desc(self) -> Any:
         return self._desc
 
     @property
@@ -54,6 +54,16 @@ class VisualizerHandle(QObject, IVisualizerHandle[TDesc, TData], metaclass=QVisu
         if self._desc_sub:
             self._desc_sub.dispose()
             self._desc_sub = None
+
+        self._error = None
+        self._completed = False
+        self._item = None
+        self._desc = None
+
+        self.desc_changed.emit(None)
+        self.item_changed.emit(None)
+        self.error_changed.emit(None)
+        self.completed_changed.emit()
 
     def dispose(self):
         self.unsubscribe()

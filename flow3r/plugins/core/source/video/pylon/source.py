@@ -14,7 +14,7 @@ from flow3r.plugins.core.typing.video import VideoFormat
 
 class PylonCameraSource(ISource[VideoFormat, VideoFrame]):
     def __init__(self, config: PylonCameraSourceConfig):
-        self._video_source = BasePylonCameraSource(config.device, Path(config.config_file))
+        self._video_source = BasePylonCameraSource(config.device, Path(config.config_file) if config.config_file else None)
         self._desc_subject = ReplaySubject(1)
         self._frame_observable = source_observable(self._video_source)
         self._stream = Stream(self._desc_subject, self._frame_observable.pipe(ops.share()))

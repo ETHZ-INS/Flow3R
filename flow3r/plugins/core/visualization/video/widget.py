@@ -54,7 +54,6 @@ class VideoWidget(QWidget):
         self._label.clear()
 
         if self._handle is not None:
-            print(type(self._handle))
             self._handle.item_changed.connect(self._on_frame)
             self._handle.error_changed.connect(self._on_error)
             self._handle.completed_changed.connect(self._on_completed)
@@ -77,6 +76,8 @@ class VideoWidget(QWidget):
 
     @QtCore.Slot(object)
     def _on_frame(self, frame: Optional[VideoFrame]) -> None:
+        if not frame:
+            return
         self._pending = frame.img
         if not self._render_timer.isActive():
             self._render_timer.start()
