@@ -152,8 +152,8 @@ def diff_by_id(old_map: Dict[str, Any], new_map: Dict[str, Any]):
     return added, removed, updated
 
 
-def determine_location(sources: List[SourceConfig]) -> Tuple[str, Optional[str]]:
-    if len(sources) == 0:
+def determine_location(sources: List[SourceConfig], pipelines: List[PipelineConfig]) -> Tuple[str, Optional[str]]:
+    if len(sources) == 0 or len(pipelines) == 0:
         return "hidden", None
     elif len(sources) == 1:
         #return "source", sources[0].id
@@ -165,7 +165,7 @@ def determine_location(sources: List[SourceConfig]) -> Tuple[str, Optional[str]]
 def diff_config(old: AppConfig, new: AppConfig) -> ChangeSet:
     settings_changed = {k: v for k, v in new.settings.items() if old.settings.get(k) != v}
 
-    groups_added, groups_removed, groups_updated = diff_by_id(old.groups, new.groups)
+    groups_added, groups_removed, groups_updated = diff_by_id(old.all_groups, new.all_groups)
     sources_added, sources_removed, sources_updated = diff_by_id(old.sources, new.sources)
     pipelines_added, pipelines_removed, pipelines_updated = diff_by_id(old.pipelines, new.pipelines)
 
@@ -204,8 +204,8 @@ def diff_config(old: AppConfig, new: AppConfig) -> ChangeSet:
             if pipeline_id not in new_gc.pipeline_ids:
                 group_pipeline_removed.add((new_gc.id, pipeline_id))
 
-    for new_gc in new.groups.values():
-        old_gc = old.groups.get(new_gc.id)
+    for new_gc in new.all_groups.values():
+        old_gc = old.all_groups.get(new_gc.id)
         if old_gc is None:
             continue
         for pipeline_id in new_gc.pipeline_ids:
@@ -213,12 +213,16 @@ def diff_config(old: AppConfig, new: AppConfig) -> ChangeSet:
                 group_pipeline_updated.add((new_gc.id, pipeline_id))
 
     group_controls_changed: List[Tuple[str, str, Optional[str]]] = []
-    for gid, new_gc in new.groups.items():
-        old_sources = [sc for sc in old.sources.values() if sc.group_id == gid]
-        new_sources = [sc for sc in new.sources.values() if sc.group_id == gid]
+    for gid, new_gc in new.all_groups.items():
+        old_sources = [sc for sc in old.sources.values() if sc.group_id == gid or sc.id == gid]
+        new_sources = [sc for sc in new.sources.values() if sc.group_id == gid or sc.id == gid]
 
-        old_location, old_source_id = determine_location(old_sources)
-        new_location, new_source_id = determine_location(new_sources)
+        old_gc = old.all_groups.get(gid)
+        old_pipelines = [pc for pc in old.pipelines.values() if pc.id in old_gc.pipeline_ids] if old_gc else []
+        new_pipelines = [pc for pc in new.pipelines.values() if pc.id in new_gc.pipeline_ids]
+
+        old_location, old_source_id = determine_location(old_sources, old_pipelines)
+        new_location, new_source_id = determine_location(new_sources, new_pipelines)
 
         if gid in [g.id for g in groups_added.values()] or old_location != new_location or old_source_id != new_source_id:
             group_controls_changed.append((gid, new_location, new_source_id))
@@ -363,7 +367,7 @@ class Controller(QObject):
 
     @Slot(str)
     def send_group_snapshot(self, group_id: str):
-        self.group_snapshot.emit(deepcopy(self.config.groups[group_id]))
+        self.group_snapshot.emit(deepcopy(self.config.all_groups[group_id]))
 
     @Slot(dict)
     def set_settings(self, patch: Dict[Tuple[str, ...], Any]) -> None:
@@ -386,24 +390,15 @@ class Controller(QObject):
             assert source_config.id not in config.sources
 
             config.sources[source_config.id] = source_config
-
-            if not source_config.group_id:
-                config.implicit_groups[source_config.id] = GroupConfig(source_config.id)
-            else:
-                config.implicit_groups.pop(source_config.id, None)
+            self._update_implicit_groups()
 
     def edit_source(self, source_config: SourceConfig):
         with self.transaction() as config:
             assert source_config.id in config.sources
 
-            old_group_id = config.sources[source_config.id].group_id
             config.sources[source_config.id] = source_config
 
-            if old_group_id != source_config.group_id:
-                if source_config.group_id is None:
-                    config.implicit_groups[source_config.id] = GroupConfig(source_config.id)
-                else:
-                    config.implicit_groups.pop(source_config.id, None)
+            self._update_implicit_groups()
 
     def remove_source(self, source_id: str):
         with self.transaction() as config:
@@ -411,6 +406,8 @@ class Controller(QObject):
 
             config.sources.pop(source_id, None)
             config.implicit_groups.pop(source_id, None)
+
+            self._update_implicit_groups()
 
     def setup_source(self, source_id: str):
         config = self.config
@@ -431,9 +428,12 @@ class Controller(QObject):
 
     def edit_group(self, group_config: GroupConfig):
         with self.transaction() as config:
-            assert group_config.id in config.groups
+            assert group_config.id in config.all_groups
 
-            config.groups[group_config.id] = group_config
+            if group_config.id in config.groups:
+                config.groups[group_config.id] = group_config
+            elif group_config.id in config.implicit_groups:
+                config.implicit_groups[group_config.id] = group_config
 
     def remove_group(self, group_id: str):
         with self.transaction() as config:
@@ -449,11 +449,7 @@ class Controller(QObject):
             source_config = config.sources[source_id]
             source_config.group_id = group_id
 
-            if not group_id:
-                if source_id not in self.config.implicit_groups:
-                    self.config.implicit_groups[source_id] = GroupConfig(source_id)
-            else:
-                self.config.implicit_groups.pop(source_id, None)
+            self._update_implicit_groups()
 
     def add_pipeline(self, pipeline_config: PipelineConfig):
         with self.transaction() as config:
@@ -475,7 +471,7 @@ class Controller(QObject):
 
     def assign_pipeline(self, group_id: str, pipeline_id: Optional[str]):
         with self.transaction() as config:
-            assert group_id in config.groups
+            assert group_id in config.all_groups
             assert pipeline_id is None or pipeline_id in config.pipelines
 
             source_configs = [source_config for source_config in config.sources.values() if source_config.group_id == group_id]
@@ -487,15 +483,32 @@ class Controller(QObject):
 
     def set_pipeline_assignment(self, group_id: str, pipeline_ids: Set[str], source_mapping: Optional[Dict[str, Dict[str, str]]] = None):
         with self.transaction() as config:
-            assert group_id in config.groups
+            assert group_id in config.all_groups
             assert all(pipeline_id in config.pipelines for pipeline_id in pipeline_ids)
 
-            group_config = config.groups[group_id]
+            group_config = config.all_groups[group_id]
             group_config.pipeline_ids = pipeline_ids
             group_config.source_mapping = source_mapping or {}
 
+    def _update_implicit_groups(self):
+        with self.transaction() as config:
+            for source_id, source_config in config.sources.items():
+                if source_config.group_id is None:
+                    group_name = f"Source: {source_config.name}"
+                    if source_id not in config.implicit_groups:
+                        print(f"Creating implicit group for source {source_id}")
+                        config.implicit_groups[source_id] = GroupConfig(id=source_id, name=group_name, implicit=True)
+                    elif config.implicit_groups[source_id].name != group_name:
+                        print(f"Updating implicit group for source {source_id}")
+                        config.implicit_groups[source_id].name = group_name
+
+            for source_id in config.implicit_groups:
+                if source_id not in config.sources or config.sources[source_id].group_id is not None:
+                    print(f"Removing implicit group for source {source_id}")
+                    config.implicit_groups.pop(source_id)
+
     def start_recording(self, group_id: str, session_id: str):
-        group_config = self.config.groups[group_id]
+        group_config = self.config.all_groups[group_id]
         source_configs = [sc for sc in self.config.sources.values() if sc.group_id == group_id]
 
         assert len(group_config.pipeline_ids) > 0
@@ -717,12 +730,12 @@ class Controller(QObject):
             self._setup_source_widget(source_config)
             self._setup_source(source_config)
 
-        for gid in new.groups:
+        for gid in new.all_groups:
             self._ensure_active_session(gid)
 
         # --- 4) apply updates ---
         for group_id in changes.groups_added:
-            for pipeline_id in new.groups[group_id].pipeline_ids:
+            for pipeline_id in new.all_groups[group_id].pipeline_ids:
                 pipeline_config = new.pipelines[pipeline_id]
                 self._setup_pipeline(group_id, pipeline_config, new.settings)
 
@@ -961,6 +974,7 @@ class Controller(QObject):
         with self.transaction() as config:
             config.settings = new_config.settings
             config.groups = new_config.groups
+            config.implicit_groups = new_config.implicit_groups
             config.sources = new_config.sources
             config.pipelines = new_config.pipelines
 

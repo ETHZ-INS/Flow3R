@@ -14,6 +14,7 @@ class GroupConfig:
 
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     name: str = "New Group"
+    implicit: bool = False
     active: bool = True
     recording_config: RecordingConfig = field(default_factory=RecordingConfig)
     pipeline_id: Optional[str] = None

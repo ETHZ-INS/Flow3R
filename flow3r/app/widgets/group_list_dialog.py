@@ -6,6 +6,7 @@ from PySide6.QtCore import QAbstractListModel, Qt, QModelIndex, QSize, QRect, Si
 from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QDialog, QStyledItemDelegate, QStyle, QMenu
 
+from flow3r.app.config import group_config
 from flow3r.app.config.app_config import AppConfig
 from flow3r.app.config.group_config import GroupConfig
 from flow3r.app.controller.controller import Controller
@@ -50,7 +51,7 @@ class GroupListModel(QAbstractListModel):
     def _config_snapshot(self, config: AppConfig):
         if not self._groups:
             self.beginResetModel()
-            self._groups = list(config.groups.values())
+            self._groups = list(config.all_groups.values())
             self.endResetModel()
 
     def _group_added(self, group_config: GroupConfig):
@@ -212,6 +213,10 @@ class GroupListDialog(Ui_GroupListDialog, QDialog):
     def update_btn_remove(self):
         index = self.lst_groups.currentIndex()
         if not index.isValid():
+            self.btn_remove.setEnabled(False)
+            return
+        group_config = index.data(GroupListModel.GroupRole)
+        if group_config.implicit:
             self.btn_remove.setEnabled(False)
             return
         self.btn_remove.setEnabled(True)

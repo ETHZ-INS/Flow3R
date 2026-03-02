@@ -26,7 +26,7 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
         self.setupUi(self)
 
         self.group_id = group_id
-        self.group_name: Optional[str] = None
+        self.group_name: Optional[str] = group_name
         self.session_id: Optional[str] = None
         self.state: SessionStateBase = NotReady()
 
@@ -43,6 +43,12 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
         self.lbl_status.linkActivated.connect(self._status_link_clicked)
         self.btn_start.clicked.connect(self._start_recording)
         self.timer.timeout.connect(self._update_timer)
+
+    def show_group_name(self):
+        self.lbl_group_name.setVisible(True)
+
+    def hide_group_name(self):
+        self.lbl_group_name.setVisible(False)
 
     def request_active_session(self):
         self.active_session_requested.emit(self.group_id)

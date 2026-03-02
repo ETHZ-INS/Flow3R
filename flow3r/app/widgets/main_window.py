@@ -330,8 +330,8 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         dock_window_geometry = ui_state.get("dock_window_geometry")
         dock_window_state = ui_state.get("dock_window_state")
 
-        if geometry:
-            self.restoreGeometry(geometry)
+        #if geometry:
+        #    self.restoreGeometry(geometry)
         if window_state:
             self.restoreState(window_state)
         if dock_window_geometry:

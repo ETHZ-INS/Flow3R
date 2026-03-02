@@ -15,3 +15,7 @@ class AppConfig:
     groups: OrderedDict[str, GroupConfig] = field(default_factory=OrderedDict)
     implicit_groups: OrderedDict[str, GroupConfig] = field(default_factory=OrderedDict)
     pipelines: OrderedDict[str, PipelineConfig] = field(default_factory=OrderedDict)
+
+    @property
+    def all_groups(self) -> Dict[str, GroupConfig]:
+        return self.groups | self.implicit_groups

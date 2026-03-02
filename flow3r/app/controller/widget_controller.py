@@ -163,6 +163,7 @@ class WidgetController(QObject):
                 self._bottom_widget.layout().removeWidget(entry.widget)
             elif entry.location == "hidden":
                 self._bottom_widget.layout().removeWidget(entry.widget)
+            entry.widget.deleteLater()
 
     @Slot(str, str, object)
     def set_recording_controls_widget_location(self, group_id: str, location: Literal["hidden", "source", "bottom"], source_id: Optional[str] = None) -> None:
@@ -185,11 +186,13 @@ class WidgetController(QObject):
             source_widget = self._source_widgets[source_id]
             source_widget.set_recording_controls_widget(entry.widget)
             entry.widget.setVisible(True)
+            entry.widget.hide_group_name()
             entry.location = location
             entry.source_id = source_id
         elif location == "bottom":
             self._bottom_widget.layout().addWidget(entry.widget)
             entry.widget.setVisible(True)
+            entry.widget.show_group_name()
             entry.location = location
             entry.source_id = None
         elif location == "hidden":
