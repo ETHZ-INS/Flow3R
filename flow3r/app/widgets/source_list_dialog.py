@@ -11,7 +11,7 @@ from flow3r.app.controller.controller import Controller
 from flow3r.app.layout.source_list_dialog import Ui_SourceListDialog
 from flow3r.app.widgets.source_config_dialog import SourceConfigDialog
 
-from flow3r.core.source.source_config import SourceConfig
+from flow3r.app.config.source_config import SourceConfig
 
 
 class SourceListModel(QAbstractListModel):
@@ -160,6 +160,7 @@ class SourceListDialog(Ui_SourceListDialog, QDialog):
     source_removed = Signal(str)
 
     group_assigned_to_source = Signal(str, object)  # source_id, group_id
+    pipeline_assigned_to_source = Signal(str, object)  # source_id, pipeline_id
 
     def __init__(self, controller: Controller, source_types, parent=None):
         super().__init__(parent)
@@ -196,13 +197,13 @@ class SourceListDialog(Ui_SourceListDialog, QDialog):
         self.source_removed.connect(self.controller.remove_source)
 
         self.group_assigned_to_source.connect(self.controller.assign_group)
+        self.pipeline_assigned_to_source.connect(self.controller.assign_pipeline_to_source)
 
         self.btn_add.clicked.connect(self.add_source)
         self.btn_edit.clicked.connect(self.edit_source)
         self.lst_sources.doubleClicked.connect(self.edit_source)
         self.btn_remove.clicked.connect(self.remove_source)
 
-        print("Requesting config snapshot for source list dialog")
         self.config_snapshot_requested.emit()
 
         self._selected_source_changed()
@@ -273,9 +274,13 @@ class SourceListDialog(Ui_SourceListDialog, QDialog):
     def assign_group_to_source(self, source_id: str, group_id: str):
         self.group_assigned_to_source.emit(source_id, group_id)
 
+    def assign_pipeline_to_source(self, source_id: str, pipeline_id: str):
+        self.pipeline_assigned_to_source.emit(source_id, pipeline_id)
+
     def _show_context_menu(self, pos):
         idx = self.lst_sources.indexAt(pos)
         menu = QMenu(self.lst_sources)
+        menu.setToolTipsVisible(True)
 
         if not idx.isValid():
             return
@@ -288,7 +293,7 @@ class SourceListDialog(Ui_SourceListDialog, QDialog):
         #if not camera.is_locked("activated"):
         #    act_toggle = menu.addAction("Deactivate" if camera else "Activate")
 
-        act_set_group = menu.addMenu("Assign to group")
+        act_set_group = menu.addMenu("Assign to Group")
         act = act_set_group.addAction("Individual (no group)")
         act.setData(None)
 
@@ -297,6 +302,24 @@ class SourceListDialog(Ui_SourceListDialog, QDialog):
             act = act_set_group.addAction(group.name)
             act.setData(group.id)
 
+        act_set_pipeline = menu.addMenu("Assign Pipeline")
+        act_set_pipeline.setToolTipsVisible(True)
+        if source.group_id is not None:
+            act_set_pipeline.setEnabled(False)
+            act_set_pipeline.menuAction().setToolTip("Pipelines cannot be assigned to sources that are part of a group. Assign it to the group instead.")
+        else:
+            act = act_set_pipeline.addAction("Default (no pipeline)")
+            act.setData(None)
+
+            pipelines = sorted(self._config.pipelines.values(), key=lambda x: x.name)
+            for pipeline in pipelines:
+                act = act_set_pipeline.addAction(pipeline.name)
+                act.setData(pipeline.id)
+                if len(pipeline.active_config.inputs) != 1:
+                    act.setEnabled(False)
+                    act.setToolTip("Pipelines with multiple inputs cannot be assigned to sources. Create a group instead.")
+                    #act.setToolTipsVisible(True)
+
         chosen = menu.exec(self.lst_sources.viewport().mapToGlobal(pos))
         if not chosen:
             return
@@ -304,3 +327,6 @@ class SourceListDialog(Ui_SourceListDialog, QDialog):
         if chosen.parent() == act_set_group:
             group_id = chosen.data()
             self.assign_group_to_source(source.id, group_id)
+        elif chosen.parent() == act_set_pipeline:
+            pipeline_id = chosen.data()
+            self.assign_pipeline_to_source(source.id, pipeline_id)

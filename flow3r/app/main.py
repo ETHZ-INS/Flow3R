@@ -1,5 +1,6 @@
 import os
 import sys
+from pathlib import Path
 
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
@@ -25,6 +26,7 @@ if __name__ == "__main__":
 
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon("res/flow3r.png"))
+    app.setStyleSheet(Path("res/style.qss").read_text())
 
     api = PluginAPI()
     core_plugin = CorePlugin()

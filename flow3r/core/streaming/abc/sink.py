@@ -63,7 +63,8 @@ class Sink(Generic[TDesc, TData], ABC):
 
         done_subject: ReplaySubject[None] = ReplaySubject(1)
 
-        def cleanup_once():
+        def cleanup_once(exc: Optional[Exception] = None):
+            print("Sink cleanup")
             nonlocal closed, data_sub, desc_sub
             if closed:
                 return
@@ -86,8 +87,11 @@ class Sink(Generic[TDesc, TData], ABC):
                 # Never let cleanup exceptions escape; at most log externally.
                 pass
             finally:
-                done_subject.on_next(None)
-                done_subject.on_completed()
+                if exc is not None:
+                    done_subject.on_error(exc)
+                else:
+                    done_subject.on_next(None)
+                    done_subject.on_completed()
 
         def start_data_subscription():
             nonlocal data_sub
@@ -104,17 +108,18 @@ class Sink(Generic[TDesc, TData], ABC):
                     try:
                         self.on_error(exc)
                     finally:
-                        cleanup_once()
+                        cleanup_once(exc)
                     # Re-raise so the error is visible to upstream error handlers/logging.
                     raise
 
             def _on_error(exc: Exception):
                 if closed:
                     return
+                print(f"Sink error: {exc}")
                 try:
                     self.on_error(exc)
                 finally:
-                    cleanup_once()
+                    cleanup_once(exc)
 
             def _on_completed():
                 if closed:
@@ -136,7 +141,7 @@ class Sink(Generic[TDesc, TData], ABC):
                 try:
                     self.on_error(exc)
                 finally:
-                    cleanup_once()
+                    cleanup_once(exc)
                 raise
 
             start_data_subscription()
@@ -144,10 +149,11 @@ class Sink(Generic[TDesc, TData], ABC):
         def _on_desc_error(exc: Exception):
             if closed:
                 return
+            print(f"Sink descriptor error: {exc}")
             try:
                 self.on_error(exc)
             finally:
-                cleanup_once()
+                cleanup_once(exc)
 
         # Immutable format: take only the first descriptor.
         desc_sub = stream.descriptor.pipe(ops.take(1)).subscribe(_on_desc, _on_desc_error)

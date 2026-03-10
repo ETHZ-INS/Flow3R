@@ -29,7 +29,7 @@
       </sizepolicy>
      </property>
      <property name="text">
-      <string>Recording 1</string>
+      <string>Group A</string>
      </property>
     </widget>
    </item>
@@ -109,6 +109,27 @@
        <widget class="QLabel" name="lbl_recording_time">
         <property name="text">
          <string>00:00:00</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="lbl_duration">
+        <property name="font">
+         <font>
+          <pointsize>9</pointsize>
+         </font>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">QLabel { color: grey; }
+QLabel:hover { 
+    text-decoration: underline;
+}</string>
+        </property>
+        <property name="text">
+         <string>/ 10:00:00</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignBottom|Qt::AlignLeading|Qt::AlignLeft</set>
         </property>
        </widget>
       </item>

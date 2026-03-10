@@ -15,6 +15,8 @@ class PoseEstimationModelEditDialog(QDialog):
 
         self.config = config
 
+        self.setWindowTitle("Pose Estimation Model")
+
         layout = QVBoxLayout(self)
 
         self.form = QWidget(self)
@@ -126,7 +128,7 @@ class PoseEstimationModelsSettingsWidget(QWidget):
 
     def _add_model(self):
         config = PoseEstimationModelConfig()
-        dialog = PoseEstimationModelEditDialog(config)
+        dialog = PoseEstimationModelEditDialog(config, self)
         res = dialog.exec()
         if res == QDialog.DialogCode.Accepted:
             self.model.add_model(dialog.config)
@@ -138,7 +140,7 @@ class PoseEstimationModelsSettingsWidget(QWidget):
             return
 
         config = deepcopy(index.data(self.model.ConfigRole))
-        dialog = PoseEstimationModelEditDialog(config)
+        dialog = PoseEstimationModelEditDialog(config, self)
         res = dialog.exec()
         if res == QDialog.DialogCode.Accepted:
             config = dialog.config

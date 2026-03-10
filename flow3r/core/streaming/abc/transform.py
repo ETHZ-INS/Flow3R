@@ -66,6 +66,7 @@ class Transform(Generic[TDescIn, TDataIn, TDescOut, TDataOut], ABC):
             desc_sub: Optional[DisposableBase] = None
 
             def cleanup_once():
+                print("cleanup_once")
                 nonlocal closed, data_sub, desc_sub
                 if closed:
                     return
@@ -77,6 +78,8 @@ class Transform(Generic[TDescIn, TDataIn, TDescOut, TDataOut], ABC):
                 if desc_sub is not None:
                     desc_sub.dispose()
                     desc_sub = None
+
+                print("cleanup_once almost done")
 
                 try:
                     self.cleanup()

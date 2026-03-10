@@ -63,12 +63,14 @@ class WidgetController(QObject):
 
     @Slot(str, str, object)
     def add_visualizer_handle(self, group_id: str, widget_id: str, session_id: str, handle: IVisualizerHandle) -> None:
-        if widget_id not in self._visualizer_handles:
+        print(f"add_visualizer_handle: {group_id}, {widget_id}, {session_id}")
+        if (group_id, widget_id) not in self._visualizer_handles:
             self._visualizer_handles[(group_id, widget_id)] = {}
         self._visualizer_handles[(group_id, widget_id)][session_id] = handle
 
     @Slot(str, str)
     def remove_visualizer_handle(self, group_id: str, widget_id: str, session_id: str) -> None:
+        print(f"remove_visualizer_handle: {group_id}, {widget_id}, {session_id}")
         self._visualizer_handles[(group_id, widget_id)].pop(session_id, None)
 
     @Slot(str)
@@ -137,6 +139,7 @@ class WidgetController(QObject):
         widget = RecordingControlsWidget(group_id, "Unknown", parent=self._bottom_widget)
         widget.recording_start.connect(self._controller.start_recording)
         widget.recording_stop.connect(self._controller.stop_recording)
+        widget.edit_group.connect(self._main_window._edit_group)
         widget.active_session_requested.connect(self._controller.send_active_session_snapshot)
         self._controller.group_snapshot.connect(widget.group_changed)
         self._controller.group_changed.connect(widget.group_changed)

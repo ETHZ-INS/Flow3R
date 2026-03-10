@@ -22,7 +22,6 @@ class GroupEditDialog(Ui_GroupEditDialog, QDialog):
 
         if self.config.implicit:
             self.txt_recording_name.setReadOnly(True)
-            self.txt_recording_name.setStyleSheet("border: none; background: transparent; padding: 0px; margin: 0px;")
 
         self.dpd_recording_mode.clear()
         for recording_mode, recording_mode_name in GroupConfig.RECORDING_MODES.items():

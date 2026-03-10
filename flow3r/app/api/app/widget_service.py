@@ -128,8 +128,8 @@ class WidgetService(QObject):
                 handle = VisualizerHandle()
                 self._visualizer_handles[(group_id, widget_id, session_id)] = _VisualizerHandleEntry(group_id, widget_id, session_id, handle)
                 self.visualizer_handle_added.emit(group_id, widget_id, session_id, handle)
-                self.visualizer_assignment_requested.emit(group_id, widget_id, session_id)
             self._visualizer_handles[(group_id, widget_id, session_id)].refcount += 1
+            self.visualizer_assignment_requested.emit(group_id, widget_id, session_id)
 
         handle = self._visualizer_handles[(group_id, widget_id, session_id)].handle
         return LeaseVisualizerHandle(handle, lambda: self._release_visualizer_lease(group_id, widget_id, session_id))

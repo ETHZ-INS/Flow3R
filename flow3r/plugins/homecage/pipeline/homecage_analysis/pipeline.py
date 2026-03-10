@@ -1,20 +1,22 @@
 import uuid
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict, Tuple
 
 from py3r.media.streaming.operators import observe_on_bounded
+from py3r.media.types import VideoFrame
 from py3r.media.video.ffmpeg_video_file_writer import FFmpegVideoFileWriter
-from reactivex import operators as ops
+from reactivex import operators as ops, Observable
 
 import reactivex as rx
 from reactivex.disposable import CompositeDisposable
 from reactivex.scheduler import EventLoopScheduler
 
 from flow3r.core.api.app.session_context import ISessionContext
-from flow3r.core.pipeline.abc.pipeline import IPipeline, PipelineSubscription
+from flow3r.core.pipeline.abc.pipeline import IPipeline, PipelineSubscription, PreviewSubscription, PipelineBase
 from flow3r.core.streaming.abc.stream import IStream
 from flow3r.core.streaming.stream import Stream
 from flow3r.core.visualization.abc.visualizer_handle import IVisualizerHandle
+from flow3r.core.visualization.visualizer_sink import VisualizerSink
 from flow3r.plugins.core.node.do_nothing_sink import DoNothingSink
 from flow3r.plugins.core.node.video_segment_concatenator import VideoSegmentConcatenator
 from flow3r.plugins.core.node.video_segment_reader import VideoSegmentReader
@@ -26,6 +28,7 @@ from flow3r.plugins.homecage.pipeline.homecage_analysis.config import HomecageAn
 from flow3r.plugins.homecage.typing.data_segment import HomecageDataSegmentFormat, HomecageDataSegment, TopDataSegment, \
     TopCameraDataSegment
 from flow3r.plugins.pose_estimation.node.pose_estimation_transform import PoseEstimationTransform
+from flow3r.plugins.pose_estimation.node.video_pacer import VideoPacer
 from flow3r.plugins.pose_estimation.settings.pose_estimation_models.settings import PoseEstimationModelConfig
 from flow3r.plugins.pose_estimation.util.pose_model_service import PoseModelService, PoseModelLease
 
@@ -38,22 +41,87 @@ _video_reader_scheduler = EventLoopScheduler()
 _writer_scheduler = EventLoopScheduler()
 
 
+def sync_by_timestamp(cam_a, cam_b, tol: float):
+    """
+    cam_a, cam_b: Observable[VideoFrame]
+    tol: allowed timestamp difference (same units as VideoFrame.ts)
+    returns: Observable[Tuple[VideoFrame, VideoFrame]]
+    """
+
+    def try_match(a_q: List[VideoFrame], b_q: List[VideoFrame]) -> Tuple[List[Tuple[VideoFrame, VideoFrame]], List[VideoFrame], List[VideoFrame]]:
+        out = []
+
+        # Keep trying while both sides have frames
+        while a_q and b_q:
+            a = a_q[0]
+            b = b_q[0]
+            dt = a.timestamp - b.timestamp
+
+            if abs(dt) <= tol:
+                # Matched!
+                out.append((a, b))
+                a_q.pop(0)
+                b_q.pop(0)
+            elif dt < -tol:
+                # a is too early (older). Drop/advance a.
+                print("Dropping frame from A")
+                a_q.pop(0)
+            else:
+                # b is too early (older). Drop/advance b.
+                print("Dropping frame from B")
+                b_q.pop(0)
+
+        return out, a_q, b_q
+
+    # Tag frames by source, merge into one stream, and keep state
+    tagged = rx.merge(
+        cam_a.pipe(ops.map(lambda f: ("a", f))),
+        cam_b.pipe(ops.map(lambda f: ("b", f))),
+    )
+
+    def accumulator(state, item):
+        a_q, b_q = state
+        side, frame = item
+        if side == "a":
+            a_q.append(frame)
+        else:
+            b_q.append(frame)
+
+        matched, a_q, b_q = try_match(a_q, b_q)
+        return a_q, b_q, matched
+
+    return tagged.pipe(
+        ops.scan(lambda s, item: accumulator((s[0], s[1]), item), seed=([], [], [])),
+        ops.flat_map(lambda s: rx.from_iterable(s[2])),  # emit all matched pairs
+    )
+
+
 def video_writer_factory(segment_file: Path, desc: VideoFormat):
     segment_file.parent.mkdir(parents=True, exist_ok=True)
     return FFmpegVideoFileWriter(segment_file, desc.size, desc.fps, grayscale=desc.fmt=="mono8", quality="medium")
 
 
-class HomecageAnalysisPipeline(IPipeline[HomecageAnalysisConfig]):
+class HomecageAnalysisPipeline(PipelineBase[HomecageAnalysisConfig]):
     def __init__(self):
         self._config: Optional[HomecageAnalysisConfig] = None
         self._widget_handle: Optional[IVisualizerHandle] = None
 
         self._current_mouse_model_config: Optional[PoseEstimationModelConfig] = None
         self._current_env_model_config: Optional[PoseEstimationModelConfig] = None
+
+        self._top_preview_widget_handle: Optional[IVisualizerHandle] = None
+        self._offset_preview_widget_handle: Optional[IVisualizerHandle] = None
+
         self._mouse_model_lease: Optional[PoseModelLease] = None
         self._env_model_lease: Optional[PoseModelLease] = None
 
     def configure(self, session_context: ISessionContext, config: HomecageAnalysisConfig):
+        if not self._top_preview_widget_handle:
+            self._top_preview_widget_handle = session_context.widget_service.get_visualizer_handle("Top Preview")
+
+        if not self._offset_preview_widget_handle:
+            self._offset_preview_widget_handle = session_context.widget_service.get_visualizer_handle("Offset Preview")
+
         pose_models_settings = session_context.settings.get(("pose_estimation", "models"))
         assert pose_models_settings is not None
 
@@ -76,65 +144,101 @@ class HomecageAnalysisPipeline(IPipeline[HomecageAnalysisConfig]):
         self._current_mouse_model_config = mouse_pose_model_config
         self._current_env_model_config = env_pose_model_config
 
-    def build(self, session_context: ISessionContext, sources: List[IStream]) -> PipelineSubscription:
-        assert len(sources) == 2
+    def preview(self, session_context: ISessionContext, sources: Dict[str, IStream]) -> PreviewSubscription:
         assert self._config is not None
         assert self._current_mouse_model_config is not None
         assert self._current_env_model_config is not None
 
-        top_camera_source = sources[0]
-        offset_camera_source = sources[1]
+        if self._config.use_3d_camera:
+            camera_source = sources["Top 3D Camera"]
+            top_camera_synced = Stream(
+                camera_source.descriptor.pipe(ops.map(lambda d: VideoFormat((d.size[0]//2, d.size[1]), d.fps, d.fmt))),
+                camera_source.observable.pipe(ops.map(lambda f: f.with_image(f.img[:, :f.img.shape[1]//2])))
+            )
+            offset_camera_synced = Stream(
+                camera_source.descriptor.pipe(ops.map(lambda d: VideoFormat((d.size[0]//2, d.size[1]), d.fps, d.fmt))),
+                camera_source.observable.pipe(ops.map(lambda f: f.with_image(f.img[:, f.img.shape[1]//2:])))
+            )
+        else:
+            top_camera_source = sources["Top Video"]
+            offset_camera_source = sources["Offset Video"]
 
-#        top_camera_source = Stream(
-#            top_camera_source.descriptor.pipe(ops.map(lambda d: VideoFormat((int(d.size[0]/2), int(d.size[1]/2)), d.fps, d.fmt))),
-#            top_camera_source.observable.pipe(ops.map(lambda f: f.with_image(cv2.resize(f.img, (int(1920/2), int(1080/2)), interpolation=cv2.INTER_AREA))))
-#        )
-#
-#        offset_camera_source = Stream(
-#            offset_camera_source.descriptor.pipe(ops.map(lambda d: VideoFormat((int(d.size[0]/2), int(d.size[1]/2)), d.fps, d.fmt))),
-#            offset_camera_source.observable.pipe(ops.map(lambda f: f.with_image(cv2.resize(f.img, (int(1920/2), int(1080/2)), interpolation=cv2.INTER_AREA))))
-#        )
+            paired: Observable[tuple[VideoFrame, VideoFrame]] = sync_by_timestamp(top_camera_source.observable, offset_camera_source.observable, tol=1/60)
+            paired_shared = paired.pipe(ops.share())
 
-#        top_video_writer_sink = VideoWriterSink(Path(self._config.top_video_file))
-#        offset_video_writer_sink = VideoWriterSink(Path(self._config.offset_video_file))
-#
-#        top_video_sub = top_video_writer_sink.subscribe(top_camera_source)
-#        offset_video_sub = offset_video_writer_sink.subscribe(offset_camera_source)
-#
-#        primary_done = rx.zip(top_video_sub.done, offset_video_sub.done)
-#        secondary_done = None
-#
-#        return PipelineSubscription(CompositeDisposable(top_video_sub, offset_video_sub), primary_done, secondary_done)
-        
-#        def build_spool_stream(source: IStream, video_file: Path) -> IStream:
-#            video_stream = Stream(source.descriptor, source.observable.pipe(ops.observe_on(_video_writer_scheduler)))
-#
-#            video_segment_writer = VideoSegmentWriter()
-#            video_segment_reader = VideoSegmentReader()
-#            video_segment_concatenator = VideoSegmentConcatenator(video_file)
-#            video_spool = VideoSpool(video_segment_writer, video_segment_reader, video_segment_concatenator)
-#
-#            spool_stream = video_spool.pipe(video_stream)
-#            spool_stream = Stream(spool_stream.descriptor, spool_stream.observable.pipe(ops.observe_on(_main_scheduler), ops.share()))
-#            return spool_stream
-#
-#        top_spool_stream = build_spool_stream(top_camera_source, Path(self._config.top_video_file))
-#        offset_spool_stream = build_spool_stream(offset_camera_source, Path(self._config.offset_video_file))
-#
-#        top_spool_sink = DoNothingSink()
-#        offset_spool_sink = DoNothingSink()
-#
-#        top_spool_sub = top_spool_sink.subscribe(top_spool_stream)
-#        offset_spool_sub = offset_spool_sink.subscribe(offset_spool_stream)
+            top_camera_synced = Stream(top_camera_source.descriptor, paired_shared.pipe(ops.map(lambda t: t[0])))
+            offset_camera_synced = Stream(offset_camera_source.descriptor, paired_shared.pipe(ops.map(lambda t: t[1])))
+
+        pose_model_configs = (self._current_mouse_model_config, self._current_env_model_config)
+        top_pose_estimation_transform = PoseEstimationTransform(pose_model_service, pose_model_configs, batch_size=8)
+        offset_pose_estimation_transform = PoseEstimationTransform(pose_model_service, pose_model_configs, batch_size=8)
+
+        top_camera_synced = top_camera_synced.pipe(ops.observe_on(_main_scheduler), ops.share())
+        offset_camera_synced = offset_camera_synced.pipe(ops.observe_on(_main_scheduler), ops.share())
+
+        top_pose_input_stream = top_camera_synced.pipe(observe_on_bounded(_pose_estimation_scheduler))
+        offset_pose_input_stream = offset_camera_synced.pipe(observe_on_bounded(_pose_estimation_scheduler))
+
+        top_pose_stream = top_pose_estimation_transform.pipe(top_pose_input_stream).pipe(ops.observe_on(_main_scheduler), ops.share())
+        offset_pose_stream = offset_pose_estimation_transform.pipe(offset_pose_input_stream).pipe(ops.observe_on(_main_scheduler), ops.share())
+
+        top_pose_preview_pacer = VideoPacer(buffer_size=16)
+        top_pose_preview_stream = Stream(
+            rx.combine_latest(top_camera_synced.descriptor, top_pose_stream.descriptor),
+            rx.zip(top_camera_synced.observable, top_pose_stream.observable)
+        )
+        top_pose_preview_stream = top_pose_preview_pacer.pipe(top_pose_preview_stream)
+
+        offset_pose_preview_pacer = VideoPacer(buffer_size=16)
+        offset_pose_preview_stream = Stream(
+            rx.combine_latest(offset_camera_synced.descriptor, offset_pose_stream.descriptor),
+            rx.zip(offset_camera_synced.observable, offset_pose_stream.observable)
+        )
+        offset_pose_preview_stream = offset_pose_preview_pacer.pipe(offset_pose_preview_stream)
+
+        top_visualizer_sink = VisualizerSink(session_context.widget_service, "Top Preview")
+        top_pose_vis_widget_sub = top_visualizer_sink.subscribe(top_pose_preview_stream)
+
+        offset_visualizer_sink = VisualizerSink(session_context.widget_service, "Offset Preview")
+        offset_pose_vis_widget_sub = offset_visualizer_sink.subscribe(offset_pose_preview_stream)
+
+        disposable = CompositeDisposable(top_pose_vis_widget_sub, offset_pose_vis_widget_sub)
+        preview_done = rx.zip(top_pose_vis_widget_sub.done, offset_pose_vis_widget_sub.done)
+        return PreviewSubscription(disposable, preview_done)
+
+    def build(self, session_context: ISessionContext, sources: Dict[str, IStream]) -> PipelineSubscription:
+        assert self._config is not None
+        assert self._current_mouse_model_config is not None
+        assert self._current_env_model_config is not None
+
+        if self._config.use_3d_camera:
+            camera_source = sources["Top 3D Camera"]
+            top_camera_synced = Stream(
+                camera_source.descriptor.pipe(ops.map(lambda d: VideoFormat((d.size[0]//2, d.size[1]), d.fps, d.fmt))),
+                camera_source.observable.pipe(ops.map(lambda f: f.with_image(f.img[:, :f.img.shape[1]//2])))
+            )
+            offset_camera_synced = Stream(
+                camera_source.descriptor.pipe(ops.map(lambda d: VideoFormat((d.size[0]//2, d.size[1]), d.fps, d.fmt))),
+                camera_source.observable.pipe(ops.map(lambda f: f.with_image(f.img[:, f.img.shape[1]//2:])))
+            )
+        else:
+            top_camera_source = sources["Top Video"]
+            offset_camera_source = sources["Offset Video"]
+
+            paired: Observable[tuple[VideoFrame, VideoFrame]] = sync_by_timestamp(top_camera_source.observable, offset_camera_source.observable, tol=1/60)
+            paired_shared = paired.pipe(ops.share())
+
+            top_camera_synced = Stream(top_camera_source.descriptor, paired_shared.pipe(ops.map(lambda t: t[0])))
+            offset_camera_synced = Stream(offset_camera_source.descriptor, paired_shared.pipe(ops.map(lambda t: t[1])))
 
         top_video_segment_writer = VideoSegmentWriter(writer_factory=video_writer_factory, segment_length_seconds=5.0)
         offset_video_segment_writer = VideoSegmentWriter(writer_factory=video_writer_factory, segment_length_seconds=5.0)
 
-        top_camera_source = top_camera_source.pipe(ops.observe_on(_video_writer_scheduler))
-        offset_camera_source = offset_camera_source.pipe(ops.observe_on(_video_writer_scheduler))
+        top_camera_synced = top_camera_synced.pipe(ops.observe_on(_video_writer_scheduler))
+        offset_camera_synced = offset_camera_synced.pipe(ops.observe_on(_video_writer_scheduler))
 
-        top_video_segment_stream = top_video_segment_writer.pipe(top_camera_source).pipe(ops.observe_on(_main_scheduler), ops.share())
-        offset_video_segment_stream = offset_video_segment_writer.pipe(offset_camera_source).pipe(ops.observe_on(_main_scheduler), ops.share())
+        top_video_segment_stream = top_video_segment_writer.pipe(top_camera_synced).pipe(ops.observe_on(_main_scheduler), ops.share())
+        offset_video_segment_stream = offset_video_segment_writer.pipe(offset_camera_synced).pipe(ops.observe_on(_main_scheduler), ops.share())
 
         top_video_segment_reader = VideoSegmentReader()
         offset_video_segment_reader = VideoSegmentReader()
@@ -164,6 +268,8 @@ class HomecageAnalysisPipeline(IPipeline[HomecageAnalysisConfig]):
         #top_pose_results_writer = PoseResultsWriterSink(top_pose_results_file)
         offset_pose_results_file = Path(self._config.offset_pose_results_file)
         #offset_pose_results_writer = PoseResultsWriterSink(offset_pose_results_file)
+
+        calibration_file = Path(self._config.calibration_file)
 
         top_pose_segment_writer = PoseSegmentWriter(segment_length_seconds=5.0)
         offset_pose_segment_writer = PoseSegmentWriter(segment_length_seconds=5.0)
@@ -201,7 +307,7 @@ class HomecageAnalysisPipeline(IPipeline[HomecageAnalysisConfig]):
                 TopDataSegment(
                     TopCameraDataSegment(top_video_segment.file_path, None, top_pose_segment.file_path),
                     TopCameraDataSegment(offset_video_segment.file_path, None, offset_pose_segment.file_path),
-                    None
+                    calibration_file
                 )
             )
 
@@ -216,9 +322,10 @@ class HomecageAnalysisPipeline(IPipeline[HomecageAnalysisConfig]):
         )
         data_segment_stream = Stream(data_descriptor, data_observable)
 
+        live_results_input_folder = Path(self._config.live_results_input_folder)
         recording_id = str(uuid.uuid4())
         def segment_folder_factory(segment_index: int) -> Path:
-            folder = Path(f"recordings/homecage/segments/{recording_id}_segment_{segment_index}")
+            folder = live_results_input_folder / f"{recording_id}_segment_{segment_index}"
             return folder
 
         data_segment_sink = HomecageLiveResultsSink(segment_folder_factory)
@@ -238,3 +345,11 @@ class HomecageAnalysisPipeline(IPipeline[HomecageAnalysisConfig]):
         if self._env_model_lease:
             self._env_model_lease.dispose()
             self._env_model_lease = None
+
+        if self._top_preview_widget_handle:
+            self._top_preview_widget_handle.dispose()
+            self._top_preview_widget_handle = None
+
+        if self._offset_preview_widget_handle:
+            self._offset_preview_widget_handle.dispose()
+            self._offset_preview_widget_handle = None

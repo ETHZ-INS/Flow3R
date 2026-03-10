@@ -1,5 +1,4 @@
 import json
-import tempfile
 from pathlib import Path
 from typing import Callable
 
@@ -30,11 +29,11 @@ class HomecageLiveResultsSink(Sink[HomecageDataSegmentFormat, HomecageDataSegmen
 
         with temp_file.open("w+") as f:
             data = {
-                "top_video_file": str(item.top_data_segment.left.video_file),
-                "offset_video_file": str(item.top_data_segment.right.video_file),
-                "top_pose_file": str(item.top_data_segment.left.pose_file),
-                "offset_pose_file": str(item.top_data_segment.right.pose_file),
-                "calibration_file": str(item.top_data_segment.calibration_file)
+                "top_video_file": str(item.top_data_segment.left.video_file.absolute()),
+                "offset_video_file": str(item.top_data_segment.right.video_file.absolute()),
+                "top_pose_file": str(item.top_data_segment.left.pose_file.absolute()),
+                "offset_pose_file": str(item.top_data_segment.right.pose_file.absolute()),
+                "calibration_file": str(item.top_data_segment.calibration_file.absolute())
             }
             json.dump(data, f, indent=4)
 

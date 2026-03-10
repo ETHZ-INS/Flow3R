@@ -1,14 +1,12 @@
 from typing import Dict, Optional, List, Tuple, Any, Set
 
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, QTimer, QSize
-from PySide6.QtGui import QPainter
-from PySide6.QtWidgets import QDialog, QStyledItemDelegate, QComboBox, QAbstractItemView, QApplication, QStyle, QMenu
-from scipy.constants import pt
+from PySide6.QtWidgets import QDialog, QStyledItemDelegate, QComboBox, QAbstractItemView, QApplication, QMenu
 
 from flow3r.app.config.group_config import GroupConfig
 from flow3r.app.layout.pipeline_assignment_dialog import Ui_PipelineAssignmentDialog
 from flow3r.core.pipeline.pipeline_config import PipelineConfig
-from flow3r.core.source.source_config import SourceConfig
+from flow3r.app.config.source_config import SourceConfig
 
 
 # ----- Tree node -----
@@ -51,7 +49,7 @@ class MappingModel(QAbstractItemModel):
             self._pipeline_nodes[pipeline_id] = pnode
 
             # Build child input nodes (no beginInsertRows needed; parent row is not yet "visible")
-            for input_name in cfg.active_config.inputs():
+            for input_name in cfg.active_config.inputs:
                 inode = Node("input", input_name, parent=pnode, node_id=None)
                 if pipeline_id in source_mapping:
                     inode.assigned_source_id = source_mapping[pipeline_id].get(input_name)
@@ -162,7 +160,7 @@ class MappingModel(QAbstractItemModel):
         self._pipeline_nodes[pipeline_id] = pnode
 
         # Build child input nodes (no beginInsertRows needed; parent row is not yet "visible")
-        for input_name in cfg.active_config.inputs():
+        for input_name in cfg.active_config.inputs:
             inode = Node("input", input_name, parent=pnode, node_id=None)
             pnode.children.append(inode)
 

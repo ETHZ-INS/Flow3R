@@ -30,6 +30,7 @@ class VideoWriterSink(Sink[VideoFormat, VideoFrame]):
 
     def setup(self, desc: VideoFormat) -> None:
         try:
+            self._video_file.parent.mkdir(parents=True, exist_ok=True)
             self._writer = self._factory(self._video_file, desc)
             self._writer.open()
         except Exception as e:

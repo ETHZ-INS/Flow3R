@@ -55,17 +55,14 @@ class Ui_WelfareRecorder(object):
         self.action_enable_superuser_mode.setObjectName(u"action_enable_superuser_mode")
         self.centralwidget = QWidget(WelfareRecorder)
         self.centralwidget.setObjectName(u"centralwidget")
-        self.verticalLayout = QVBoxLayout(self.centralwidget)
-        self.verticalLayout.setObjectName(u"verticalLayout")
         self.frm_dock_window = QFrame(self.centralwidget)
         self.frm_dock_window.setObjectName(u"frm_dock_window")
+        self.frm_dock_window.setGeometry(QRect(9, 9, 782, 431))
         self.frm_dock_window.setFrameShape(QFrame.StyledPanel)
         self.frm_dock_window.setFrameShadow(QFrame.Raised)
-
-        self.verticalLayout.addWidget(self.frm_dock_window)
-
         self.frm_recordings = QFrame(self.centralwidget)
         self.frm_recordings.setObjectName(u"frm_recordings")
+        self.frm_recordings.setGeometry(QRect(9, 446, 16, 16))
         sizePolicy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -77,11 +74,9 @@ class Ui_WelfareRecorder(object):
         self.verticalLayout_3.setSpacing(2)
         self.verticalLayout_3.setObjectName(u"verticalLayout_3")
         self.verticalLayout_3.setContentsMargins(0, 0, 0, 0)
-
-        self.verticalLayout.addWidget(self.frm_recordings)
-
         self.frm_footer = QFrame(self.centralwidget)
         self.frm_footer.setObjectName(u"frm_footer")
+        self.frm_footer.setGeometry(QRect(9, 452, 782, 65))
         sizePolicy1 = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         sizePolicy1.setHorizontalStretch(0)
         sizePolicy1.setVerticalStretch(0)
@@ -102,9 +97,6 @@ class Ui_WelfareRecorder(object):
         self.txt_log.setTextInteractionFlags(Qt.NoTextInteraction)
 
         self.horizontalLayout_4.addWidget(self.txt_log)
-
-
-        self.verticalLayout.addWidget(self.frm_footer)
 
         WelfareRecorder.setCentralWidget(self.centralwidget)
         self.menubar = QMenuBar(WelfareRecorder)

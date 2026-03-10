@@ -1,17 +1,25 @@
-from concurrent.futures import Future
-from dataclasses import dataclass
-from typing import Protocol, List, TypeVar, Optional, Tuple, Any
+from abc import ABC
+from typing import Protocol, List, TypeVar, Optional, Tuple, Any, Dict
 
 import reactivex as rx
 from reactivex import operators as ops
 from reactivex import Observable
 from reactivex.abc import DisposableBase
-from reactivex.disposable import CompositeDisposable
+from reactivex.disposable import CompositeDisposable, Disposable
 
 from flow3r.core.api.app.session_context import ISessionContext
 from flow3r.core.streaming.abc.stream import IStream
 
 TConfig = TypeVar("TConfig")
+
+
+class PreviewSubscription:
+    def __init__(self, disposable: DisposableBase, preview_done: Observable[Any]):
+        self.disposable = disposable
+        self.done = preview_done
+
+    def dispose(self):
+        self.disposable.dispose()
 
 
 class PipelineSubscription:
@@ -43,7 +51,30 @@ class CompositePipelineSubscription(PipelineSubscription):
         )
 
 
+class CompositePreviewSubscription(PreviewSubscription):
+    def __init__(self, subscriptions: List[PreviewSubscription]):
+        super().__init__(
+            CompositeDisposable([sub.disposable for sub in subscriptions]),
+            rx.zip(*[sub.done for sub in subscriptions])
+        )
+
+
 class IPipeline(Protocol[TConfig]):
     def configure(self, session_context: ISessionContext, config: TConfig): ...
-    def build(self, session_context: ISessionContext, sources: List[IStream]) -> PipelineSubscription: ...
+    def preview(self, session_context: ISessionContext, sources: Dict[str, IStream]) -> PreviewSubscription: ...
+    def build(self, session_context: ISessionContext, sources: Dict[str, IStream]) -> PipelineSubscription: ...
     def dispose(self): ...
+
+
+class PipelineBase(IPipeline[TConfig], ABC):
+    def configure(self, session_context: ISessionContext, config: TConfig):
+        pass
+
+    def preview(self, session_context: ISessionContext, sources: Dict[str, IStream]) -> PreviewSubscription:
+        return PreviewSubscription(Disposable(), rx.from_list([None]))
+
+    def build(self, session_context: ISessionContext, sources: Dict[str, IStream]) -> PipelineSubscription:
+        return PipelineSubscription(Disposable(), rx.from_list([None]))
+
+    def dispose(self):
+        pass

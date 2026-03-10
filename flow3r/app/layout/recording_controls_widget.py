@@ -77,6 +77,19 @@ class Ui_RecordingControlsWidget(object):
 
         self.horizontalLayout.addWidget(self.lbl_recording_time)
 
+        self.lbl_duration = QLabel(self.frm_controls)
+        self.lbl_duration.setObjectName(u"lbl_duration")
+        font = QFont()
+        font.setPointSize(9)
+        self.lbl_duration.setFont(font)
+        self.lbl_duration.setStyleSheet(u"QLabel { color: grey; }\n"
+"QLabel:hover { \n"
+"    text-decoration: underline;\n"
+"}")
+        self.lbl_duration.setAlignment(Qt.AlignBottom|Qt.AlignLeading|Qt.AlignLeft)
+
+        self.horizontalLayout.addWidget(self.lbl_duration)
+
 
         self.verticalLayout.addWidget(self.frm_controls)
 
@@ -88,9 +101,10 @@ class Ui_RecordingControlsWidget(object):
 
     def retranslateUi(self, RecordingControlsWidget):
         RecordingControlsWidget.setWindowTitle(QCoreApplication.translate("RecordingControlsWidget", u"Frame", None))
-        self.lbl_group_name.setText(QCoreApplication.translate("RecordingControlsWidget", u"Recording 1", None))
+        self.lbl_group_name.setText(QCoreApplication.translate("RecordingControlsWidget", u"Group A", None))
         self.btn_start.setText(QCoreApplication.translate("RecordingControlsWidget", u"Start", None))
         self.lbl_status.setText(QCoreApplication.translate("RecordingControlsWidget", u"Ready", None))
         self.lbl_recording_time.setText(QCoreApplication.translate("RecordingControlsWidget", u"00:00:00", None))
+        self.lbl_duration.setText(QCoreApplication.translate("RecordingControlsWidget", u"/ 10:00:00", None))
     # retranslateUi
 

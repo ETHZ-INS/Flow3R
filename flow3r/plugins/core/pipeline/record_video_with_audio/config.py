@@ -13,5 +13,6 @@ class RecordVideoWithAudioConfig(PipelineConfigBase):
         video_file = PlaceholderFormatter(self.video_file).format(**placeholder_provider.get_placeholder_values())
         return RecordVideoWithAudioConfig(video_file=video_file)
 
+    @property
     def inputs(self) -> list[str]:
         return ["Video", "Audio"]

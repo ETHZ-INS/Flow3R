@@ -14,7 +14,8 @@ from flow3r.plugins.core.typing.video import VideoFormat
 
 class VideoFileSource(ISource[VideoFormat, VideoFrame]):
     def __init__(self, config: VideoFileSourceConfig):
-        self._video_source = FFmpegVideoFileSource(Path(config.file_path), grayscale=True, playback=True)
+        print(config.loop)
+        self._video_source = FFmpegVideoFileSource(Path(config.file_path), grayscale=config.grayscale, playback=True, loop=config.loop)
         self._desc_subject = ReplaySubject(1)
         self._frame_observable = source_observable(self._video_source)
         self._stream = Stream(self._desc_subject, self._frame_observable.pipe(ops.share()))

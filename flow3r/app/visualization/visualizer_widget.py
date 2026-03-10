@@ -23,12 +23,19 @@ class VisualizerWidget(QDockWidget):
 
         self.setWidget(self.content)
 
+        self.visualizer_frame = QWidget(self)
+        visualizer_frame_layout = QVBoxLayout(self.visualizer_frame)
+        visualizer_frame_layout.setContentsMargins(0, 0, 0, 0)
+        self.content.layout().addWidget(self.visualizer_frame)
+
         self._descriptor: Any = None
 
         self._manually_set_visualizer = False
         self._current_visualizer_name = None
         self._handle: Optional[IVisualizerHandle] = None
         self._visualizer: Optional[QWidget] = None
+
+        self.visibilityChanged.connect(self._visibility_changed)
 
     def set_handle(self, handle: Optional[IVisualizerHandle[Any, Any]]):
         if self._handle:
@@ -45,7 +52,7 @@ class VisualizerWidget(QDockWidget):
                 self._desc_changed(self._handle.desc)
 
     def set_visualizer(self, name: str, visualizer: QWidget, manual: bool = False):
-        self.content.layout().children().clear()
+        self.visualizer_frame.layout().children().clear()
 
         if self._visualizer:
             self._visualizer.set_handle(None)
@@ -54,8 +61,9 @@ class VisualizerWidget(QDockWidget):
         self._manually_set_visualizer = manual
         self._current_visualizer_name = name
         self._visualizer = visualizer
+
         if self._visualizer:
-            self.content.layout().addWidget(self._visualizer)
+            self.visualizer_frame.layout().addWidget(self._visualizer)
             self._visualizer.set_handle(self._handle)
 
     @Slot(object)
@@ -74,11 +82,8 @@ class VisualizerWidget(QDockWidget):
 
         # Build actions from dict
         for visualizer_type in self._visualizers:
-            print(f"Checking {visualizer_type.name} against {self._descriptor}")
             if not visualizer_type.accepts(self._descriptor):
-                print(f"Skipping {visualizer_type.name}")
                 continue
-            print(f"Adding {visualizer_type.name}")
 
             action = QAction(visualizer_type.name, menu)
             action.setCheckable(True)
@@ -89,15 +94,23 @@ class VisualizerWidget(QDockWidget):
                 action.setEnabled(False)
 
             # Capture cls in default arg
-            action.triggered.connect(lambda _=False, vt=visualizer_type: self.set_visualizer(vt.name, vt.widget_factory()))
+            action.triggered.connect(lambda _=False, vt=visualizer_type: self.set_visualizer(vt.name, vt.widget_factory(), manual=True))
             menu.addAction(action)
 
         menu.addSeparator()
 
-        clear_action = QAction("Clear", menu)
+        clear_action = QAction("No visualization", menu)
         clear_action.setEnabled(self._current_visualizer_name is not None)
         clear_action.triggered.connect(lambda: self.set_visualizer(None, None, manual=True))
         menu.addAction(clear_action)
+
+        menu.addSeparator()
+
+        visualizer_menu = menu.addMenu("Visualizer Settings")
+        self._populate_visualizer_submenu(visualizer_menu)
+
+        if visualizer_menu.isEmpty():
+            visualizer_menu.setEnabled(False)
 
         # Map the position correctly depending on who emitted the signal
         sender = self.sender()
@@ -107,3 +120,14 @@ class VisualizerWidget(QDockWidget):
             global_pos = self.mapToGlobal(pos)
 
         menu.exec(global_pos)
+
+    def _populate_visualizer_submenu(self, menu: QMenu) -> None:
+        if self._visualizer is None:
+            return
+
+        populate = getattr(self._visualizer, "populate_context_menu", None)
+        if callable(populate):
+            populate(menu)
+
+    def _visibility_changed(self, visible: bool):
+        self.visualizer_frame.setVisible(visible)

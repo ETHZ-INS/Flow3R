@@ -4,7 +4,7 @@ from PySide6.QtWidgets import QDialog, QComboBox, QVBoxLayout, QWidget, QLineEdi
     QLabel, QSizePolicy
 
 from flow3r.core.source.abc.source_type import ISourceType
-from flow3r.core.source.source_config import SourceConfig
+from flow3r.app.config.source_config import SourceConfig
 
 
 class SourceConfigDialog(QDialog):

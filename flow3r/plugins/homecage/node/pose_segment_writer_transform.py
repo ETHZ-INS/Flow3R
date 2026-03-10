@@ -1,4 +1,5 @@
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 from typing import Callable, Protocol, Optional, Tuple
 
@@ -121,6 +122,7 @@ class PoseSegmentWriter(Transform[Tuple[VideoFormat, PoseFormat], VideoFramePose
                     close_segment()
                     open_segment()
 
+                poses = replace(poses, frame_index=self._num_frames)
                 # write frame
                 self._writer.write(poses)
                 self._num_frames += 1

@@ -10,10 +10,14 @@ from flow3r.plugins.core.source.video.video_file.source_type import VideoFileSou
 from flow3r.plugins.core.source.video.webcam.source_type import WebcamSourceType
 from flow3r.plugins.core.visualization.audio.spectogram.visualizer_type import SpectrogramVisualizerType
 from flow3r.plugins.core.visualization.audio.waveform.visualizer_type import WaveformVisualizerType
-from flow3r.plugins.core.visualization.video.visualizer_type import VideoVisualizerType
+from flow3r.plugins.core.visualization.video.video.visualizer_type import VideoVisualizerType
 
 
 class CorePlugin(IPlugin):
+    @property
+    def name(self) -> str:
+        return "Core"
+
     def initialize(self, api: IPluginAPI):
         api.source_types.register(WebcamSourceType())
         api.source_types.register(VideoFileSourceType())

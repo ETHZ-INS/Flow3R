@@ -1,3 +1,4 @@
+import random
 import uuid
 from contextlib import contextmanager
 from copy import deepcopy
@@ -5,26 +6,30 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, Optional, Iterator, List, Tuple, Any, Set
 
-from PySide6.QtCore import QObject, Signal, Slot
+from PySide6.QtCore import QObject, Signal, Slot, Qt
 import reactivex as rx
 from reactivex import Subject
 from reactivex.abc import DisposableBase
+from reactivex.disposable import Disposable
 from reactivex.scheduler import EventLoopScheduler
 
 from flow3r.app.api.app.session_context import SessionContext
 from flow3r.app.api.app.settings_view import SettingsView
 from flow3r.app.config.app_config import AppConfig
 from flow3r.app.config.group_config import GroupConfig
+from flow3r.app.controller.commit import ConfigChangeReply
 from flow3r.app.controller.session_state import SessionStateBase, Finished, FinishingProcessing, FinishingRecording, Running, \
     Ready, NotReady
 from flow3r.app.api.app.widget_service import WidgetService, SessionWidgetServiceWrapper
-from flow3r.core.pipeline.abc.pipeline import IPipeline, PipelineSubscription, CompositePipelineSubscription
+from flow3r.core.pipeline.abc.pipeline import IPipeline, PipelineSubscription, CompositePipelineSubscription, \
+    PreviewSubscription, CompositePreviewSubscription
 from flow3r.core.pipeline.abc.pipeline_type import IPipelineType
 from flow3r.core.pipeline.pipeline_config import PipelineConfig
 from flow3r.core.placeholder.simple_placeholder_provider import SimplePlaceholderProvider
 from flow3r.core.source.abc.source import ISource
 from flow3r.core.source.abc.source_type import ISourceType
-from flow3r.core.source.source_config import SourceConfig
+from flow3r.app.config.source_config import SourceConfig
+from flow3r.core.streaming.abc.stream import IStream
 from flow3r.core.streaming.stream import Stream
 from flow3r.core.visualization.abc.visualizer_handle import IVisualizerHandle
 
@@ -52,12 +57,17 @@ class SourceEntry:
 
 
 @dataclass
+class Preview:
+    connections: List[DisposableBase]
+    preview_sub: Optional[PreviewSubscription]
+
+
+@dataclass
 class Recording:
     start: Subject
     stop: Subject
     start_time: Optional[datetime] = None
     stop_time: Optional[datetime] = None
-    duration: Optional[float] = None
     connections: Optional[List[DisposableBase]] = None
     pipeline_sub: Optional[PipelineSubscription] = None
     primary_finished: bool = False
@@ -70,12 +80,15 @@ class Recording:
 class Session:
     group_id: str
     session_id: str
+    group_name: str
     recording_number: int
+    recording_duration: Optional[float] = None
     recording: Optional[Recording] = None
 
     def get_placeholder_provider(self) -> SimplePlaceholderProvider:
         start_time = self.recording.start_time if self.recording and self.recording.start_time else datetime.now()
         return SimplePlaceholderProvider({
+            "group_name": self.group_name,
             "recording_number": self.recording_number,
             "start_time": start_time.strftime("%Y%m%d%H%M%S")
         })
@@ -84,10 +97,13 @@ class Session:
 @dataclass
 class Group:
     group_id: str
+    group_name: str
     sessions: Dict[str, Session] = field(default_factory=dict)
     recording_number: int = 0
+    recording_duration: Optional[float] = None
     active_session_id: Optional[str] = None
     pipelines: Dict[str, IPipeline] = field(default_factory=dict)
+    preview: Optional[Preview] = None
 
     @property
     def active_session(self) -> Optional[Session]:
@@ -96,7 +112,7 @@ class Group:
     def new_session(self, active: bool = True):
         self.recording_number += 1
         session_id = str(uuid.uuid4())
-        self.sessions[session_id] = Session(self.group_id, session_id, self.recording_number)
+        self.sessions[session_id] = Session(self.group_id, session_id, self.group_name, self.recording_number, self.recording_duration)
         if active:
             self.active_session_id = session_id
         return session_id
@@ -108,17 +124,17 @@ class ChangeSet:
 
     # groups
     groups_added: Dict[str, GroupConfig]
-    groups_removed: Set[str]
+    groups_removed: Dict[str, GroupConfig]
     groups_updated: Dict[str, Tuple[GroupConfig, GroupConfig]]  # (old, new)
 
     # sources
     sources_added: Dict[str, SourceConfig]
-    sources_removed: Set[str]
+    sources_removed: Dict[str, SourceConfig]
     sources_updated: Dict[str, Tuple[SourceConfig, SourceConfig]]
 
     # pipelines
     pipelines_added: Dict[str, PipelineConfig]
-    pipelines_removed: Set[str]
+    pipelines_removed: Dict[str, PipelineConfig]
     pipelines_updated: Dict[str, Tuple[PipelineConfig, PipelineConfig]]
 
     # derived / important semantic changes
@@ -130,6 +146,8 @@ class ChangeSet:
     group_pipeline_added: Set[Tuple[str, str]]
     group_pipeline_removed: Set[Tuple[str, str]]
     group_pipeline_updated: Set[Tuple[str, str]]
+
+    group_recording_duration_changed: Dict[str, Tuple[Optional[float], Optional[float]]]
 
     group_controls_changed: List[Tuple[str, str, Optional[str]]]  # group_id
 
@@ -143,7 +161,7 @@ def diff_by_id(old_map: Dict[str, Any], new_map: Dict[str, Any]):
     kept_ids = old_ids & new_ids
 
     added = {_id: new_map[_id] for _id in added_ids}
-    removed = set(removed_ids)
+    removed = {_id: old_map[_id] for _id in removed_ids}
     updated = {
         _id: (old_map[_id], new_map[_id])
         for _id in kept_ids
@@ -212,6 +230,17 @@ def diff_config(old: AppConfig, new: AppConfig) -> ChangeSet:
             if pipeline_id in old_gc.pipeline_ids and pipeline_id in pipelines_updated:
                 group_pipeline_updated.add((new_gc.id, pipeline_id))
 
+    group_recording_duration_changed: Dict[str, Tuple[Optional[float], Optional[float]]] = {}
+    for gc in groups_added.values():
+        new_duration = gc.recording_config.recording_duration if gc.recording_config.recording_mode == "timed" else None
+        group_recording_duration_changed[gc.id] = (None, new_duration)
+
+    for old_gc, new_gc in groups_updated.values():
+        old_duration = old_gc.recording_config.recording_duration if old_gc.recording_config.recording_mode == "timed" else None
+        new_duration = new_gc.recording_config.recording_duration if new_gc.recording_config.recording_mode == "timed" else None
+        if old_duration != new_duration:
+            group_recording_duration_changed[new_gc.id] = (old_duration, new_duration)
+
     group_controls_changed: List[Tuple[str, str, Optional[str]]] = []
     for gid, new_gc in new.all_groups.items():
         old_sources = [sc for sc in old.sources.values() if sc.group_id == gid or sc.id == gid]
@@ -251,6 +280,8 @@ def diff_config(old: AppConfig, new: AppConfig) -> ChangeSet:
         group_pipeline_removed=group_pipeline_removed,
         group_pipeline_updated=group_pipeline_updated,
 
+        group_recording_duration_changed=group_recording_duration_changed,
+
         group_controls_changed=group_controls_changed
     )
 
@@ -263,6 +294,8 @@ class Controller(QObject):
 
     config_snapshot = Signal(AppConfig)
     config_changed = Signal(AppConfig)  # AppConfig
+
+    config_change_failed = Signal(object)  # Exception
 
     source_snapshot = Signal(SourceConfig)
     source_added = Signal(SourceConfig)
@@ -304,16 +337,16 @@ class Controller(QObject):
         self.sources: Dict[str, SourceEntry] = {}
         self.groups: Dict[str, Group] = {}
 
-        self.primary_finished.connect(self._primary_finished)
-        self.secondary_finished.connect(self._secondary_finished)
-        self.progress_updated.connect(self._progress_updated)
+        self.primary_finished.connect(self._primary_finished, Qt.ConnectionType.QueuedConnection)
+        self.secondary_finished.connect(self._secondary_finished, Qt.ConnectionType.QueuedConnection)
+        self.progress_updated.connect(self._progress_updated, Qt.ConnectionType.QueuedConnection)
 
     @property
     def config(self) -> AppConfig:
         return deepcopy(self._config)
 
     @contextmanager
-    def transaction(self) -> Iterator[AppConfig]:
+    def transaction(self, reply: Optional[ConfigChangeReply] = None) -> Iterator[AppConfig]:
         if self._in_tx != 0:
             # simplest option: allow nesting by reusing same draft
             self._in_tx += 1
@@ -330,13 +363,25 @@ class Controller(QObject):
             yield self._draft
             # commit only at outermost
             self._commit(self._draft)
+            if reply:
+                reply.finished.emit(True, None)
+        except Exception as exc:
+            self.config_change_failed.emit(exc)
+            if reply:
+                reply.finished.emit(False, exc)
         finally:
             self._draft = None
             self._in_tx = 0
 
     def _commit(self, new_config: AppConfig):
         old_config = self._config
+
+        self._repair_config(new_config)
+        self._validate_config(new_config)
+
         changes = diff_config(old_config, new_config)
+
+        self._check_permission(changes)
 
         # Apply runtime effects in one place
         try:
@@ -369,7 +414,14 @@ class Controller(QObject):
     def send_group_snapshot(self, group_id: str):
         self.group_snapshot.emit(deepcopy(self.config.all_groups[group_id]))
 
-    @Slot(dict)
+    @Slot(str)
+    def send_active_session_snapshot(self, group_id: str):
+        group = self.groups.get(group_id)
+        if group and group.active_session_id:
+            state = self._get_session_state(group_id, group.active_session_id)
+            self.active_session_snapshot.emit(group_id, group.active_session_id, state)
+
+    @Slot(object)
     def set_settings(self, patch: Dict[Tuple[str, ...], Any]) -> None:
         assert all(isinstance(k, tuple) for k in patch.keys())
 
@@ -379,27 +431,20 @@ class Controller(QObject):
             for key_path, value in patch.items():
                 config.settings[key_path] = deepcopy(value)
 
-    def send_active_session_snapshot(self, group_id: str):
-        group = self.groups.get(group_id)
-        if group and group.active_session_id:
-            state = self._get_session_state(group_id, group.active_session_id)
-            self.active_session_snapshot.emit(group_id, group.active_session_id, state)
-
-    def add_source(self, source_config: SourceConfig):
-        with self.transaction() as config:
+    @Slot(object)
+    def add_source(self, source_config: SourceConfig, reply: Optional[ConfigChangeReply] = None):
+        with self.transaction(reply) as config:
             assert source_config.id not in config.sources
-
             config.sources[source_config.id] = source_config
-            self._update_implicit_groups()
 
+    @Slot(object)
     def edit_source(self, source_config: SourceConfig):
         with self.transaction() as config:
             assert source_config.id in config.sources
 
             config.sources[source_config.id] = source_config
 
-            self._update_implicit_groups()
-
+    @Slot(str)
     def remove_source(self, source_id: str):
         with self.transaction() as config:
             assert source_id in config.sources
@@ -407,25 +452,30 @@ class Controller(QObject):
             config.sources.pop(source_id, None)
             config.implicit_groups.pop(source_id, None)
 
-            self._update_implicit_groups()
-
+    @Slot(str)
     def setup_source(self, source_id: str):
         config = self.config
-        assert source_id in config.sources
+
+        source_config = config.sources[source_id]
+
+        self._stop_pipeline_preview(source_config.implicit_group_id)
 
         self._stop_preview(source_id)
         self._teardown_source(source_id)
 
-        source_config = config.sources[source_id]
         self._setup_source(source_config)
         self._start_preview(source_config)
 
+        self._start_pipeline_preview(config, source_config.implicit_group_id)
+
+    @Slot(object)
     def add_group(self, group_config: GroupConfig):
         with self.transaction() as config:
            assert group_config.id not in config.groups
 
            config.groups[group_config.id] = group_config
 
+    @Slot(object)
     def edit_group(self, group_config: GroupConfig):
         with self.transaction() as config:
             assert group_config.id in config.all_groups
@@ -435,12 +485,14 @@ class Controller(QObject):
             elif group_config.id in config.implicit_groups:
                 config.implicit_groups[group_config.id] = group_config
 
+    @Slot(str)
     def remove_group(self, group_id: str):
         with self.transaction() as config:
             assert group_id in config.groups
 
             config.groups.pop(group_id, None)
 
+    @Slot(str, object)
     def assign_group(self, source_id: str, group_id: Optional[str]):
         with self.transaction() as config:
             assert source_id in config.sources, f"SourceConfig {source_id} not found"
@@ -449,38 +501,50 @@ class Controller(QObject):
             source_config = config.sources[source_id]
             source_config.group_id = group_id
 
-            self._update_implicit_groups()
-
+    @Slot(object)
     def add_pipeline(self, pipeline_config: PipelineConfig):
         with self.transaction() as config:
             assert pipeline_config.id not in config.pipelines
 
             config.pipelines[pipeline_config.id] = pipeline_config
 
+    @Slot(object)
     def edit_pipeline(self, pipeline_config: PipelineConfig):
         with self.transaction() as config:
             assert pipeline_config.id in config.pipelines
 
             config.pipelines[pipeline_config.id] = pipeline_config
 
+    @Slot(str)
     def remove_pipeline(self, pipeline_id: str):
         with self.transaction() as config:
             assert pipeline_id in config.pipelines
 
             config.pipelines.pop(pipeline_id, None)
 
-    def assign_pipeline(self, group_id: str, pipeline_id: Optional[str]):
+    @Slot(str, object)
+    def assign_pipeline_to_source(self, source_id: str, pipeline_id: Optional[str]):
         with self.transaction() as config:
-            assert group_id in config.all_groups
-            assert pipeline_id is None or pipeline_id in config.pipelines
+            assert source_id in config.sources
+            assert source_id in config.implicit_groups
 
-            source_configs = [source_config for source_config in config.sources.values() if source_config.group_id == group_id]
-            pipeline_config = config.pipelines[pipeline_id] if pipeline_id else None
-            input_mapping = {
-                pipeline_id: {input_name: source_configs[i].id for i, input_name in enumerate(pipeline_config.active_config.inputs())}
-            } if pipeline_id else None
-            self.set_pipeline_assignment(group_id, {pipeline_id} if pipeline_id else set(), input_mapping)
+            if pipeline_id is None:
+                self.set_pipeline_assignment(source_id, set(), {})
+                return
 
+            assert pipeline_id in config.pipelines
+
+            source_config = config.sources[source_id]
+            pipeline_config = config.pipelines[pipeline_id]
+
+            assert len(pipeline_config.active_config.inputs) == 1
+            input_name = pipeline_config.active_config.inputs[0]
+
+            pipeline_ids = {pipeline_id}
+            input_mapping = {pipeline_id: {input_name: source_config.id}}
+            self.set_pipeline_assignment(source_id, pipeline_ids, input_mapping)
+
+    @Slot(str, object, object)
     def set_pipeline_assignment(self, group_id: str, pipeline_ids: Set[str], source_mapping: Optional[Dict[str, Dict[str, str]]] = None):
         with self.transaction() as config:
             assert group_id in config.all_groups
@@ -490,24 +554,9 @@ class Controller(QObject):
             group_config.pipeline_ids = pipeline_ids
             group_config.source_mapping = source_mapping or {}
 
-    def _update_implicit_groups(self):
-        with self.transaction() as config:
-            for source_id, source_config in config.sources.items():
-                if source_config.group_id is None:
-                    group_name = f"Source: {source_config.name}"
-                    if source_id not in config.implicit_groups:
-                        print(f"Creating implicit group for source {source_id}")
-                        config.implicit_groups[source_id] = GroupConfig(id=source_id, name=group_name, implicit=True)
-                    elif config.implicit_groups[source_id].name != group_name:
-                        print(f"Updating implicit group for source {source_id}")
-                        config.implicit_groups[source_id].name = group_name
-
-            for source_id in config.implicit_groups:
-                if source_id not in config.sources or config.sources[source_id].group_id is not None:
-                    print(f"Removing implicit group for source {source_id}")
-                    config.implicit_groups.pop(source_id)
-
+    @Slot(str, str)
     def start_recording(self, group_id: str, session_id: str):
+        print(f"start_recording({group_id}, {session_id})")
         group_config = self.config.all_groups[group_id]
         source_configs = [sc for sc in self.config.sources.values() if sc.group_id == group_id]
 
@@ -518,10 +567,13 @@ class Controller(QObject):
 
         assert all(pc.id in group.pipelines for pc in pipeline_configs), f"Not all pipelines set up for group {group_id}"
         assert all(
-            len(pc.active_config.inputs()) == len(source_configs) == 1 or \
-            all(input_name in group_config.source_mapping[pc.id] for input_name in pc.active_config.inputs())
+            len(pc.active_config.inputs) == len(source_configs) == 1 or \
+            all(input_name in group_config.source_mapping[pc.id] for input_name in pc.active_config.inputs)
             for pc in pipeline_configs
         ), f"Not inputs have a source assigned for group {group_id}"
+
+        if group.preview:
+            self._stop_pipeline_preview(group_id)
 
         session = group.sessions[session_id]
 
@@ -532,8 +584,7 @@ class Controller(QObject):
 
         start = Subject()
         stop = Subject()
-        duration = group_config.recording_config.recording_duration if group_config.recording_config.recording_mode == "timed" else None
-        session.recording = Recording(start, stop, duration=duration)
+        session.recording = Recording(start, stop)
 
         source_observables = []
         source_streams: Dict[str, Dict[str, Stream]] = {}
@@ -541,8 +592,8 @@ class Controller(QObject):
             if pipeline_config.id not in source_streams:
                 source_streams[pipeline_config.id] = {}
 
-            if len(pipeline_config.active_config.inputs()) == len(source_configs) == 1:
-                input_name = pipeline_config.active_config.inputs()[0]
+            if len(pipeline_config.active_config.inputs) == len(source_configs) == 1:
+                input_name = pipeline_config.active_config.inputs[0]
                 source_config = source_configs[0]
                 source = self.sources[source_config.id].source
                 descriptor = source.stream.descriptor
@@ -551,7 +602,7 @@ class Controller(QObject):
                 gated_observable = observable.pipe(ops.skip_until(session.recording.start), ops.take_until(session.recording.stop))
                 source_streams[pipeline_config.id][input_name] = Stream(descriptor, gated_observable)
             else:
-                for input_name in pipeline_config.active_config.inputs():
+                for input_name in pipeline_config.active_config.inputs:
                     source_id = group_config.source_mapping[pipeline_config.id][input_name]
                     source = self.sources[source_id].source
                     descriptor = source.stream.descriptor
@@ -574,7 +625,7 @@ class Controller(QObject):
             for pipeline_config in pipeline_configs:
                 pipeline = group.pipelines[pipeline_config.id]
                 pipeline.configure(session_context, pipeline_config.active_config.resolve(placeholder_provider))
-                sub = pipeline.build(session_context, list(source_streams[pipeline_config.id].values()))
+                sub = pipeline.build(session_context, source_streams[pipeline_config.id])
                 pipeline_subs.append(sub)
 
             session.recording.pipeline_sub = CompositePipelineSubscription(pipeline_subs)
@@ -584,9 +635,11 @@ class Controller(QObject):
             raise
 
         def _primary_done(_):
+            print("Primary done")
             self.primary_finished.emit(group_id, session_id, None)
 
         def _primary_failed(exc: Exception):
+            print(f"Primary failed: {exc}")
             self.primary_finished.emit(group_id, session_id, exc)
 
         def _secondary_done(_):
@@ -611,6 +664,7 @@ class Controller(QObject):
         session.recording.start.on_next(None)
         self._update_session_state(group_id, session_id)
 
+    @Slot(str, str)
     def stop_recording(self, group_id: str, session_id: str):
         print(f"stop_recording({group_id}, {session_id})")
 
@@ -627,6 +681,7 @@ class Controller(QObject):
 
         self._update_session_state(group_id, session_id)
 
+    @Slot(str, str, object)
     def _primary_finished(self, group_id: str, session_id: str, exc: Optional[Exception]):
         print(f"_primary_finished({group_id}, {session_id}, {exc})")
         group = self.groups.get(group_id)
@@ -647,6 +702,7 @@ class Controller(QObject):
 
         self._update_session_state(group_id, session_id)
 
+    @Slot(str, str, object)
     def _secondary_finished(self, group_id: str, session_id: str, exc: Optional[Exception]):
         print(f"_secondary_finished({group_id}, {session_id}, {exc})")
         group = self.groups.get(group_id)
@@ -667,6 +723,7 @@ class Controller(QObject):
 
         self._update_session_state(group_id, session_id)
 
+    @Slot(str, str, object)
     def _progress_updated(self, group_id: str, session_id: str, progress: Tuple[int, int]):
         group = self.groups.get(group_id)
         assert group is not None, f"Group {group_id} not found"
@@ -679,7 +736,10 @@ class Controller(QObject):
 
         self._update_session_state(group_id, session_id)
 
+    @Slot(str, str)
     def _recording_finished(self, group_id: str, session_id: str):
+        print(f"_recording_finished({group_id}, {session_id})")
+
         group = self.groups.get(group_id)
         assert group is not None, f"Group {group_id} not found"
 
@@ -703,11 +763,194 @@ class Controller(QObject):
         self._update_active_session(group_id)
         self._update_session_state(group_id, session_id)
 
+        self._start_pipeline_preview(self.config, group_id)
+
+    @Slot(str, str)
+    def _start_pipeline_preview(self, app_config: AppConfig, group_id: str):
+        group_config = app_config.all_groups[group_id]
+        source_configs = [sc for sc in app_config.sources.values() if sc.group_id == group_id]
+
+        if not len(group_config.pipeline_ids) > 0:
+            return
+        pipeline_configs = [app_config.pipelines[pipeline_id] for pipeline_id in group_config.pipeline_ids]
+
+        group = self.groups[group_id]
+
+        assert all(pc.id in group.pipelines for pc in pipeline_configs), f"Not all pipelines set up for group {group_id}"
+        if not all(
+            len(pc.active_config.inputs) == len(source_configs) == 1 or \
+            all(input_name in group_config.source_mapping[pc.id] for input_name in pc.active_config.inputs)
+            for pc in pipeline_configs
+        ):
+            return
+
+        from reactivex import operators as ops
+
+        source_observables = []
+
+        source_streams: Dict[str, Dict[str, IStream]] = {}
+        for pipeline_config in pipeline_configs:
+            if pipeline_config.id not in source_streams:
+                source_streams[pipeline_config.id] = {}
+
+            if len(pipeline_config.active_config.inputs) == len(source_configs) == 1:
+                input_name = pipeline_config.active_config.inputs[0]
+                source_config = source_configs[0]
+                source = self.sources[source_config.id].source
+                descriptor = source.stream.descriptor
+                observable = source.stream.observable.pipe(ops.publish())
+                source_observables.append(observable)
+                source_streams[pipeline_config.id][input_name] = Stream(descriptor, observable)
+            else:
+                for input_name in pipeline_config.active_config.inputs:
+                    source_id = group_config.source_mapping[pipeline_config.id][input_name]
+                    source = self.sources[source_id].source
+                    descriptor = source.stream.descriptor
+                    observable = source.stream.observable.pipe(ops.publish())
+                    source_observables.append(observable)
+                    source_streams[pipeline_config.id][input_name] = Stream(descriptor, observable)
+
+        try:
+            widget_service = SessionWidgetServiceWrapper(self.widget_service, group_id, "preview")
+            settings_view = SettingsView(app_config.settings)
+            session_context = SessionContext(widget_service, settings_view)
+
+            preview_subs = []
+            for pipeline_config in pipeline_configs:
+                pipeline = group.pipelines[pipeline_config.id]
+                try:
+                    sub = pipeline.preview(session_context, source_streams[pipeline_config.id])
+                except Exception as e:
+                    import traceback
+                    traceback.print_exc()
+
+                    sub = PreviewSubscription(Disposable(), rx.from_(True))
+
+                preview_subs.append(sub)
+
+            preview_sub = CompositePreviewSubscription(preview_subs)
+
+        except:
+            raise
+
+        def _preview_done(_):
+            print("Preview done")
+
+        def _preview_failed(exc: Exception):
+            print(f"Preview primary failed: {exc}")
+
+        preview_sub.done.pipe(ops.take(1)).subscribe(_preview_done, _preview_failed)
+
+        connections = []
+        for obs in source_observables:
+            sub = obs.connect()
+            connections.append(sub)
+
+        group.preview = Preview(connections, preview_sub)
+
+    def _stop_pipeline_preview(self, group_id: str):
+        group = self.groups.get(group_id)
+        assert group is not None, f"Group {group_id} not found"
+
+        preview = group.preview
+
+        if preview is None:
+            return
+
+        preview.preview_sub.dispose()
+        print("Disposed preview subscription")
+        for connection in preview.connections:
+            connection.dispose()
+        group.preview = None
+
+    def _repair_config(self, config: AppConfig):
+        self._remove_non_existant_references(config)
+        self._update_implicit_groups(config)
+
+    def _remove_non_existant_references(self, config: AppConfig):
+        for source_config in config.sources.values():
+            if source_config.group_id is not None and source_config.group_id not in config.groups:
+                source_config.group_id = None
+
+        for group_config in config.all_groups.values():
+            group_config.pipeline_ids = set(pcid for pcid in group_config.pipeline_ids if pcid in config.pipelines)
+
+            group_sources = {sc.id for sc in config.sources.values() if sc.implicit_group_id == group_config.id}
+            group_config.source_mapping = {
+                pid: {
+                    input_name: source_id
+                    for input_name, source_id in mapping.items()
+                    if input_name in config.pipelines[pid].active_config.inputs and source_id in group_sources
+                }
+                for pid, mapping in group_config.source_mapping.items()
+                if pid in group_config.pipeline_ids
+            }
+
+    def _update_implicit_groups(self, config: AppConfig):
+        for source_id, source_config in config.sources.items():
+            if source_config.group_id is None:
+                group_name = source_config.name
+                if source_id not in config.implicit_groups:
+                    config.implicit_groups[source_id] = GroupConfig(id=source_id, name=group_name, implicit=True)
+                elif config.implicit_groups[source_id].name != group_name:
+                    config.implicit_groups[source_id].name = group_name
+
+        implicit_groups_to_remove = set()
+        for source_id in config.implicit_groups:
+            if source_id not in config.sources or config.sources[source_id].group_id is not None:
+                implicit_groups_to_remove.add(source_id)
+
+        for source_id in implicit_groups_to_remove:
+            config.implicit_groups.pop(source_id)
+
+    def _validate_config(self, config: AppConfig):
+        #if random.random() < 0.1:
+        #    raise Exception("Random validation error")
+
+        return None
+
+    def _check_permission(self, changes: ChangeSet):
+        changed_sources = [source_config for _, source_config in changes.sources_updated.values()]
+        changed_sources += [source_config for source_config in changes.sources_removed.values()]
+        for source_config in changed_sources:
+            group = self.groups[source_config.implicit_group_id]
+            if any(session.recording and session.recording.start_time and not session.recording.finished for session in group.sessions.values()):
+                raise Exception("Cannot edit source while it is used in a recording")
+
     def _apply_changes(self, changes: ChangeSet, old: AppConfig, new: AppConfig):
-        sources_requiring_rebuild = [
-            new_sc for old_sc, new_sc in changes.sources_updated.values()
+        sources_requiring_rebuild = {
+            new_sc.id: new_sc for old_sc, new_sc in changes.sources_updated.values()
             if self._source_requires_rebuild(old_sc, new_sc)
-        ]
+        }
+        
+        groups_requiring_preview_stop = set()
+        groups_requiring_preview_start = set()
+        for group_id in changes.groups_removed:
+            groups_requiring_preview_stop.add(group_id)
+                        
+        for group_id in new.all_groups:
+            if group_id in changes.groups_added:
+                groups_requiring_preview_start.add(group_id)
+            elif any(group_id == gid for gid, pid in changes.group_pipeline_updated):
+                groups_requiring_preview_stop.add(group_id)
+                groups_requiring_preview_start.add(group_id)
+            else:
+                old_group_config = old.all_groups[group_id]
+                new_group_config = new.all_groups[group_id]
+
+                old_source_ids = {sc.id for sc in old.sources.values() if sc.implicit_group_id == group_id}
+                new_source_ids = {sc.id for sc in new.sources.values() if sc.implicit_group_id == group_id}
+                
+                if old_group_config.pipeline_ids != new_group_config.pipeline_ids \
+                    or old_group_config.source_mapping != new_group_config.source_mapping \
+                    or old_source_ids != new_source_ids \
+                    or any(new_sc.id in sources_requiring_rebuild for new_sc in new.sources.values()):
+                    groups_requiring_preview_stop.add(group_id)
+                    groups_requiring_preview_start.add(group_id)
+
+        for group_id in groups_requiring_preview_stop:
+            print(f"Stopping preview for group {group_id}")
+            self._stop_pipeline_preview(group_id)
 
         # --- 2) teardown removed sources/groups (sources first if they depend on groups) ---
         for sid in changes.sources_removed:
@@ -715,9 +958,9 @@ class Controller(QObject):
             self._teardown_source(sid)
             self._teardown_source_widget(sid)
 
-        for sc in sources_requiring_rebuild:
-            self._stop_preview(sc.id)
-            self._teardown_source(sc.id)
+        for source_id in sources_requiring_rebuild:
+            self._stop_preview(source_id)
+            self._teardown_source(source_id)
 
         for gid in changes.groups_removed:
             self._teardown_group(gid)
@@ -730,8 +973,20 @@ class Controller(QObject):
             self._setup_source_widget(source_config)
             self._setup_source(source_config)
 
-        for gid in new.all_groups:
-            self._ensure_active_session(gid)
+        for group_config in new.all_groups.values():
+            self._ensure_active_session(group_config.id)
+
+        sessions_to_update = set()
+        for group_id, group_name in changes.group_name_changed:
+            group = self.groups[group_id]
+            group.name = group_name
+            sessions_to_update.add((group_id, group.active_session_id))
+
+        for group_id, (old_duration, new_duration) in changes.group_recording_duration_changed.items():
+            group = self.groups[group_id]
+            group.recording_duration = new_duration
+            group.active_session.recording_duration = new_duration
+            sessions_to_update.add((group_id, group.active_session_id))
 
         # --- 4) apply updates ---
         for group_id in changes.groups_added:
@@ -754,18 +1009,24 @@ class Controller(QObject):
         for group_id, pipeline_id in changes.group_pipeline_removed:
             self._teardown_pipeline(group_id, pipeline_id)
 
-        for sc in sources_requiring_rebuild:
+        for sc in sources_requiring_rebuild.values():
             self._setup_source(sc)
 
         # --- 5) restart previews for relevant sources ---
-        for sc in sources_requiring_rebuild:
+        for sc in sources_requiring_rebuild.values():
             self._start_preview(sc)
 
         for sc in changes.sources_added.values():
             self._start_preview(sc)
 
+        for group_id in groups_requiring_preview_start:
+            self._start_pipeline_preview(new, group_id)
+
         for gid, location, source_id in changes.group_controls_changed:
             self.widget_service.set_recording_controls_location(gid, location, source_id)
+
+        for group_id, session_id in sessions_to_update:
+            self._update_session_state(group_id, session_id)
 
     def _source_requires_rebuild(self, old_sc: SourceConfig, new_sc: SourceConfig) -> bool:
         return old_sc.active_config != new_sc.active_config
@@ -816,7 +1077,8 @@ class Controller(QObject):
 
     def _setup_group(self, group_config: GroupConfig):
         if group_config.id not in self.groups:
-            self.groups[group_config.id] = Group(group_config.id)
+            recording_duration = group_config.recording_config.recording_duration if group_config.recording_config.recording_mode == "timed" else None
+            self.groups[group_config.id] = Group(group_config.id, group_config.name, recording_duration=recording_duration)
             print("Adding group controls:")
             self.widget_service.add_recording_controls(group_config.id)
             self.widget_service.set_recording_controls_location(group_config.id, "bottom")
@@ -905,29 +1167,29 @@ class Controller(QObject):
         if session.recording:
             start_time = session.recording.start_time
             stop_time = session.recording.stop_time
-            duration = session.recording.duration
+            duration = session.recording_duration
             if start_time:
                 if stop_time:
                     if session.recording.primary_finished:
                         if session.recording.secondary_finished:
-                            return Finished(start_time=start_time, stop_time=stop_time, end_time=None, duration=duration)
+                            return Finished(recording_number=session.recording_number, start_time=start_time, stop_time=stop_time, end_time=None, duration=duration)
                         else:
-                            return FinishingProcessing(start_time=start_time, stop_time=stop_time, duration=duration)
+                            return FinishingProcessing(recording_number=session.recording_number, start_time=start_time, stop_time=stop_time, duration=duration)
                     else:
-                        return FinishingRecording(start_time=start_time, stop_time=stop_time, duration=duration)
+                        return FinishingRecording(recording_number=session.recording_number, start_time=start_time, stop_time=stop_time, duration=duration)
                 else:
-                    return Running(start_time=start_time, duration=duration)
+                    return Running(recording_number=session.recording_number, start_time=start_time, duration=duration)
             else:
-                return Ready()
+                return Ready(recording_number=session.recording_number, duration=duration)
         else:
-            return Ready()
+            return Ready(recording_number=session.recording_number, duration=session.recording_duration)
 
     def _update_active_session(self, group_id: str):
         active_session_id = self.groups[group_id].active_session_id
         if active_session_id:
             state = self._get_session_state(group_id, active_session_id)
         else:
-            state = NotReady(reason="No active session")
+            state = NotReady(reason="No active session", recording_number=None)
         self.active_session_changed.emit(group_id, active_session_id, state)
 
     def _update_session_state(self, group_id: str, session_id: str):

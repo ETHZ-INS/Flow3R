@@ -15,7 +15,7 @@ from flow3r.plugins.core.typing.video import VideoFormat
 
 class WebcamSource(ISource[VideoFormat, VideoFrame]):
     def __init__(self, config: WebcamSourceConfig):
-        self._video_source = OpenCVWebcamSource(config.device_index)
+        self._video_source = OpenCVWebcamSource(config.device_index, grayscale=config.grayscale)
         self._desc_subject = ReplaySubject(1)
         self._frame_observable = source_observable(self._video_source).pipe(ops.share())
         self._stream = Stream(self._desc_subject, self._frame_observable)

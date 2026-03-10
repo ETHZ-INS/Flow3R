@@ -4,5 +4,9 @@ from flow3r.plugins.homecage.pipeline.homecage_analysis.pipeline_type import Hom
 
 
 class HomecagePlugin(IPlugin):
+    @property
+    def name(self) -> str:
+        return "ETH3RHub Homecage"
+
     def initialize(self, api: IPluginAPI):
         api.pipeline_types.register(HomecageAnalysisPipelineType())

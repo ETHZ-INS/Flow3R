@@ -1,4 +1,4 @@
-from typing import Protocol, List, Type, Any
+from typing import Protocol, Any
 
 
 class IVisualizer(Protocol):
@@ -8,8 +8,6 @@ class IVisualizer(Protocol):
 class IVisualizerType(Protocol):
     @property
     def name(self) -> str: ...
-    @property
-    def handle_factory(self): ...
     @property
     def widget_factory(self): ...
     def accepts(self, desc: Any) -> bool: ...

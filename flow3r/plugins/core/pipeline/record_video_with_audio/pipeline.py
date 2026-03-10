@@ -1,7 +1,7 @@
 import tempfile
 from concurrent.futures import Future
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 import reactivex as rx
 from reactivex import operators as ops
@@ -33,10 +33,9 @@ class RecordVideoWithAudioPipeline(IPipeline[RecordVideoWithAudioConfig]):
         if not self._widget_handle:
             self._widget_handle = session_context.widget_service.get_visualizer_handle("Video Preview")
 
-    def build(self, session_context: ISessionContext, sources: List[IStream]) -> PipelineSubscription:
-        assert len(sources) == 2
-        video_source = sources[0]
-        audio_source = sources[1]
+    def build(self, session_context: ISessionContext, sources: Dict[str, IStream]) -> PipelineSubscription:
+        video_source = sources["Video"]
+        audio_source = sources["Audio"]
 
         temp_dir = Path(tempfile.mkdtemp())
         temp_video_file = temp_dir / "video.mkv"

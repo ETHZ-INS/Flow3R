@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 from reactivex import operators as ops
 
@@ -8,7 +8,7 @@ from reactivex.disposable import CompositeDisposable
 from reactivex.scheduler import EventLoopScheduler
 
 from flow3r.core.api.app.session_context import ISessionContext
-from flow3r.core.pipeline.abc.pipeline import IPipeline, PipelineSubscription
+from flow3r.core.pipeline.abc.pipeline import IPipeline, PipelineSubscription, PreviewSubscription
 from flow3r.core.streaming.abc.stream import IStream
 from flow3r.core.streaming.stream import Stream
 from flow3r.core.visualization.abc.visualizer_handle import IVisualizerHandle
@@ -45,7 +45,6 @@ class PoseEstimationPipeline(IPipeline[PoseEstimationConfig]):
         self._model_lease: Optional[PoseModelLease] = None
 
     def configure(self, session_context: ISessionContext, config: PoseEstimationConfig):
-        print("PoseEstimationPipeline.configure", config)
         if not self._widget_handle:
             self._widget_handle = session_context.widget_service.get_visualizer_handle("Pose Preview")
 
@@ -62,9 +61,35 @@ class PoseEstimationPipeline(IPipeline[PoseEstimationConfig]):
         self._config = config
         self._current_model_config = pose_model_config
 
-    def build(self, session_context: ISessionContext, sources: List[IStream]) -> PipelineSubscription:
-        assert len(sources) == 1
-        source = sources[0]
+    def preview(self, session_context: ISessionContext, sources: Dict[str, IStream]) -> PreviewSubscription:
+        if "Video" not in sources:
+            raise Exception("Video source is required for pose estimation preview")
+
+        source = sources["Video"]
+
+        video_stream = source.pipe(ops.observe_on(_main_scheduler), ops.share())
+
+        pose_estimation_transform = PoseEstimationTransform(pose_model_service, self._current_model_config, batch_size=8)
+        pose_input_stream = video_stream.pipe(ops.observe_on(_pose_estimation_scheduler))
+        pose_stream = pose_estimation_transform.pipe(pose_input_stream).pipe(ops.observe_on(_main_scheduler))
+
+        pose_preview_pacer = VideoPacer(buffer_size=16)
+        pose_preview_stream = Stream(
+            rx.combine_latest(video_stream.descriptor, pose_stream.descriptor),
+            rx.zip(video_stream.observable, pose_stream.observable)
+        )
+        pose_preview_stream = pose_preview_pacer.pipe(pose_preview_stream)
+
+        visualizer_sink = VisualizerSink(session_context.widget_service, "Pose Preview")
+        pose_vis_widget_sub = visualizer_sink.subscribe(pose_preview_stream)
+
+        disposable = CompositeDisposable(pose_vis_widget_sub)
+        preview_done = pose_vis_widget_sub.done
+
+        return PreviewSubscription(disposable, preview_done)
+
+    def build(self, session_context: ISessionContext, sources: Dict[str, IStream]) -> PipelineSubscription:
+        source = sources["Video"]
 
         video_stream = Stream(source.descriptor, source.observable.pipe(ops.observe_on(_main_scheduler)))
 
@@ -109,7 +134,7 @@ class PoseEstimationPipeline(IPipeline[PoseEstimationConfig]):
         pose_results_writer_sub = pose_results_writer.subscribe(pose_results_writer_stream)
         pose_vis_widget_sub = visualizer_sink.subscribe(pose_preview_stream)
 
-        disposable = CompositeDisposable(video_writer_sub, pose_results_writer_sub)
+        disposable = CompositeDisposable(video_writer_sub, pose_results_writer_sub, pose_vis_widget_sub)
         primary_done = video_writer_sub.done
         secondary_done = rx.zip(pose_results_writer_sub.done)
 

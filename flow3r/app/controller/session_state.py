@@ -3,13 +3,14 @@ from datetime import datetime
 from typing import List, Optional
 
 
+@dataclass(kw_only=True, frozen=True)
 class SessionStateBase:
-    pass
+    recording_number: int
+    duration: Optional[float] = None
 
 @dataclass(kw_only=True, frozen=True)
 class Started(SessionStateBase):
     start_time: datetime
-    duration: Optional[float] = None
 
 @dataclass(kw_only=True, frozen=True)
 class AcquisitionFinished:

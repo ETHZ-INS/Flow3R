@@ -4,5 +4,9 @@ from flow3r.plugins.test.visualization.video.visualizer_type import RedVideoVisu
 
 
 class TestPlugin(IPlugin):
+    @property
+    def name(self) -> str:
+        return "Test"
+
     def initialize(self, api: IPluginAPI):
         api.visualizer_types.register(RedVideoVisualizerType())

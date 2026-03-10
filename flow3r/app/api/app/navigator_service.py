@@ -13,9 +13,10 @@ class NavigatorService(QObject):
     Opens a settings dialog with tree navigation on the left and page on the right.
     Plugins can open a page by path: navigator.open(("Pose Estimation", "Models"), modal=True)
     """
-    def __init__(self, settings_menus: Dict[Tuple[str, ...], ISettingsMenu]) -> None:
+    def __init__(self, settings_menus: Dict[Tuple[str, ...], ISettingsMenu], default_parent: QWidget) -> None:
         super().__init__()
         self._settings_menus = settings_menus
+        self._default_parent = default_parent
         self.__app_context: IAppContext | None = None
 
     @property
@@ -29,7 +30,7 @@ class NavigatorService(QObject):
     def open(self, path: Tuple[str, ...], parent: Optional[QWidget] = None, modal: bool = True) -> None:
         settings_menu = self._settings_menus[path]
 
-        dialog = SettingsMenuDialog(self._app_context, settings_menu.widget_factory, parent=parent)
+        dialog = SettingsMenuDialog(self._app_context, settings_menu.widget_factory, parent=parent or self._default_parent)
         dialog.setWindowTitle(settings_menu.path[-1])
 
         if modal:

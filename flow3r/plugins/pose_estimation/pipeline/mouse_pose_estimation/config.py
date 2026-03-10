@@ -22,5 +22,6 @@ class MousePoseEstimationConfig(PipelineConfigBase):
         pose_results_file = PlaceholderFormatter(self.pose_results_file).format(**placeholder_provider.get_placeholder_values())
         return replace(self, video_file=video_file, pose_results_file=pose_results_file)
 
+    @property
     def inputs(self) -> List[str]:
         return ["Video"]

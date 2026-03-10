@@ -1,4 +1,4 @@
-from flow3r.core.source.source_config import SourceConfig
+from flow3r.app.config.source_config import SourceConfig
 
 
 class SourceConfigView:

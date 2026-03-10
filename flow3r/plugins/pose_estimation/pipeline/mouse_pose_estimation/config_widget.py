@@ -65,7 +65,7 @@ class MousePoseEstimationConfigWidget(QWidget):
         self.dpd_env_pose_model.currentIndexChanged.connect(self._env_pose_model_changed)
 
     def _edit_pose_models(self):
-        self.app_context.navigator_service.open(("Pose Estimation", "Pose Estimation Models"))
+        self.app_context.navigator_service.open(("Pose Estimation", "Pose Estimation Models"), parent=self)
 
     def _video_file_changed(self):
         value = self.txt_video_file.text()

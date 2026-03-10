@@ -18,6 +18,8 @@ class VideoAudioMuxerSink(Sink[Any, Tuple[Path, Path]]):
         video_file, audio_file = item
         cmd = [
             "ffmpeg",
+            "-hide_banner",
+            "-loglevel", "error",
             "-y",
             "-i", str(video_file),
             "-i", str(audio_file),

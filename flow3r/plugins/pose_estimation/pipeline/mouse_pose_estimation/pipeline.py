@@ -1,6 +1,8 @@
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict
 
+from py3r.media.streaming.operators import observe_on_bounded
+from py3r.pose.core.tracking.fixed_instances_tracker import FixedInstancesTracker
 from reactivex import operators as ops
 
 import reactivex as rx
@@ -8,7 +10,7 @@ from reactivex.disposable import CompositeDisposable
 from reactivex.scheduler import EventLoopScheduler
 
 from flow3r.core.api.app.session_context import ISessionContext
-from flow3r.core.pipeline.abc.pipeline import IPipeline, PipelineSubscription
+from flow3r.core.pipeline.abc.pipeline import IPipeline, PipelineSubscription, PreviewSubscription
 from flow3r.core.streaming.abc.stream import IStream
 from flow3r.core.streaming.stream import Stream
 from flow3r.core.visualization.abc.visualizer_handle import IVisualizerHandle
@@ -20,6 +22,7 @@ from flow3r.plugins.core.node.video_segment_writer import VideoSegmentWriter
 from flow3r.plugins.core.node.video_spool import VideoSpool
 from flow3r.plugins.core.node.video_writer_sink import VideoWriterSink
 from flow3r.plugins.pose_estimation.node.pose_estimation_transform import PoseEstimationTransform
+from flow3r.plugins.pose_estimation.node.pose_filter_transform import PoseFilterTransform
 from flow3r.plugins.pose_estimation.node.pose_render_transform import PoseRenderTransform
 from flow3r.plugins.pose_estimation.node.pose_results_writer import PoseResultsWriterSink
 from flow3r.plugins.pose_estimation.node.video_pacer import VideoPacer
@@ -72,9 +75,48 @@ class MousePoseEstimationPipeline(IPipeline[MousePoseEstimationConfig]):
         self._current_mouse_model_config = mouse_pose_model_config
         self._current_env_model_config = env_pose_model_config
 
-    def build(self, session_context: ISessionContext, sources: List[IStream]) -> PipelineSubscription:
-        assert len(sources) == 1
-        source = sources[0]
+    def preview(self, session_context: ISessionContext, sources: Dict[str, IStream]) -> PreviewSubscription:
+        assert self._config is not None
+        assert self._current_mouse_model_config is not None
+        assert self._current_env_model_config is not None
+
+        source = sources["Video"]
+
+        video_stream = source.pipe(observe_on_bounded(_main_scheduler, maxsize=16, policy="drop_oldest"))
+
+        if self._current_env_model_config is None:
+            pose_model_configs = self._current_mouse_model_config
+        else:
+            pose_model_configs = (self._current_mouse_model_config, self._current_env_model_config)
+
+        pose_estimation_transform = PoseEstimationTransform(pose_model_service, pose_model_configs, batch_size=8)
+        pose_input_stream = video_stream.pipe(observe_on_bounded(_pose_estimation_scheduler, maxsize=16))
+        pose_stream = pose_estimation_transform.pipe(pose_input_stream).pipe(observe_on_bounded(_main_scheduler, maxsize=16))
+
+        pose_tracker_transform = PoseFilterTransform(FixedInstancesTracker(["mouse_top", "mouse_top", "running_wheel", "smart_home_cage", "home_cage_house", "home_cage_tunnel", "home_cage_climbing_grid", "home_cage_door", "home_cage_waterbottle", "cage_card",]))
+        pose_stream = pose_tracker_transform.pipe(pose_stream)
+
+        pose_preview_pacer = VideoPacer(buffer_size=16)
+        pose_preview_stream = Stream(
+            rx.combine_latest(video_stream.descriptor, pose_stream.descriptor),
+            rx.zip(video_stream.observable, pose_stream.observable)
+        )
+        pose_preview_stream = pose_preview_pacer.pipe(pose_preview_stream)
+
+        visualizer_sink = VisualizerSink(session_context.widget_service, "Pose Preview")
+        pose_vis_widget_sub = visualizer_sink.subscribe(pose_preview_stream)
+
+        disposable = CompositeDisposable(pose_vis_widget_sub)
+        preview_done = pose_vis_widget_sub.done
+
+        return PreviewSubscription(disposable, preview_done)
+
+    def build(self, session_context: ISessionContext, sources: Dict[str, IStream]) -> PipelineSubscription:
+        assert self._config is not None
+        assert self._current_mouse_model_config is not None
+        assert self._current_env_model_config is not None
+
+        source = sources["Video"]
 
         video_stream = Stream(source.descriptor, source.observable.pipe(ops.observe_on(_main_scheduler)))
 
@@ -89,15 +131,12 @@ class MousePoseEstimationPipeline(IPipeline[MousePoseEstimationConfig]):
 
         do_nothing_sink = DoNothingSink()
 
-        assert self._current_mouse_model_config is not None
-
         if self._current_env_model_config is None:
             pose_model_configs = self._current_mouse_model_config
         else:
             pose_model_configs = (self._current_mouse_model_config, self._current_env_model_config)
 
         pose_estimation_transform = PoseEstimationTransform(pose_model_service, pose_model_configs, batch_size=32)
-        pose_render_transform = PoseRenderTransform()
         pose_preview_pacer = VideoPacer(buffer_size=150)
 
         vis_video_file = Path(self._config.video_file).with_suffix(".vis.mp4")

@@ -6,6 +6,7 @@ import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from flow3r.core.visualization.abc.visualizer_handle import IVisualizerHandle
+from flow3r.plugins.core.typing.audio import AudioChunk, AudioFormat
 
 
 @dataclass(frozen=True)
@@ -29,7 +30,7 @@ class WaveformWidget(QtWidgets.QWidget):
 
         #self._cfg = AudioVizConfig(384_000)
         self._cfg = AudioVizConfig()
-        self._handle: Optional[IVisualizerHandle[None, np.ndarray]] = None
+        self._handle: Optional[IVisualizerHandle[AudioFormat, AudioChunk]] = None
 
         self._n_window = max(1, int(self._cfg.sample_rate * self._cfg.window_seconds))
         self._ring = np.zeros(self._n_window, dtype=np.float32)
@@ -50,7 +51,7 @@ class WaveformWidget(QtWidgets.QWidget):
 
     # --- Qt-ish "setSource" (optional but nice, like the video widget) ---
 
-    def set_handle(self, handle: Optional[IVisualizerHandle[None, np.ndarray]]) -> None:
+    def set_handle(self, handle: Optional[IVisualizerHandle[AudioFormat, AudioChunk]]) -> None:
         if self._handle is not None:
             try:
                 self._handle.item_changed.disconnect(self.push_chunk)
@@ -80,20 +81,17 @@ class WaveformWidget(QtWidgets.QWidget):
     # --- Slots for data/error/status ---
 
     @QtCore.Slot(object)
-    def push_chunk(self, chunk_obj: object) -> None:
-        if not isinstance(chunk_obj, np.ndarray):
-            return
-
+    def push_chunk(self, chunk: AudioChunk) -> None:
         if self._cfg.latest_only:
-            self._pending = chunk_obj
+            self._pending = chunk.samples
         else:
             # If you ever want “no dropping”, you’d queue chunks instead.
-            self._pending = chunk_obj
+            self._pending = chunk.samples
 
         # In latest-only mode, it’s fine to just let the paint timer draw at repaint_hz.
 
         # Push into ring immediately (cheap) so even if chunks come fast, we keep newest data.
-        self._append_to_ring(chunk_obj)
+        self._append_to_ring(chunk.samples)
 
     @QtCore.Slot(object)
     def _on_error(self, msg: Optional[Exception]) -> None:

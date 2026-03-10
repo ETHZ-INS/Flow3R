@@ -1,18 +1,15 @@
-from typing import Optional, Tuple
+from typing import Optional
 
 import numpy as np
 from PySide6 import QtWidgets, QtCore, QtGui
 from PySide6.QtWidgets import QWidget
 from py3r.media.types import VideoFrame
-from py3r.pose.core.types import VideoFramePoses, PoseInstanceType
-from py3r.pose.core.visualization.pose_renderer import PoseRenderer
 
 from flow3r.core.visualization.abc.visualizer_handle import IVisualizerHandle
 from flow3r.plugins.core.typing.video import VideoFormat
-from flow3r.plugins.pose_estimation.typing.pose_format import PoseFormat
 
 
-class PoseWidget(QWidget):
+class VideoWidget(QWidget):
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
 
@@ -29,9 +26,7 @@ class PoseWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self._label)
 
-        self._pose_renderer: Optional[PoseRenderer] = None
-
-        self._handle: Optional[IVisualizerHandle[Tuple[VideoFormat, PoseFormat], Tuple[VideoFrame, VideoFramePoses]]] = None
+        self._handle: Optional[IVisualizerHandle[VideoFormat, VideoFrame]] = None
 
         # latest-only buffer
         self._pending: Optional[np.ndarray] = None
@@ -42,11 +37,10 @@ class PoseWidget(QWidget):
         # keep last frame pixmap around so we can rescale on resize
         self._pixmap_raw: Optional[QtGui.QPixmap] = None
 
-    def set_handle(self, handle: Optional[IVisualizerHandle[Tuple[VideoFormat, PoseFormat], Tuple[VideoFrame, VideoFramePoses]]]) -> None:
+    def set_handle(self, handle: Optional[IVisualizerHandle[VideoFormat, VideoFrame]]) -> None:
         # disconnect old
         if self._handle is not None:
             try:
-                self._handle.desc_changed.disconnect(self._on_desc)
                 self._handle.item_changed.disconnect(self._on_frame)
                 self._handle.error_changed.disconnect(self._on_error)
                 self._handle.completed_changed.disconnect(self._on_completed)
@@ -60,14 +54,10 @@ class PoseWidget(QWidget):
         self._label.clear()
 
         if self._handle is not None:
-            print(type(self._handle))
-            self._handle.desc_changed.connect(self._on_desc)
             self._handle.item_changed.connect(self._on_frame)
             self._handle.error_changed.connect(self._on_error)
             self._handle.completed_changed.connect(self._on_completed)
 
-            if self._handle.desc:
-                self._on_desc(self._handle.desc)
             if self._handle.item:
                 self._on_frame(self._handle.item)
             if self._handle.error:
@@ -85,14 +75,10 @@ class PoseWidget(QWidget):
         self._update_scaled_pixmap()
 
     @QtCore.Slot(object)
-    def _on_desc(self, desc: Tuple[VideoFormat, PoseFormat]):
-        print(desc[1].instance_types)
-        self._pose_renderer = PoseRenderer(desc[1].instance_types)
-
-    @QtCore.Slot(object)
-    def _on_frame(self, res: Tuple[VideoFrame, VideoFramePoses]) -> None:
-        self._pending_frame = res[0].img
-        self._pending_poses = res[1]
+    def _on_frame(self, frame: Optional[VideoFrame]) -> None:
+        if not frame:
+            return
+        self._pending = frame.img
         if not self._render_timer.isActive():
             self._render_timer.start()
 
@@ -105,19 +91,17 @@ class PoseWidget(QWidget):
 
     @QtCore.Slot()
     def _on_completed(self) -> None:
-        self._label.setText("Video completed.")
+        pass
 
     @QtCore.Slot()
     def _render_latest(self) -> None:
         self._render_timer.stop()
-        frame = self._pending_frame
-        self._pending_frame = None
-
+        frame = self._pending
         if frame is None:
+            self._label.setText("Waiting for video...")
             return
 
-        if self._pose_renderer:
-            frame = self._pose_renderer.render(frame, self._pending_poses)
+        self._pending = None
 
         try:
             self._pixmap_raw = self._frame_to_pixmap_rgb(frame)

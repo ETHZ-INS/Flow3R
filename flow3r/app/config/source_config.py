@@ -21,3 +21,7 @@ class SourceConfig:
 
     def set_sub_config(self, source_type: str, config: Any):
         self.sub_configs[source_type] = config
+
+    @property
+    def implicit_group_id(self) -> str:
+        return self.group_id if self.group_id is not None else self.id

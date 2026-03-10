@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QWidget, QStackedWidget, QVBoxLayout, QLabel, QDoc
 
 from flow3r.app.config.group_config import GroupConfig
 from flow3r.app.widgets.recording_controls_widget import RecordingControlsWidget
-from flow3r.core.source.source_config import SourceConfig
+from flow3r.app.config.source_config import SourceConfig
 from flow3r.core.visualization.abc.visualizer_handle import IVisualizerHandle
 from flow3r.core.visualization.abc.visualizer_type import IVisualizerType
 
@@ -196,15 +196,21 @@ class SourceWidget(QDockWidget):
                 action.setEnabled(False)
 
             # Capture cls in default arg
-            action.triggered.connect(lambda _=False, vt=visualizer_type: self.set_visualizer(vt.name, vt.widget_factory()))
+            action.triggered.connect(lambda _=False, vt=visualizer_type: self.set_visualizer(vt.name, vt.widget_factory(), manual=True))
             menu.addAction(action)
 
         menu.addSeparator()
 
-        clear_action = QAction("Clear", menu)
+        clear_action = QAction("No Visualization", menu)
         clear_action.setEnabled(self._current_visualizer_name is not None)
         clear_action.triggered.connect(lambda: self.set_visualizer(None, None, manual=True))
         menu.addAction(clear_action)
+
+        menu.addSeparator()
+
+        edit_action = QAction("Edit Source", menu)
+        edit_action.triggered.connect(self._edit_source)
+        menu.addAction(edit_action)
 
         # Map the position correctly depending on who emitted the signal
         sender = self.sender()

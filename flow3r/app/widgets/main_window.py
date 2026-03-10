@@ -1,11 +1,12 @@
+import os
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from typing import Tuple, Optional
 
-from PySide6.QtCore import QThread, Signal, Slot
+from PySide6.QtCore import QThread, Signal, Slot, QTimer
 from PySide6.QtGui import QColor, Qt, QTextCursor, QTextCharFormat
-from PySide6.QtWidgets import QMainWindow, QDialog, QWidget, QVBoxLayout, QFileDialog
+from PySide6.QtWidgets import QMainWindow, QDialog, QWidget, QVBoxLayout, QFileDialog, QMessageBox
 
 from flow3r.app.api.app.app_context import AppContext
 from flow3r.app.api.app.settings_service import SettingsService
@@ -24,7 +25,7 @@ from flow3r.app.widgets.pipeline_list_dialog import PipelineListDialog
 from flow3r.app.widgets.source_config_dialog import SourceConfigDialog
 from flow3r.app.widgets.source_list_dialog import SourceListDialog
 from flow3r.core.pipeline.pipeline_config import PipelineConfig
-from flow3r.core.source.source_config import SourceConfig
+from flow3r.app.config.source_config import SourceConfig
 
 
 LOG_COLORS = {
@@ -32,6 +33,10 @@ LOG_COLORS = {
     "WARNING": QColor("orange"),
     "ERROR": QColor("red"),
 }
+
+
+LOCALAPPDATA = Path(os.environ.get("LOCALAPPDATA", Path.home() / ".local" / "share"))
+AUTO_SAVE_FILE = LOCALAPPDATA / "ETH3RHub" / "Flow3R" / "auto_save.wrc"
 
 
 class MainWindow(Ui_WelfareRecorder, QMainWindow):
@@ -52,7 +57,7 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
     group_assigned_to_source = Signal(str, object)  # source_id, group_id
     pipeline_assignment_changed = Signal(str, object, object)  # group_id, pipeline_ids, source_mapping
 
-    def __init__(self, plugin_api: PluginAPI, parent=None):
+    def __init__(self, plugin_api: PluginAPI, config_file: Path = None, parent=None):
         super(MainWindow, self).__init__(parent)
 
         self.setupUi(self)
@@ -82,10 +87,11 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         self.plugin_api = plugin_api
         self._build_settings_menus()
 
-        self.config_file: Optional[str] = None
+        self.config_file: Optional[Path] = config_file
+        self.auto_save: bool = True
 
         settings_menus = {menu.path: menu for menu in self.plugin_api.settings_menus.get_settings_menus().values()}
-        self.navigator_service = NavigatorService(settings_menus)
+        self.navigator_service = NavigatorService(settings_menus, default_parent=self)
 
         self.widget_controller = WidgetController(self.dock_window, self.frm_recordings, list(self.plugin_api.visualizer_types.get_visualizer_types().values()))
         self.widget_service = WidgetService()
@@ -150,12 +156,17 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
 
         self.controller.log_message.connect(self.add_log_entry)
         self.controller.config_changed.connect(self._config_changed)
-
+        self.controller.config_change_failed.connect(self._config_change_failed)
         self.controller.config_loaded.connect(self._project_loaded)
 
         self._config: AppConfig = deepcopy(self.controller.config)
 
         self.add_log_entry("Application started", "INFO")
+
+        if self.config_file is not None:
+            QTimer.singleShot(0, lambda: self.load_project())
+        elif AUTO_SAVE_FILE.exists():
+            QTimer.singleShot(0, lambda: self.ask_load_auto_save())
 
     def _build_settings_menus(self):
         top_level_menu = self.menuBar().addMenu("Settings")
@@ -199,7 +210,7 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
             sb.setValue(sb.maximum())
 
     def _open_settings_menu(self, path: Tuple[str, ...]):
-        self.navigator_service.open(path)
+        self.navigator_service.open(path, parent=self)
 
     def _list_sources(self):
         source_types = list(self.plugin_api.source_types.get_source_types().values())
@@ -218,7 +229,7 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
             self.source_added.emit(source_config)
 
     def _edit_source(self, source_id: str):
-        source_config = self._config.sources.get(source_id)
+        source_config = deepcopy(self._config.sources.get(source_id))
         assert source_config is not None
 
         source_types = list(self.plugin_api.source_types.get_source_types().values())
@@ -243,6 +254,19 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         if res == QDialog.DialogCode.Accepted:
             self.group_added.emit(group_config)
 
+    def _edit_group(self, group_id: str):
+        print("_edit_group: ", group_id)
+        print(self._config.all_groups)
+        group_config = deepcopy(self._config.all_groups.get(group_id))
+        assert group_config is not None
+
+        dialog = GroupEditDialog(group_config)
+        dialog.setWindowTitle("Edit Group")
+        res = dialog.exec()
+
+        if res == QDialog.DialogCode.Accepted:
+            self.group_edited.emit(group_config)
+
     def _list_pipelines(self):
         pipeline_types = list(self.plugin_api.pipeline_types.get_pipeline_types().values())
         pipeline_list_dialog = PipelineListDialog(self.app_context, self.controller, pipeline_types)
@@ -261,6 +285,9 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
 
     def _config_changed(self, config):
         self._config = config
+
+        if self.auto_save:
+            self._save_project(AUTO_SAVE_FILE)
 
     def _select_save_file(self):
         if self.config_file is None:
@@ -290,7 +317,18 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         if self.config_file is None:
             self.save_project_as()
             return
+        self._save_project(self.config_file)
+        AUTO_SAVE_FILE.unlink(missing_ok=True)
 
+    def save_project_as(self):
+        selected_file = self._select_save_file()
+        if not selected_file:
+            return
+        self.config_file = Path(selected_file)
+        self._save_project(self.config_file)
+        AUTO_SAVE_FILE.unlink(missing_ok=True)
+
+    def _save_project(self, config_file: Path):
         geometry = self.saveGeometry()
         window_state = self.saveState()
 
@@ -304,25 +342,31 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
             "dock_window_state": bytes(dock_window_state)
         }
 
-        self.config_saved.emit(str(self.config_file), ui_state)
+        self.config_saved.emit(str(config_file), ui_state)
 
-    def save_project_as(self):
-        selected_file = self._select_save_file()
-        if not selected_file:
-            return
-        self.config_file = selected_file
-        self.save_project()
-
-    def load_project(self, config_file: Path = None):
-        if config_file:
-            selected_file = config_file
+    def load_project(self):
+        if self.config_file:
+            selected_file = self.config_file
         else:
             selected_file = self._select_load_file()
             if not selected_file:
                 return
 
-        self.config_file = selected_file
-        self.config_loaded.emit(str(self.config_file))
+        self.config_file = Path(selected_file)
+        self._load_project(self.config_file)
+
+    def ask_load_auto_save(self):
+        popup = QMessageBox(self)
+        popup.setWindowTitle("Recover Auto-Save")
+        popup.setText("Do you want to load the last auto-saved project?")
+        popup.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        popup.setDefaultButton(QMessageBox.StandardButton.Yes)
+        res = popup.exec()
+        if res == QMessageBox.StandardButton.Yes:
+            self._load_project(AUTO_SAVE_FILE)
+
+    def _load_project(self, config_file: Path):
+        self.config_loaded.emit(str(config_file))
 
     def _project_loaded(self, ui_state: dict):
         geometry = ui_state.get("geometry")
@@ -338,6 +382,15 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
             self.dock_window.restoreGeometry(dock_window_geometry)
         if dock_window_state:
             self.dock_window.restoreState(dock_window_state)
+
+    def _config_change_failed(self, error: Exception):
+        self.add_log_entry(f"Config change failed: {error}", "ERROR")
+
+        popup = QMessageBox(self)
+        popup.setWindowTitle("Error")
+        popup.setText(f"Config change failed: {error}")
+        popup.setStandardButtons(QMessageBox.StandardButton.Ok)
+        popup.exec()
 
     def keyPressEvent(self, event):
         pass

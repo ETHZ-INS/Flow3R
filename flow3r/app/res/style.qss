@@ -1,0 +1,10 @@
+QLineEdit[readOnly="true"] {
+    border: none;
+    background: transparent;
+    padding-left: 0px;
+    color: palette(text);
+}
+
+QLineEdit[readOnly="true"]:focus {
+    outline: none;
+}

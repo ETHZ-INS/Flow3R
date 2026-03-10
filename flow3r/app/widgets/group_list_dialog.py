@@ -6,7 +6,6 @@ from PySide6.QtCore import QAbstractListModel, Qt, QModelIndex, QSize, QRect, Si
 from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QDialog, QStyledItemDelegate, QStyle, QMenu
 
-from flow3r.app.config import group_config
 from flow3r.app.config.app_config import AppConfig
 from flow3r.app.config.group_config import GroupConfig
 from flow3r.app.controller.controller import Controller
@@ -138,6 +137,12 @@ class GroupDelegate(QStyledItemDelegate):
             painter.setPen(option.palette.highlightedText().color())
         else:
             painter.setPen(option.palette.text().color())
+
+        if group.implicit:
+            # italicize
+            font = painter.font()
+            font.setItalic(True)
+            painter.setFont(font)
 
         # Draw name (elided if too long)
         name_elided = option.fontMetrics.elidedText(group_name, Qt.ElideRight, name_rect.width())
@@ -283,10 +288,11 @@ class GroupListDialog(Ui_GroupListDialog, QDialog):
         return msb.exec_() == QtWidgets.QMessageBox.StandardButton.Yes
 
     def assign_pipeline_to_group(self, group_id: str, pipeline_id: str):
-        group_config = self._config.groups.get(group_id)
+        group_config = self._config.all_groups.get(group_id)
         group_config.pipeline_ids.add(pipeline_id)
 
-        dialog = PipelineAssignmentDialog(group_config, self._config.sources, self._config.pipelines)
+        sources = {s.id: s for s in self._config.sources.values() if s.group_id == group_config.id or s.group_id is None and s.id == group_config.id}
+        dialog = PipelineAssignmentDialog(group_config, sources, self._config.pipelines)
         res = dialog.exec()
         if res == QDialog.DialogCode.Accepted:
             self.pipeline_assignment_changed.emit(group_id, group_config.pipeline_ids, group_config.source_mapping)
@@ -297,7 +303,8 @@ class GroupListDialog(Ui_GroupListDialog, QDialog):
             return
 
         group_config = index.data(GroupListModel.GroupRole)
-        dialog = PipelineAssignmentDialog(group_config, self._config.sources, self._config.pipelines)
+        sources = {s.id: s for s in self._config.sources.values() if s.group_id == group_config.id or s.group_id is None and s.id == group_config.id}
+        dialog = PipelineAssignmentDialog(group_config, sources, self._config.pipelines)
         dialog.setWindowTitle("Configure Pipelines")
         res = dialog.exec()
         if res == QDialog.DialogCode.Accepted:
