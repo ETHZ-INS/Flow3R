@@ -32,8 +32,8 @@ class RecordVideoPipeline(PipelineBase[RecordVideoConfig]):
         video_writer_sink = VideoWriterSink(Path(self._config.video_file))
         #visualizer_sink = VisualizerSink(session_context.widget_service, "Video Preview")
 
-        shared_source = Stream(source.descriptor, source.observable.pipe(ops.observe_on(self._main_scheduler), ops.share()))
-        video_writer_stream = Stream(source.descriptor, shared_source.observable.pipe(ops.observe_on(self._writer_scheduler)))
+        shared_source = Stream(source.format, source.data.pipe(ops.observe_on(self._main_scheduler), ops.share()))
+        video_writer_stream = Stream(source.format, shared_source.data.pipe(ops.observe_on(self._writer_scheduler)))
 
         video_writer_sub = video_writer_sink.subscribe(video_writer_stream)
         #visualizer_sub = visualizer_sink.subscribe(shared_source)

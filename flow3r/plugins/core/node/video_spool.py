@@ -31,12 +31,12 @@ class VideoSpool(ITransform[VideoFormat, VideoFrame, VideoFormat, VideoFrame]):
 
     def pipe(self, stream: IStream[VideoFormat, VideoFrame]) -> Stream[VideoFormat, VideoFrame]:
         segment_stream = self._writer.pipe(stream)
-        segment_stream = Stream(segment_stream.descriptor, segment_stream.observable.pipe(ops.share()))
+        segment_stream = Stream(segment_stream.format, segment_stream.data.pipe(ops.share()))
         concatenator_subscription = self._concatenator.subscribe(segment_stream)
 
         output_stream = self._reader.pipe(segment_stream)
 
-        wrapped_output_data = rx.using(lambda: concatenator_subscription, lambda _: output_stream.observable)
-        wrapped_output_stream = Stream(output_stream.descriptor, wrapped_output_data)
+        wrapped_output_data = rx.using(lambda: concatenator_subscription, lambda _: output_stream.data)
+        wrapped_output_stream = Stream(output_stream.format, wrapped_output_data)
 
         return wrapped_output_stream

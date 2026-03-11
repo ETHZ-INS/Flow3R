@@ -47,17 +47,17 @@ class RecordVideoWithAudioPipeline(IPipeline[RecordVideoWithAudioConfig]):
 
         visualizer_sink = VisualizerSink(session_context.widget_service, "Video Preview")
 
-        shared_video_source = Stream(video_source.descriptor, video_source.observable.pipe(ops.observe_on(self._main_scheduler), ops.share()))
+        shared_video_source = Stream(video_source.format, video_source.data.pipe(ops.observe_on(self._main_scheduler), ops.share()))
 
-        video_writer_stream = Stream(shared_video_source.descriptor, shared_video_source.observable.pipe(ops.observe_on(self._writer_scheduler)))
-        audio_writer_stream = Stream(audio_source.descriptor, audio_source.observable.pipe(ops.observe_on(self._writer_scheduler)))
+        video_writer_stream = Stream(shared_video_source.format, shared_video_source.data.pipe(ops.observe_on(self._writer_scheduler)))
+        audio_writer_stream = Stream(audio_source.format, audio_source.data.pipe(ops.observe_on(self._writer_scheduler)))
 
         video_file_stream = video_writer_transform.pipe(video_writer_stream)
         audio_file_stream = audio_writer_transform.pipe(audio_writer_stream)
 
         video_audio_muxer_stream = Stream(
-            rx.combine_latest(video_file_stream.descriptor, audio_file_stream.descriptor),
-            rx.zip(video_file_stream.observable, audio_file_stream.observable)
+            (video_file_stream.format, audio_file_stream.format),
+            rx.zip(video_file_stream.data, audio_file_stream.data)
         )
         muxer_sub = video_audio_muxer_sink.subscribe(video_audio_muxer_stream)
 

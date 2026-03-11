@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Hashable, Union, Tuple
 
+import numpy as np
 import torch
 from py3r.pose.core.model.composite_pose_model import CompositePoseModel
 from py3r.pose.core.types import PoseInstanceType
@@ -79,7 +80,10 @@ class PoseModelService:
                 del self._models[model_key]
 
     def _build_model(self, model_config: PoseEstimationModelConfig) -> Any:
-        return YoloPoseModel.from_folder(Path(model_config.model_identifier))
+        model = YoloPoseModel.from_folder(Path(model_config.model_identifier))
+        dummy = np.zeros((640, 640, 3), dtype=np.uint8)
+        model.predict(dummy)  # Make sure the model is initialized and fused
+        return model
 
     def _teardown_model(self, entry: _Entry):
         del entry.model

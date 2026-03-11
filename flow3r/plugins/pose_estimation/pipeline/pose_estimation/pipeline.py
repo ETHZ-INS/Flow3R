@@ -75,8 +75,8 @@ class PoseEstimationPipeline(IPipeline[PoseEstimationConfig]):
 
         pose_preview_pacer = VideoPacer(buffer_size=16)
         pose_preview_stream = Stream(
-            rx.combine_latest(video_stream.descriptor, pose_stream.descriptor),
-            rx.zip(video_stream.observable, pose_stream.observable)
+            (video_stream.format, pose_stream.format),
+            rx.zip(video_stream.data, pose_stream.data)
         )
         pose_preview_stream = pose_preview_pacer.pipe(pose_preview_stream)
 
@@ -91,7 +91,7 @@ class PoseEstimationPipeline(IPipeline[PoseEstimationConfig]):
     def build(self, session_context: ISessionContext, sources: Dict[str, IStream]) -> PipelineSubscription:
         source = sources["Video"]
 
-        video_stream = Stream(source.descriptor, source.observable.pipe(ops.observe_on(_main_scheduler)))
+        video_stream = Stream(source.format, source.data.pipe(ops.observe_on(_main_scheduler)))
 
         video_file = Path(self._config.video_file)
         video_segment_writer = VideoSegmentWriter()
@@ -100,7 +100,7 @@ class PoseEstimationPipeline(IPipeline[PoseEstimationConfig]):
         video_spool = VideoSpool(video_segment_writer, video_segment_reader, video_segment_concatenator)
 
         spool_stream = video_spool.pipe(video_stream)
-        spool_stream = Stream(spool_stream.descriptor, spool_stream.observable.pipe(ops.share()))
+        spool_stream = Stream(spool_stream.format, spool_stream.data.pipe(ops.share()))
 
         do_nothing_sink = DoNothingSink()
 
@@ -116,17 +116,17 @@ class PoseEstimationPipeline(IPipeline[PoseEstimationConfig]):
 
         visualizer_sink = VisualizerSink(session_context.widget_service, "Pose Preview")
 
-        pose_input_stream = Stream(source.descriptor, spool_stream.observable.pipe(ops.observe_on(_pose_estimation_scheduler)))
+        pose_input_stream = Stream(source.format, spool_stream.data.pipe(ops.observe_on(_pose_estimation_scheduler)))
         pose_stream = pose_estimation_transform.pipe(pose_input_stream)
-        pose_stream = Stream(pose_stream.descriptor, pose_stream.observable.pipe(ops.observe_on(_main_scheduler), ops.share()))
+        pose_stream = Stream(pose_stream.format, pose_stream.data.pipe(ops.observe_on(_main_scheduler), ops.share()))
 
-        pose_render_input_stream = Stream(rx.combine_latest(spool_stream.descriptor, pose_stream.descriptor), rx.zip(spool_stream.observable, pose_stream.observable))
+        pose_render_input_stream = Stream((spool_stream.format, pose_stream.format), rx.zip(spool_stream.data, pose_stream.data))
 
         #pose_vis_stream = pose_render_transform.pipe(pose_render_input_stream)
-        #pose_vis_stream = Stream(pose_vis_stream.descriptor, pose_vis_stream.observable.pipe(ops.share()))
+        #pose_vis_stream = Stream(pose_vis_stream.format, pose_vis_stream.observable.pipe(ops.share()))
 
-        #vis_video_writer_stream = Stream(source.descriptor, pose_vis_stream.observable.pipe(ops.observe_on(_writer_scheduler)))
-        pose_results_writer_stream = Stream(source.descriptor, pose_stream.observable.pipe(ops.observe_on(_writer_scheduler)))
+        #vis_video_writer_stream = Stream(source.format, pose_vis_stream.observable.pipe(ops.observe_on(_writer_scheduler)))
+        pose_results_writer_stream = Stream(source.format, pose_stream.data.pipe(ops.observe_on(_writer_scheduler)))
         pose_preview_stream = pose_preview_pacer.pipe(pose_render_input_stream)
 
         video_writer_sub = do_nothing_sink.subscribe(spool_stream)

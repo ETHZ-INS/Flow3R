@@ -1,4 +1,3 @@
-import random
 import uuid
 from contextlib import contextmanager
 from copy import deepcopy
@@ -37,7 +36,7 @@ from flow3r.core.visualization.abc.visualizer_handle import IVisualizerHandle
 class ErrorSource(ISource):
     def __init__(self, exc: Exception):
         self._exc = exc
-        self._stream = Stream(rx.throw(exc), rx.throw(exc))
+        self._stream = Stream(None, rx.throw(exc))
 
     @property
     def stream(self) -> Stream:
@@ -52,8 +51,10 @@ class ErrorSource(ISource):
 
 @dataclass
 class SourceEntry:
+    name: str = ""
     source: Optional[ISource] = None
     widget_handle: Optional[IVisualizerHandle] = None
+    preview_sub: Optional[DisposableBase] = None
 
 
 @dataclass
@@ -595,21 +596,21 @@ class Controller(QObject):
             if len(pipeline_config.active_config.inputs) == len(source_configs) == 1:
                 input_name = pipeline_config.active_config.inputs[0]
                 source_config = source_configs[0]
-                source = self.sources[source_config.id].source
-                descriptor = source.stream.descriptor
-                observable = source.stream.observable.pipe(ops.publish())
+                source = self.sources[source_config.id]
+                format = source.source.stream.format
+                observable = source.source.stream.data.pipe(ops.publish())
                 source_observables.append(observable)
                 gated_observable = observable.pipe(ops.skip_until(session.recording.start), ops.take_until(session.recording.stop))
-                source_streams[pipeline_config.id][input_name] = Stream(descriptor, gated_observable)
+                source_streams[pipeline_config.id][input_name] = Stream(format, gated_observable, name=source.name)
             else:
                 for input_name in pipeline_config.active_config.inputs:
                     source_id = group_config.source_mapping[pipeline_config.id][input_name]
-                    source = self.sources[source_id].source
-                    descriptor = source.stream.descriptor
-                    observable = source.stream.observable.pipe(ops.publish())
+                    source = self.sources[source_id]
+                    format = source.source.stream.format
+                    observable = source.source.stream.data.pipe(ops.publish())
                     source_observables.append(observable)
                     gated_observable = observable.pipe(ops.skip_until(session.recording.start), ops.take_until(session.recording.stop))
-                    source_streams[pipeline_config.id][input_name] = Stream(descriptor, gated_observable)
+                    source_streams[pipeline_config.id][input_name] = Stream(format, gated_observable, name=source.name)
 
         start_time = datetime.now()
 
@@ -624,7 +625,7 @@ class Controller(QObject):
             pipeline_subs = []
             for pipeline_config in pipeline_configs:
                 pipeline = group.pipelines[pipeline_config.id]
-                pipeline.configure(session_context, pipeline_config.active_config.resolve(placeholder_provider))
+                #pipeline.configure(session_context, pipeline_config.active_config.resolve(placeholder_provider))
                 sub = pipeline.build(session_context, source_streams[pipeline_config.id])
                 pipeline_subs.append(sub)
 
@@ -765,7 +766,19 @@ class Controller(QObject):
 
         self._start_pipeline_preview(self.config, group_id)
 
-    @Slot(str, str)
+    def _pipeline_input_mapping(self, config: AppConfig, group_id: str, pipeline_id: str) -> Dict[str, str]:
+        group_config = config.all_groups[group_id]
+        pipeline_config = config.pipelines[pipeline_id]
+
+        source_configs = [sc for sc in config.sources.values() if sc.implicit_group_id == group_id]
+
+        if len(pipeline_config.active_config.inputs) == len(source_configs) == 1:
+            input_name = pipeline_config.active_config.inputs[0]
+            source_config = source_configs[0]
+            return {input_name: source_config.id}
+        else:
+            return group_config.source_mapping[pipeline_config.id]
+
     def _start_pipeline_preview(self, app_config: AppConfig, group_id: str):
         group_config = app_config.all_groups[group_id]
         source_configs = [sc for sc in app_config.sources.values() if sc.group_id == group_id]
@@ -775,6 +788,9 @@ class Controller(QObject):
         pipeline_configs = [app_config.pipelines[pipeline_id] for pipeline_id in group_config.pipeline_ids]
 
         group = self.groups[group_id]
+
+        if group.preview:
+            return
 
         assert all(pc.id in group.pipelines for pc in pipeline_configs), f"Not all pipelines set up for group {group_id}"
         if not all(
@@ -793,22 +809,15 @@ class Controller(QObject):
             if pipeline_config.id not in source_streams:
                 source_streams[pipeline_config.id] = {}
 
-            if len(pipeline_config.active_config.inputs) == len(source_configs) == 1:
-                input_name = pipeline_config.active_config.inputs[0]
-                source_config = source_configs[0]
-                source = self.sources[source_config.id].source
-                descriptor = source.stream.descriptor
-                observable = source.stream.observable.pipe(ops.publish())
+            input_mapping = self._pipeline_input_mapping(app_config, group_id, pipeline_config.id)
+
+            for input_name in pipeline_config.active_config.inputs:
+                source_id = input_mapping[input_name]
+                source = self.sources[source_id]
+                format = source.source.stream.format
+                observable = source.source.stream.data.pipe(ops.publish())
                 source_observables.append(observable)
-                source_streams[pipeline_config.id][input_name] = Stream(descriptor, observable)
-            else:
-                for input_name in pipeline_config.active_config.inputs:
-                    source_id = group_config.source_mapping[pipeline_config.id][input_name]
-                    source = self.sources[source_id].source
-                    descriptor = source.stream.descriptor
-                    observable = source.stream.observable.pipe(ops.publish())
-                    source_observables.append(observable)
-                    source_streams[pipeline_config.id][input_name] = Stream(descriptor, observable)
+                source_streams[pipeline_config.id][input_name] = Stream(format, observable, source.name)
 
         try:
             widget_service = SessionWidgetServiceWrapper(self.widget_service, group_id, "preview")
@@ -927,7 +936,8 @@ class Controller(QObject):
         groups_requiring_preview_start = set()
         for group_id in changes.groups_removed:
             groups_requiring_preview_stop.add(group_id)
-                        
+
+        # TODO: preview is started mid-recording when settings are changed :(
         for group_id in new.all_groups:
             if group_id in changes.groups_added:
                 groups_requiring_preview_start.add(group_id)
@@ -991,20 +1001,18 @@ class Controller(QObject):
         # --- 4) apply updates ---
         for group_id in changes.groups_added:
             for pipeline_id in new.all_groups[group_id].pipeline_ids:
-                pipeline_config = new.pipelines[pipeline_id]
-                self._setup_pipeline(group_id, pipeline_config, new.settings)
+                self._setup_pipeline(new, group_id, pipeline_id)
 
         for group_id, pipeline_id in changes.group_pipeline_updated:
             old_pipeline_config, new_pipeline_config = old.pipelines[pipeline_id], new.pipelines[pipeline_id]
             if old_pipeline_config.pipeline_type == new_pipeline_config.pipeline_type:
-                self._configure_pipeline(group_id, new_pipeline_config, new.settings)
+                self._configure_pipeline(new, group_id, pipeline_id)
             else:
                 self._teardown_pipeline(group_id, pipeline_id)
-                self._setup_pipeline(group_id, new_pipeline_config, new.settings)
+                self._setup_pipeline(new, group_id, pipeline_id)
 
         for group_id, pipeline_id in changes.group_pipeline_added:
-            pipeline_config = new.pipelines[pipeline_id]
-            self._setup_pipeline(group_id, pipeline_config, new.settings)
+            self._setup_pipeline(new, group_id, pipeline_id)
 
         for group_id, pipeline_id in changes.group_pipeline_removed:
             self._teardown_pipeline(group_id, pipeline_id)
@@ -1052,6 +1060,7 @@ class Controller(QObject):
             self.sources[source_config.id] = SourceEntry()
 
         source_entry = self.sources[source_config.id]
+        source_entry.name = source_config.name
 
         source_type = self.source_types.get(source_config.source_type)
         assert source_type is not None
@@ -1099,7 +1108,15 @@ class Controller(QObject):
         assert source_entry.source is not None
         assert source_entry.widget_handle is not None
 
-        source_entry.widget_handle.subscribe(source_entry.source.stream)
+        widget_handle = source_entry.widget_handle
+
+        widget_handle.set_error(None)
+        widget_handle.set_format(source_entry.source.stream.format)
+        source_entry.preview_sub = source_entry.source.stream.data.subscribe(
+            on_next=widget_handle.set_item,
+            on_error=widget_handle.set_error,
+            on_completed=lambda: widget_handle.set_completed(True)
+        )
 
     def _stop_preview(self, source_id: str):
         print(f"_stop_preview({source_id})")
@@ -1108,13 +1125,15 @@ class Controller(QObject):
         if not source_entry:
             return
 
-        if source_entry.widget_handle:
+        if source_entry.preview_sub:
             print("Unsubscribing from source preview")
-            source_entry.widget_handle.unsubscribe()
+            source_entry.preview_sub.dispose()
 
-    def _setup_pipeline(self, group_id: str, pipeline_config: PipelineConfig, settings):
+    def _setup_pipeline(self, config: AppConfig, group_id: str, pipeline_id: str):
+        assert pipeline_id in config.pipelines
+        pipeline_config = config.pipelines[pipeline_id]
+
         assert group_id in self.groups
-
         group = self.groups[group_id]
 
         pipeline = group.pipelines.get(pipeline_config.id)
@@ -1125,11 +1144,13 @@ class Controller(QObject):
         pipeline = pipeline_factory()
         group.pipelines[pipeline_config.id] = pipeline
 
-        self._configure_pipeline(group_id, pipeline_config, settings)
+        self._configure_pipeline(config, group_id, pipeline_id)
 
-    def _configure_pipeline(self, group_id: str, pipeline_config: PipelineConfig, settings):
+    def _configure_pipeline(self, config: AppConfig, group_id: str, pipeline_id: str):
+        assert pipeline_id in config.pipelines
+        pipeline_config = config.pipelines[pipeline_id]
+
         assert group_id in self.groups
-
         group = self.groups[group_id]
 
         pipeline = group.pipelines.get(pipeline_config.id)
@@ -1138,11 +1159,19 @@ class Controller(QObject):
         placeholder_provider = group.active_session.get_placeholder_provider()
 
         widget_service = SessionWidgetServiceWrapper(self.widget_service, group_id, "preview")
-        settings_view = SettingsView(settings)
+        settings_view = SettingsView(config.settings)
         session_context = SessionContext(widget_service, settings_view)
 
-        pipeline.configure(session_context, pipeline_config.active_config.resolve(placeholder_provider))
-        group.pipelines[pipeline_config.id] = pipeline
+        input_mapping = self._pipeline_input_mapping(config, group_id, pipeline_config.id)
+
+        source_names: Dict[str, str] = {}
+        for input_name in pipeline_config.active_config.inputs:
+            source_id = input_mapping.get(input_name)
+            if source_id is not None:
+                source = self.sources[source_id]
+                source_names[input_name] = source.name
+
+        pipeline.configure(session_context, pipeline_config.active_config.resolve(placeholder_provider), source_names)
 
     def _teardown_pipeline(self, group_id: str, pipeline_id: str):
         group = self.groups[group_id]

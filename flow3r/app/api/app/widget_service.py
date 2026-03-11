@@ -1,26 +1,35 @@
 import threading
 from dataclasses import dataclass
-from typing import Dict, Tuple, Callable, Literal, Optional
+from typing import Dict, Tuple, Callable, Literal, Optional, TypeVar
 
 from PySide6.QtCore import QObject, Signal
 
-from flow3r.core.streaming.abc.stream import IStream
 from flow3r.core.visualization.abc.visualizer_handle import IVisualizerHandle
 from flow3r.core.visualization.visualizer_handle import VisualizerHandle
 
 
-class LeaseVisualizerHandle(IVisualizerHandle):
+TDesc = TypeVar("TDesc")
+TData = TypeVar("TData")
+
+
+class LeaseVisualizerHandle(IVisualizerHandle[TDesc, TData]):
     def __init__(self, inner: IVisualizerHandle, dispose_cb: Callable[[], None]):
         self._inner = inner
         self._dispose_cb = dispose_cb
         self._disposed = False
         self._lock = threading.Lock()
 
-    def subscribe(self, stream: IStream):
-        self._inner.subscribe(stream)
+    def set_format(self, fmt: TDesc) -> None:
+        self._inner.set_format(fmt)
 
-    def unsubscribe(self):
-        self._inner.unsubscribe()
+    def set_item(self, item: TData) -> None:
+        self._inner.set_item(item)
+
+    def set_error(self, error: Exception) -> None:
+        self._inner.set_error(error)
+
+    def set_completed(self, completed: bool) -> None:
+        self._inner.set_completed(completed)
 
     def dispose(self) -> None:
         with self._lock:

@@ -34,7 +34,7 @@ class VideoSegmentReader(Transform[VideoSegmentFormat, VideoSegment, VideoFormat
 
         self._video_format: Optional[VideoFormat] = None
 
-    def infer_descriptor(self, desc_in: VideoSegmentFormat) -> VideoFormat:
+    def infer_format(self, desc_in: VideoSegmentFormat) -> VideoFormat:
         # Re-emitting the original format is usually what you want
         return desc_in.video_format  # adjust field name to yours
 

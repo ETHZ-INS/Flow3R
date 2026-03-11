@@ -28,10 +28,10 @@ class VisualizerWidget(QDockWidget):
         visualizer_frame_layout.setContentsMargins(0, 0, 0, 0)
         self.content.layout().addWidget(self.visualizer_frame)
 
-        self._descriptor: Any = None
+        self._format: Any = None
 
         self._manually_set_visualizer = False
-        self._current_visualizer_name = None
+        self._current_visualizer_type = None
         self._handle: Optional[IVisualizerHandle] = None
         self._visualizer: Optional[QWidget] = None
 
@@ -39,41 +39,47 @@ class VisualizerWidget(QDockWidget):
 
     def set_handle(self, handle: Optional[IVisualizerHandle[Any, Any]]):
         if self._handle:
-            self._handle.desc_changed.disconnect(self._desc_changed)
+            self._handle.format_changed.disconnect(self._desc_changed)
 
         self._handle = handle
         if self._visualizer:
             self._visualizer.set_handle(handle)
 
         if self._handle:
-            self._handle.desc_changed.connect(self._desc_changed)
+            self._handle.format_changed.connect(self._desc_changed)
 
-            if self._handle.desc:
-                self._desc_changed(self._handle.desc)
+            if self._handle.format:
+                self._desc_changed(self._handle.format)
 
-    def set_visualizer(self, name: str, visualizer: QWidget, manual: bool = False):
+    def set_visualizer(self, visualizer_type: Optional[IVisualizerType], manual: bool = False):
         self.visualizer_frame.layout().children().clear()
 
         if self._visualizer:
             self._visualizer.set_handle(None)
             self._visualizer.setParent(None)
+            self._visualizer = None
 
         self._manually_set_visualizer = manual
-        self._current_visualizer_name = name
-        self._visualizer = visualizer
+        self._current_visualizer_type = visualizer_type
 
-        if self._visualizer:
+        if visualizer_type is not None:
+            self._visualizer = visualizer_type.widget_factory(self.visualizer_frame)
             self.visualizer_frame.layout().addWidget(self._visualizer)
             self._visualizer.set_handle(self._handle)
 
     @Slot(object)
-    def _desc_changed(self, desc: Any):
-        self._descriptor = desc
-        if self._manually_set_visualizer:
+    def _desc_changed(self, fmt: Any):
+        self._format = fmt
+        if fmt is None or self._manually_set_visualizer:
             return
+
+        if self._current_visualizer_type is not None:
+            if self._current_visualizer_type.accepts(fmt):
+                return
+
         for visualizer_type in self._visualizers:
-            if visualizer_type.accepts(desc):
-                self.set_visualizer(visualizer_type.name, visualizer_type.widget_factory())
+            if visualizer_type.accepts(fmt):
+                self.set_visualizer(visualizer_type, manual=False)
                 break
 
     @Slot(object)
@@ -82,26 +88,26 @@ class VisualizerWidget(QDockWidget):
 
         # Build actions from dict
         for visualizer_type in self._visualizers:
-            if not visualizer_type.accepts(self._descriptor):
+            if not visualizer_type.accepts(self._format):
                 continue
 
             action = QAction(visualizer_type.name, menu)
             action.setCheckable(True)
-            action.setChecked(visualizer_type.name == self._current_visualizer_name)
+            action.setChecked(visualizer_type.name == self._current_visualizer_type)
 
             # Optional: disable selecting the already-active one
-            if visualizer_type.name == self._current_visualizer_name:
+            if visualizer_type.name == self._current_visualizer_type:
                 action.setEnabled(False)
 
             # Capture cls in default arg
-            action.triggered.connect(lambda _=False, vt=visualizer_type: self.set_visualizer(vt.name, vt.widget_factory(), manual=True))
+            action.triggered.connect(lambda _=False, vt=visualizer_type: self.set_visualizer(vt, manual=True))
             menu.addAction(action)
 
         menu.addSeparator()
 
         clear_action = QAction("No visualization", menu)
-        clear_action.setEnabled(self._current_visualizer_name is not None)
-        clear_action.triggered.connect(lambda: self.set_visualizer(None, None, manual=True))
+        clear_action.setEnabled(self._current_visualizer_type is not None)
+        clear_action.triggered.connect(lambda: self.set_visualizer(None, manual=True))
         menu.addAction(clear_action)
 
         menu.addSeparator()

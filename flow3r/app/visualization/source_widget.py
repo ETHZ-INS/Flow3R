@@ -60,18 +60,19 @@ class SourceWidget(QDockWidget):
         visualizer_layout.setContentsMargins(0, 0, 0, 0)
         self.content.addWidget(self.visualizer_widget_holder)
 
-        self._descriptor: Any = None
+        self._format: Any = None
 
         self._manually_set_visualizer = False
-        self._current_visualizer_name = None
+        self._current_visualizer_type = None
         self._handle: Optional[IVisualizerHandle] = None
         self._visualizer: Optional[QWidget] = None
 
         self.recording_controls_widget: Optional[RecordingControlsWidget] = None
 
     def set_handle(self, handle: Optional[IVisualizerHandle[Any, Any]]):
+        print("set_handle")
         if self._handle:
-            self._handle.desc_changed.disconnect(self._desc_changed)
+            self._handle.format_changed.disconnect(self._format_changed)
             self._handle.error_changed.disconnect(self._error)
 
         self._handle = handle
@@ -79,24 +80,23 @@ class SourceWidget(QDockWidget):
             self._visualizer.set_handle(handle)
 
         if self._handle:
-            self._handle.desc_changed.connect(self._desc_changed)
+            self._handle.format_changed.connect(self._format_changed)
             self._handle.error_changed.connect(self._error)
-            self._desc_changed(self._handle.desc)
+            self._format_changed(self._handle.format)
             self._error(self._handle.error)
 
-    def set_visualizer(self, name: str, visualizer: Optional[QWidget], manual: bool = False):
+    def set_visualizer(self, visualizer_type: Optional[IVisualizerType], manual: bool = False):
         if self._visualizer:
             self._visualizer.set_handle(None)
             self.visualizer_widget_holder.layout().removeWidget(self._visualizer)
             self._visualizer.setParent(None)
 
         self._manually_set_visualizer = manual
-        self._current_visualizer_name = name
-        self._visualizer = visualizer
-
-        if visualizer:
-            self.visualizer_widget_holder.layout().addWidget(visualizer)
-            visualizer.set_handle(self._handle)
+        self._current_visualizer_type = visualizer_type
+        if visualizer_type is not None:
+            self._visualizer = visualizer_type.widget_factory(self.visualizer_widget_holder)
+            self.visualizer_widget_holder.layout().addWidget(self._visualizer)
+            self._visualizer.set_handle(self._handle)
 
     def set_recording_controls_widget(self, widget: Optional[RecordingControlsWidget]):
         # TODO: When assigning source to a new group, the old recording controls widget is not destroyed and shows up as a ghost
@@ -139,14 +139,19 @@ class SourceWidget(QDockWidget):
             self.setWindowTitle(source_name)
 
     @Slot(object)
-    def _desc_changed(self, desc: Any):
-        print("_desc_changed:", desc)
-        self._descriptor = desc
-        if self._manually_set_visualizer:
+    def _format_changed(self, fmt: Any):
+        print("_desc_changed:", fmt)
+        self._format = fmt
+        if fmt is None or self._manually_set_visualizer:
             return
+
+        if self._current_visualizer_type is not None:
+            if self._current_visualizer_type.accepts(fmt):
+                return
+
         for visualizer_type in self._visualizers:
-            if visualizer_type.accepts(desc):
-                self.set_visualizer(visualizer_type.name, visualizer_type.widget_factory())
+            if visualizer_type.accepts(fmt):
+                self.set_visualizer(visualizer_type)
                 break
 
     @Slot(object)
@@ -184,26 +189,26 @@ class SourceWidget(QDockWidget):
 
         # Build actions from dict
         for visualizer_type in self._visualizers:
-            if not visualizer_type.accepts(self._descriptor):
+            if not visualizer_type.accepts(self._format):
                 continue
 
             action = QAction(visualizer_type.name, menu)
             action.setCheckable(True)
-            action.setChecked(visualizer_type.name == self._current_visualizer_name)
+            action.setChecked(visualizer_type.name == self._current_visualizer_type)
 
             # Optional: disable selecting the already-active one
-            if visualizer_type.name == self._current_visualizer_name:
+            if visualizer_type.name == self._current_visualizer_type:
                 action.setEnabled(False)
 
             # Capture cls in default arg
-            action.triggered.connect(lambda _=False, vt=visualizer_type: self.set_visualizer(vt.name, vt.widget_factory(), manual=True))
+            action.triggered.connect(lambda _=False, vt=visualizer_type: self.set_visualizer(vt, manual=True))
             menu.addAction(action)
 
         menu.addSeparator()
 
         clear_action = QAction("No Visualization", menu)
-        clear_action.setEnabled(self._current_visualizer_name is not None)
-        clear_action.triggered.connect(lambda: self.set_visualizer(None, None, manual=True))
+        clear_action.setEnabled(self._current_visualizer_type is not None)
+        clear_action.triggered.connect(lambda: self.set_visualizer(None, manual=True))
         menu.addAction(clear_action)
 
         menu.addSeparator()

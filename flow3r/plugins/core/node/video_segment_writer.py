@@ -66,7 +66,7 @@ class VideoSegmentWriter(Transform[VideoFormat, VideoFrame, VideoSegmentFormat, 
         self._segment_index = 0
         self._video_format = desc_in
 
-    def infer_descriptor(self, desc_in: VideoFormat) -> VideoSegmentFormat:
+    def infer_format(self, desc_in: VideoFormat) -> VideoSegmentFormat:
         return VideoSegmentFormat(desc_in, self._segment_length_seconds)
 
     def transform_observable(self, obs: rx.Observable[VideoFrame]) -> rx.Observable[VideoSegment]:

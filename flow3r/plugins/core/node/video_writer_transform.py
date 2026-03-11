@@ -31,8 +31,8 @@ class VideoWriterTransform(FinalizeTransform[VideoFormat, VideoFrame, Path, Path
         self._writer_factory = factory
         self._writer: Optional[IVideoWriter] = None
 
-    def infer_descriptor(self, desc_in: VideoFormat) -> Path:
-        # output descriptor can be the file path
+    def infer_format(self, desc_in: VideoFormat) -> Path:
+        # output format can be the file path
         return self._video_file
 
     def setup(self, desc_in: VideoFormat) -> None:

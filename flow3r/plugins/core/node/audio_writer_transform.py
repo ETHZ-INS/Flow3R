@@ -29,8 +29,8 @@ class AudioWriterTransform(FinalizeTransform[AudioFormat, AudioChunk, Path, Path
     Transform that writes AudioChunk items to disk and emits the audio file Path exactly once
     when the upstream completes (and optionally also when disposed).
 
-    - Input descriptor: AudioFormat
-    - Output descriptor: Path (the output file path)
+    - Input format: AudioFormat
+    - Output format: Path (the output file path)
     - Output data: Path (emitted once at finalize)
     """
 
@@ -40,7 +40,7 @@ class AudioWriterTransform(FinalizeTransform[AudioFormat, AudioChunk, Path, Path
         self._factory = factory
         self._writer: Optional[IAudioWriter] = None
 
-    def infer_descriptor(self, desc_in: AudioFormat) -> Path:
+    def infer_format(self, desc_in: AudioFormat) -> Path:
         # Downstream nodes can learn the final artifact path immediately.
         return self._audio_file
 

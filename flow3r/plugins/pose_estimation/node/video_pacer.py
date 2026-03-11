@@ -119,7 +119,7 @@ class VideoPacer(Transform[VideoFormat, VideoFrame, VideoFormat, VideoFrame]):
             desc = desc[0]
         self._period = 1/desc.fps
 
-    def infer_descriptor(self, desc_in: VideoFormat) -> VideoFormat:
+    def infer_format(self, desc_in: VideoFormat) -> VideoFormat:
         return desc_in
 
     def transform_observable(self, obs: rx.Observable[TDataIn]) -> rx.Observable[TDataOut]:

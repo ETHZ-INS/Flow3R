@@ -20,7 +20,7 @@ class PoseRenderTransform(Transform[Tuple[VideoFormat, PoseFormat], Tuple[VideoF
         pose_format = desc_in[1]
         self._pose_renderer = PoseRenderer(pose_format.instance_types)
 
-    def infer_descriptor(self, desc_in: Tuple[VideoFormat, PoseFormat]) -> VideoFormat:
+    def infer_format(self, desc_in: Tuple[VideoFormat, PoseFormat]) -> VideoFormat:
         return desc_in[0]
 
     def transform_observable(self, obs: rx.Observable[Tuple[VideoFrame, HasPoses]]) -> rx.Observable[VideoFrame]:

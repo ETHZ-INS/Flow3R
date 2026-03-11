@@ -51,7 +51,7 @@ class DeferredPipelineSubscription:
             raise RuntimeError("DeferredPipelineSubscription.fulfill called twice")
         self._fulfilled = True
 
-        # If already disposed before descriptor arrived, immediately dispose what we just built.
+        # If already disposed before format arrived, immediately dispose what we just built.
         if self._disposed:
             disp.dispose()
             return

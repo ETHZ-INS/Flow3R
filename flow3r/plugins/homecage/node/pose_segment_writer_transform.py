@@ -69,7 +69,7 @@ class PoseSegmentWriter(Transform[Tuple[VideoFormat, PoseFormat], VideoFramePose
         self._segment_index = 0
         self._pose_format = pose_format
 
-    def infer_descriptor(self, desc_in: Tuple[VideoFormat, PoseFormat]) -> PoseSegmentFormat:
+    def infer_format(self, desc_in: Tuple[VideoFormat, PoseFormat]) -> PoseSegmentFormat:
         return PoseSegmentFormat(desc_in[0], desc_in[1], self._segment_length_seconds)
 
     def transform_observable(self, obs: rx.Observable[VideoFramePoses]) -> rx.Observable[PoseSegment]:

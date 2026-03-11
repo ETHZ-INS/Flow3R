@@ -9,8 +9,9 @@ TData = TypeVar("TData")
 
 @dataclass(frozen=True)
 class Stream(Generic[TDesc, TData]):
-    descriptor: Observable[TDesc]
-    observable: Observable[TData]
+    format: TDesc
+    data: Observable[TData]
+    name: str = ""
 
     def pipe(self, *ops) -> "Stream[TDesc, Any]":
-        return Stream(self.descriptor, self.observable.pipe(*ops))
+        return Stream(self.format, self.data.pipe(*ops))

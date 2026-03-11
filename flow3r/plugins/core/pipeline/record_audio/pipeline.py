@@ -31,7 +31,7 @@ class RecordAudioPipeline(PipelineBase[RecordAudioConfig]):
         audio_writer_sink = AudioWriterSink(Path(self._config.audio_file))
         visualizer_sink = VisualizerSink(session_context.widget_service, "my_audio")
 
-        shared_source = Stream(source.descriptor, source.observable.pipe(ops.share()))
+        shared_source = Stream(source.format, source.data.pipe(ops.share()))
         audio_writer_sub = audio_writer_sink.subscribe(shared_source)
         visualizer_sub = visualizer_sink.subscribe(shared_source)
 

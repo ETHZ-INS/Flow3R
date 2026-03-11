@@ -72,7 +72,7 @@ class VideoSynchronizationTransform(Transform[VideoFormat, Tuple[VideoFrame, Vid
     def cleanup(self) -> None:
         pass
 
-    def infer_descriptor(self, desc_in: VideoFormat) -> VideoFormat:
+    def infer_format(self, desc_in: VideoFormat) -> VideoFormat:
         return desc_in
 
     def transform_observable(self, obs: rx.Observable[Tuple[VideoFrame, VideoFrame]]) -> rx.Observable[Tuple[VideoFrame, VideoFrame]]:

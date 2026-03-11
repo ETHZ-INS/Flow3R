@@ -85,7 +85,7 @@ class DynamicPoseWidget(QWidget):
     def set_handle(self, handle: Optional[VisualizerHandle[Tuple[VideoFormat, PoseFormat], Tuple[VideoFrame, VideoFramePoses]]]) -> None:
         if self._handle is not None:
             try:
-                self._handle.desc_changed.disconnect(self._on_desc)
+                self._handle.format_changed.disconnect(self._on_format)
                 self._handle.item_changed.disconnect(self._on_frame)
                 self._handle.error_changed.disconnect(self._on_error)
                 self._handle.completed_changed.disconnect(self._on_completed)
@@ -105,12 +105,12 @@ class DynamicPoseWidget(QWidget):
         self._set_status(None)
 
         if self._handle is not None:
-            self._handle.desc_changed.connect(self._on_desc)
+            self._handle.format_changed.connect(self._on_format)
             self._handle.item_changed.connect(self._on_frame)
             self._handle.error_changed.connect(self._on_error)
             self._handle.completed_changed.connect(self._on_completed)
 
-            self._on_desc(self._handle.desc)
+            self._on_format(self._handle.format)
             self._on_frame(self._handle.item)
             self._on_error(self._handle.error)
             self._on_completed()
@@ -166,7 +166,7 @@ class DynamicPoseWidget(QWidget):
             self._status_label.clear()
 
     @QtCore.Slot(object)
-    def _on_desc(self, desc: Tuple[VideoFormat, PoseFormat]) -> None:
+    def _on_format(self, desc: Tuple[VideoFormat, PoseFormat]) -> None:
         self._color_map = {
             (instance_type.name, point_name): color_from_hue(point_index / len(instance_type.point_names))
             for instance_type in desc[1].instance_types

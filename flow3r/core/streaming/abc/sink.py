@@ -4,7 +4,7 @@ from typing import Generic, TypeVar, Optional
 
 from reactivex.abc import DisposableBase
 from reactivex.disposable import Disposable
-from reactivex import operators as ops, Observable
+from reactivex import Observable
 from reactivex.subject import ReplaySubject
 
 from flow3r.core.streaming.abc.stream import IStream
@@ -25,15 +25,15 @@ class SinkSubscription:
 
 class Sink(Generic[TDesc, TData], ABC):
     """
-    Base class for sink nodes consuming a stream with a single, immutable descriptor.
+    Base class for sink nodes consuming a stream with a single, immutable format.
 
     Override:
-      - setup(desc): allocate/open resources (called once, from descriptor)
+      - setup(desc): allocate/open resources (called once, eagerly)
       - on_next(item): consume each item
       - cleanup(): release resources (called exactly once)
 
     Guarantees:
-      - setup() is called once (descriptor.take(1))
+      - setup() is called once before subscribing to the data stream
       - on_next() is only called after successful setup()
       - cleanup() is called exactly once on completed/error/dispose
       - if on_next raises, cleanup runs and the subscription is disposed
@@ -59,32 +59,22 @@ class Sink(Generic[TDesc, TData], ABC):
     def subscribe(self, stream: IStream[TDesc, TData]) -> SinkSubscription:
         closed = False
         data_sub: Optional[DisposableBase] = None
-        desc_sub: Optional[DisposableBase] = None
 
         done_subject: ReplaySubject[None] = ReplaySubject(1)
 
         def cleanup_once(exc: Optional[Exception] = None):
-            print("Sink cleanup")
-            nonlocal closed, data_sub, desc_sub
+            nonlocal closed, data_sub
             if closed:
                 return
             closed = True
 
-            # Stop data first to prevent further on_next calls.
             if data_sub is not None:
                 data_sub.dispose()
                 data_sub = None
 
-            # Descriptor subscription is take(1) so it's usually already done,
-            # but dispose it anyway for safety.
-            if desc_sub is not None:
-                desc_sub.dispose()
-                desc_sub = None
-
             try:
                 self.cleanup()
             except Exception:
-                # Never let cleanup exceptions escape; at most log externally.
                 pass
             finally:
                 if exc is not None:
@@ -93,71 +83,52 @@ class Sink(Generic[TDesc, TData], ABC):
                     done_subject.on_next(None)
                     done_subject.on_completed()
 
-        def start_data_subscription():
-            nonlocal data_sub
+        # Eager one-time setup from the simple format.
+        try:
+            self.setup(stream.format)
+        except Exception as exc:
+            try:
+                self.on_error(exc)
+            finally:
+                cleanup_once(exc)
+            return SinkSubscription(Disposable(), done_subject)
 
-            def _on_next(item: TData):
-                # If disposed, ignore late emissions.
-                if closed:
-                    return
-
-                try:
-                    self.on_next(item)
-                except Exception as exc:
-                    # Ensure resources are released even if user code throws.
-                    try:
-                        self.on_error(exc)
-                    finally:
-                        cleanup_once(exc)
-                    # Re-raise so the error is visible to upstream error handlers/logging.
-                    raise
-
-            def _on_error(exc: Exception):
-                if closed:
-                    return
-                print(f"Sink error: {exc}")
-                try:
-                    self.on_error(exc)
-                finally:
-                    cleanup_once(exc)
-
-            def _on_completed():
-                if closed:
-                    return
-                try:
-                    self.on_completed()
-                finally:
-                    cleanup_once()
-
-            data_sub = stream.observable.subscribe(_on_next, _on_error, _on_completed)
-
-        def _on_desc(desc: TDesc):
+        def _on_next(item: TData):
             if closed:
                 return
+
             try:
-                self.setup(desc)
+                self.on_next(item)
             except Exception as exc:
-                # setup failed; call on_error hook then cleanup and surface error
                 try:
                     self.on_error(exc)
                 finally:
                     cleanup_once(exc)
                 raise
 
-            start_data_subscription()
-
-        def _on_desc_error(exc: Exception):
+        def _on_error(exc: Exception):
             if closed:
                 return
-            print(f"Sink descriptor error: {exc}")
             try:
                 self.on_error(exc)
             finally:
                 cleanup_once(exc)
 
-        # Immutable format: take only the first descriptor.
-        desc_sub = stream.descriptor.pipe(ops.take(1)).subscribe(_on_desc, _on_desc_error)
+        def _on_completed():
+            if closed:
+                return
+            try:
+                self.on_completed()
+            finally:
+                cleanup_once()
 
-        # Disposing the returned Disposable always triggers cleanup.
+        try:
+            data_sub = stream.data.subscribe(_on_next, _on_error, _on_completed)
+        except Exception as exc:
+            try:
+                self.on_error(exc)
+            finally:
+                cleanup_once(exc)
+
         disposable = Disposable(cleanup_once)
-        return SinkSubscription(disposable, done_subject.pipe(ops.take(1)))
+        return SinkSubscription(disposable, done_subject)

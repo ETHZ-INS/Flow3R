@@ -1,7 +1,5 @@
 from reactivex import operators as ops
 
-from reactivex.subject import ReplaySubject
-
 from flow3r.core.source.abc.source import ISource
 from flow3r.core.streaming.stream import Stream
 from flow3r.plugins.core.source.audio.microphone.config import MicrophoneSourceConfig
@@ -22,22 +20,22 @@ class MicrophoneSource(ISource[AudioFormat, AudioChunk]):
             chunk_size=1600
         )
 
-        self._desc_subject = ReplaySubject(1)
-        self._frame_observable = source_observable(self._recorder).pipe(ops.share())
-        self._stream = Stream(self._desc_subject, self._frame_observable)
+        fmt = AudioFormat(
+            sample_rate=self._config.sample_rate,
+            channels=self._config.num_channels,
+            sample_format="f32",
+            chunk_size=1600
+        )
+
+        data = source_observable(self._recorder).pipe(ops.share())
+        self._stream = Stream(fmt, data)
 
     @property
     def stream(self) -> Stream[AudioFormat, AudioChunk]:
         return self._stream
 
     def open(self):
-        desc = AudioFormat(
-            sample_rate=self._config.sample_rate,
-            channels=self._config.num_channels,
-            sample_format="f32",
-            chunk_size=1600
-        )
-        self._desc_subject.on_next(desc)
+        pass
 
     def close(self):
-        self._desc_subject.on_completed()
+        pass

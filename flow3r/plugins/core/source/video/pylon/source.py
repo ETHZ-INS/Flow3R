@@ -15,19 +15,20 @@ from flow3r.plugins.core.typing.video import VideoFormat
 class PylonCameraSource(ISource[VideoFormat, VideoFrame]):
     def __init__(self, config: PylonCameraSourceConfig):
         self._video_source = BasePylonCameraSource(config.device, Path(config.config_file) if config.config_file else None)
-        self._desc_subject = ReplaySubject(1)
-        self._frame_observable = source_observable(self._video_source)
-        self._stream = Stream(self._desc_subject, self._frame_observable.pipe(ops.share()))
+        fmt = VideoFormat(
+            self._video_source.get_size(),
+            self._video_source.get_fps(),
+            "mono8" if self._video_source.get_num_channels() == 1 else "rgb24"
+        )
+        data = source_observable(self._video_source).pipe(ops.share())
+        self._stream = Stream(fmt, data)
 
     @property
     def stream(self) -> Stream[VideoFormat, VideoFrame]:
         return self._stream
 
     def open(self):
-        size = self._video_source.get_size()
-        fps = self._video_source.get_fps()
-        fmt = "mono8" if self._video_source.get_num_channels() == 1 else "rgb24"
-        self._desc_subject.on_next(VideoFormat(size, fps, fmt))
+        pass
 
     def close(self):
-        self._desc_subject.on_completed()
+        pass

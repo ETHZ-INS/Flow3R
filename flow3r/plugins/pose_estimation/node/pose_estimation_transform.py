@@ -44,12 +44,12 @@ class PoseEstimationTransform(Transform[VideoFormat, VideoFrame, PoseFormat, Vid
                 self._pose_model_lease = None
         print(threading.current_thread().name, "Cleanup.........................", "Done")
 
-    def infer_descriptor(self, desc_in: VideoFormat) -> PoseFormat:
+    def infer_format(self, desc_in: VideoFormat) -> PoseFormat:
         return PoseFormat(self._instance_types)
 
     def transform_observable(self, obs: rx.Observable[VideoFrame]) -> rx.Observable[VideoFramePoses]:
         def _predict_batch(batch: List[VideoFrame]) -> List[VideoFramePoses]:
-            print(threading.current_thread().name, "Predicting batch of size", len(batch))
+            #print(threading.current_thread().name, "Predicting batch of size", len(batch))
             time.sleep(0.1)
             try:
                 with self._lock:

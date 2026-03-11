@@ -1,6 +1,9 @@
+import threading
+import time
 from pathlib import Path
 from typing import List, Optional, Dict
 
+import numpy as np
 from py3r.media.streaming.operators import observe_on_bounded
 from py3r.pose.core.tracking.fixed_instances_tracker import FixedInstancesTracker
 from reactivex import operators as ops
@@ -8,6 +11,8 @@ from reactivex import operators as ops
 import reactivex as rx
 from reactivex.disposable import CompositeDisposable
 from reactivex.scheduler import EventLoopScheduler
+from ultralytics import YOLO
+from ultralytics.nn.modules import Conv
 
 from flow3r.core.api.app.session_context import ISessionContext
 from flow3r.core.pipeline.abc.pipeline import IPipeline, PipelineSubscription, PreviewSubscription
@@ -23,7 +28,6 @@ from flow3r.plugins.core.node.video_spool import VideoSpool
 from flow3r.plugins.core.node.video_writer_sink import VideoWriterSink
 from flow3r.plugins.pose_estimation.node.pose_estimation_transform import PoseEstimationTransform
 from flow3r.plugins.pose_estimation.node.pose_filter_transform import PoseFilterTransform
-from flow3r.plugins.pose_estimation.node.pose_render_transform import PoseRenderTransform
 from flow3r.plugins.pose_estimation.node.pose_results_writer import PoseResultsWriterSink
 from flow3r.plugins.pose_estimation.node.video_pacer import VideoPacer
 from flow3r.plugins.pose_estimation.pipeline.mouse_pose_estimation.config import MousePoseEstimationConfig
@@ -31,11 +35,6 @@ from flow3r.plugins.pose_estimation.settings.pose_estimation_models.settings imp
 from flow3r.plugins.pose_estimation.util.pose_model_service import PoseModelService, PoseModelLease
 
 pose_model_service = PoseModelService()
-
-
-_main_scheduler = EventLoopScheduler()
-_pose_estimation_scheduler = EventLoopScheduler()
-_writer_scheduler = EventLoopScheduler()
 
 
 class MousePoseEstimationPipeline(IPipeline[MousePoseEstimationConfig]):
@@ -49,10 +48,15 @@ class MousePoseEstimationPipeline(IPipeline[MousePoseEstimationConfig]):
         self._mouse_model_lease: Optional[PoseModelLease] = None
         self._env_model_lease: Optional[PoseModelLease] = None
 
-    def configure(self, session_context: ISessionContext, config: MousePoseEstimationConfig):
+        self._main_scheduler = EventLoopScheduler()
+        self._pose_estimation_scheduler = EventLoopScheduler()
+        self._writer_scheduler = EventLoopScheduler()
+
+    def configure(self, session_context: ISessionContext, config: MousePoseEstimationConfig, source_names: Dict[str, str]):
         print("PoseEstimationPipeline.configure", config)
         if not self._widget_handle:
-            self._widget_handle = session_context.widget_service.get_visualizer_handle("Pose Preview")
+            video_source_name = source_names["Video"]
+            self._widget_handle = session_context.widget_service.get_visualizer_handle(f"{video_source_name} Pose Preview")
 
         pose_models_settings = session_context.settings.get(("pose_estimation", "models"))
         assert pose_models_settings is not None
@@ -82,7 +86,7 @@ class MousePoseEstimationPipeline(IPipeline[MousePoseEstimationConfig]):
 
         source = sources["Video"]
 
-        video_stream = source.pipe(observe_on_bounded(_main_scheduler, maxsize=16, policy="drop_oldest"))
+        video_stream = source.pipe(observe_on_bounded(self._main_scheduler, maxsize=16, policy="drop_oldest"), ops.share())
 
         if self._current_env_model_config is None:
             pose_model_configs = self._current_mouse_model_config
@@ -90,20 +94,20 @@ class MousePoseEstimationPipeline(IPipeline[MousePoseEstimationConfig]):
             pose_model_configs = (self._current_mouse_model_config, self._current_env_model_config)
 
         pose_estimation_transform = PoseEstimationTransform(pose_model_service, pose_model_configs, batch_size=8)
-        pose_input_stream = video_stream.pipe(observe_on_bounded(_pose_estimation_scheduler, maxsize=16))
-        pose_stream = pose_estimation_transform.pipe(pose_input_stream).pipe(observe_on_bounded(_main_scheduler, maxsize=16))
+        pose_input_stream = video_stream.pipe(observe_on_bounded(self._pose_estimation_scheduler, maxsize=16))
+        pose_stream = pose_estimation_transform.pipe(pose_input_stream)
 
         pose_tracker_transform = PoseFilterTransform(FixedInstancesTracker(["mouse_top", "mouse_top", "running_wheel", "smart_home_cage", "home_cage_house", "home_cage_tunnel", "home_cage_climbing_grid", "home_cage_door", "home_cage_waterbottle", "cage_card",]))
         pose_stream = pose_tracker_transform.pipe(pose_stream)
 
         pose_preview_pacer = VideoPacer(buffer_size=16)
         pose_preview_stream = Stream(
-            rx.combine_latest(video_stream.descriptor, pose_stream.descriptor),
-            rx.zip(video_stream.observable, pose_stream.observable)
+            (video_stream.format, pose_stream.format),
+            rx.zip(video_stream.data, pose_stream.data)
         )
         pose_preview_stream = pose_preview_pacer.pipe(pose_preview_stream)
 
-        visualizer_sink = VisualizerSink(session_context.widget_service, "Pose Preview")
+        visualizer_sink = VisualizerSink(session_context.widget_service, f"{source.name} Pose Preview")
         pose_vis_widget_sub = visualizer_sink.subscribe(pose_preview_stream)
 
         disposable = CompositeDisposable(pose_vis_widget_sub)
@@ -118,7 +122,7 @@ class MousePoseEstimationPipeline(IPipeline[MousePoseEstimationConfig]):
 
         source = sources["Video"]
 
-        video_stream = Stream(source.descriptor, source.observable.pipe(ops.observe_on(_main_scheduler)))
+        video_stream = Stream(source.format, source.data.pipe(ops.observe_on(self._main_scheduler)))
 
         video_file = Path(self._config.video_file)
         video_segment_writer = VideoSegmentWriter()
@@ -127,7 +131,7 @@ class MousePoseEstimationPipeline(IPipeline[MousePoseEstimationConfig]):
         video_spool = VideoSpool(video_segment_writer, video_segment_reader, video_segment_concatenator)
 
         spool_stream = video_spool.pipe(video_stream)
-        spool_stream = Stream(spool_stream.descriptor, spool_stream.observable.pipe(ops.share()))
+        spool_stream = Stream(spool_stream.format, spool_stream.data.pipe(ops.share()))
 
         do_nothing_sink = DoNothingSink()
 
@@ -145,19 +149,19 @@ class MousePoseEstimationPipeline(IPipeline[MousePoseEstimationConfig]):
         pose_results_file = Path(self._config.pose_results_file)
         pose_results_writer = PoseResultsWriterSink(pose_results_file)
 
-        visualizer_sink = VisualizerSink(session_context.widget_service, "Pose Preview")
+        visualizer_sink = VisualizerSink(session_context.widget_service, f"{source.name} Pose Preview")
 
-        pose_input_stream = Stream(source.descriptor, spool_stream.observable.pipe(ops.observe_on(_pose_estimation_scheduler)))
+        pose_input_stream = Stream(source.format, spool_stream.data.pipe(observe_on_bounded(self._pose_estimation_scheduler)))
         pose_stream = pose_estimation_transform.pipe(pose_input_stream)
-        pose_stream = Stream(pose_stream.descriptor, pose_stream.observable.pipe(ops.observe_on(_main_scheduler), ops.share()))
+        pose_stream = Stream(pose_stream.format, pose_stream.data.pipe(ops.observe_on(self._main_scheduler), ops.share()))
 
-        pose_render_input_stream = Stream(rx.combine_latest(spool_stream.descriptor, pose_stream.descriptor), rx.zip(spool_stream.observable, pose_stream.observable))
+        pose_render_input_stream = Stream((spool_stream.format, pose_stream.format), rx.zip(spool_stream.data, pose_stream.data))
 
         #pose_vis_stream = pose_render_transform.pipe(pose_render_input_stream)
-        #pose_vis_stream = Stream(pose_vis_stream.descriptor, pose_vis_stream.observable.pipe(ops.share()))
+        #pose_vis_stream = Stream(pose_vis_stream.format, pose_vis_stream.observable.pipe(ops.share()))
 
-        #vis_video_writer_stream = Stream(source.descriptor, pose_vis_stream.observable.pipe(ops.observe_on(_writer_scheduler)))
-        pose_results_writer_stream = Stream(source.descriptor, pose_stream.observable.pipe(ops.observe_on(_writer_scheduler)))
+        #vis_video_writer_stream = Stream(source.format, pose_vis_stream.observable.pipe(ops.observe_on(self._writer_scheduler)))
+        pose_results_writer_stream = Stream(source.format, pose_stream.data.pipe(ops.observe_on(self._writer_scheduler)))
         pose_preview_stream = pose_preview_pacer.pipe(pose_render_input_stream)
 
         video_writer_sub = do_nothing_sink.subscribe(spool_stream)

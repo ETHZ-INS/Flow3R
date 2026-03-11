@@ -1,9 +1,7 @@
 from typing import TypeVar, Optional, Any
 
 from PySide6.QtCore import QObject, Signal
-from reactivex.abc import DisposableBase
 
-from flow3r.core.streaming.abc.stream import IStream
 from flow3r.core.visualization.abc.visualizer_handle import IVisualizerHandle, QVisualizerMeta
 
 TDesc = TypeVar("TDesc")
@@ -11,7 +9,7 @@ TData = TypeVar("TData")
 
 
 class VisualizerHandle(QObject, IVisualizerHandle[TDesc, TData], metaclass=QVisualizerMeta):
-    desc_changed = Signal(object)
+    format_changed = Signal(object)
     item_changed = Signal(object)
     error_changed = Signal(object)
     completed_changed = Signal()
@@ -19,15 +17,13 @@ class VisualizerHandle(QObject, IVisualizerHandle[TDesc, TData], metaclass=QVisu
     def __init__(self):
         super().__init__()
 
-        self._desc_sub: Optional[DisposableBase] = None
-        self._sub: Optional[DisposableBase] = None
         self._desc: Optional[TDesc] = None
         self._item: Optional[TData] = None
         self._error: Optional[Exception] = None
         self._completed = False
 
     @property
-    def desc(self) -> Any:
+    def format(self) -> Any:
         return self._desc
 
     @property
@@ -42,44 +38,21 @@ class VisualizerHandle(QObject, IVisualizerHandle[TDesc, TData], metaclass=QVisu
     def completed(self) -> bool:
         return self._completed
 
-    def subscribe(self, stream: IStream[TDesc, TData]):
-        self.unsubscribe()
-        self._desc_sub = stream.descriptor.subscribe(self._on_desc, self._on_error)
-        self._sub = stream.observable.subscribe(self._on_next, self._on_error, self._on_completed)
+    def set_format(self, fmt: TDesc) -> None:
+        self._desc = fmt
+        self.format_changed.emit(fmt)
 
-    def unsubscribe(self):
-        if self._sub:
-            self._sub.dispose()
-            self._sub = None
-        if self._desc_sub:
-            self._desc_sub.dispose()
-            self._desc_sub = None
-
-        self._error = None
-        self._completed = False
-        self._item = None
-        self._desc = None
-
-        self.desc_changed.emit(None)
-        self.item_changed.emit(None)
-        self.error_changed.emit(None)
-        self.completed_changed.emit()
-
-    def dispose(self):
-        self.unsubscribe()
-
-    def _on_desc(self, desc: TDesc):
-        self._desc = desc
-        self.desc_changed.emit(desc)
-
-    def _on_next(self, item: TData):
+    def set_item(self, item: TData) -> None:
         self._item = item
         self.item_changed.emit(item)
 
-    def _on_error(self, error: Exception):
+    def set_error(self, error: Optional[Exception]) -> None:
         self._error = error
         self.error_changed.emit(error)
 
-    def _on_completed(self):
-        self._completed = True
+    def set_completed(self, completed: bool = True) -> None:
+        self._completed = completed
         self.completed_changed.emit()
+
+    def dispose(self):
+        pass

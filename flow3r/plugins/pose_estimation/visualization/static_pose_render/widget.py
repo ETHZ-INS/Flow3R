@@ -96,7 +96,7 @@ class StaticPoseWidget(QWidget):
     ) -> None:
         if self._handle is not None:
             try:
-                self._handle.desc_changed.disconnect(self._on_desc)
+                self._handle.format_changed.disconnect(self._on_desc)
                 self._handle.item_changed.disconnect(self._on_frame)
                 self._handle.error_changed.disconnect(self._on_error)
                 self._handle.completed_changed.disconnect(self._on_completed)
@@ -110,12 +110,12 @@ class StaticPoseWidget(QWidget):
         self._label.clear()
 
         if self._handle is not None:
-            self._handle.desc_changed.connect(self._on_desc)
+            self._handle.format_changed.connect(self._on_desc)
             self._handle.item_changed.connect(self._on_frame)
             self._handle.error_changed.connect(self._on_error)
             self._handle.completed_changed.connect(self._on_completed)
 
-            self._on_desc(self._handle.desc)
+            self._on_desc(self._handle.format)
             self._on_frame(self._handle.item)
             self._on_error(self._handle.error)
             self._on_completed()
