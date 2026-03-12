@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QDialog, QComboBox, QVBoxLayout, QWidget, QLineEdi
 
 from flow3r.core.api.app.app_context import IAppContext
 from flow3r.core.pipeline.abc.pipeline_type import IPipelineType
-from flow3r.core.pipeline.pipeline_config import PipelineConfig
+from flow3r.app.config.pipeline_config import PipelineConfig
 
 
 class PipelineConfigDialog(QDialog):

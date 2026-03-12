@@ -1,3 +1,4 @@
+import cv2
 from py3r.media.types import VideoFrame
 from py3r.media.video.opencv_webcam_source import OpenCVWebcamSource
 
@@ -19,7 +20,7 @@ class WebcamSource(ISource[VideoFormat, VideoFrame]):
             self._video_source.get_fps(),
             "mono8" if self._video_source.get_num_channels() == 1 else "rgb24"
         )
-        data = source_observable(self._video_source).pipe(ops.share())
+        data = source_observable(self._video_source).pipe(ops.map(lambda f: f.with_image(cv2.cvtColor(f.img, cv2.COLOR_BGR2RGB))), ops.share())
         self._stream = Stream(fmt, data)
 
     @property

@@ -30,27 +30,22 @@ class PoseEstimationTransform(Transform[VideoFormat, VideoFrame, PoseFormat, Vid
         self._lock = threading.Lock()
 
     def setup(self, desc_in: VideoFormat) -> None:
-        print(id(self), "Setup.........................")
         channels = 1 if desc_in.fmt == "mono8" else 3
         self._pose_model_lease = self._pose_model_service.get_model(self._pose_model_config)
         self._pose_model = StagedYoloPoseModel(self._pose_model_lease.model, max_batch=self._batch_size, input_channels=channels)
 
     def cleanup(self) -> None:
-        print(threading.current_thread().name, "Cleanup.........................",)
         with self._lock:
             if self._pose_model_lease is not None:
                 self._pose_model = None
                 self._pose_model_lease.dispose()
                 self._pose_model_lease = None
-        print(threading.current_thread().name, "Cleanup.........................", "Done")
 
     def infer_format(self, desc_in: VideoFormat) -> PoseFormat:
         return PoseFormat(self._instance_types)
 
     def transform_observable(self, obs: rx.Observable[VideoFrame]) -> rx.Observable[VideoFramePoses]:
         def _predict_batch(batch: List[VideoFrame]) -> List[VideoFramePoses]:
-            #print(threading.current_thread().name, "Predicting batch of size", len(batch))
-            time.sleep(0.1)
             try:
                 with self._lock:
                     if self._pose_model is None:

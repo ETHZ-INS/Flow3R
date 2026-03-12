@@ -24,7 +24,7 @@ from flow3r.app.widgets.pipeline_config_dialog import PipelineConfigDialog
 from flow3r.app.widgets.pipeline_list_dialog import PipelineListDialog
 from flow3r.app.widgets.source_config_dialog import SourceConfigDialog
 from flow3r.app.widgets.source_list_dialog import SourceListDialog
-from flow3r.core.pipeline.pipeline_config import PipelineConfig
+from flow3r.app.config.pipeline_config import PipelineConfig
 from flow3r.app.config.source_config import SourceConfig
 
 

@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from typing import OrderedDict, Dict, Any
 
 from flow3r.app.config.group_config import GroupConfig
-from flow3r.core.pipeline.pipeline_config import PipelineConfig
+from flow3r.app.config.pipeline_config import PipelineConfig
 from flow3r.core.settings import KeyPath
 from flow3r.app.config.source_config import SourceConfig
 

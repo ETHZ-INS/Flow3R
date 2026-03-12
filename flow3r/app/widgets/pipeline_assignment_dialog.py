@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QDialog, QStyledItemDelegate, QComboBox, QAbstract
 
 from flow3r.app.config.group_config import GroupConfig
 from flow3r.app.layout.pipeline_assignment_dialog import Ui_PipelineAssignmentDialog
-from flow3r.core.pipeline.pipeline_config import PipelineConfig
+from flow3r.app.config.pipeline_config import PipelineConfig
 from flow3r.app.config.source_config import SourceConfig
 
 

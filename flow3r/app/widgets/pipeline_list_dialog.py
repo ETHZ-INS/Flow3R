@@ -1,5 +1,5 @@
 from copy import deepcopy
-from typing import Optional, List
+from typing import List
 
 from PySide6 import QtWidgets
 from PySide6.QtCore import QAbstractListModel, Qt, QModelIndex, QSize, QRect, Signal
@@ -11,7 +11,7 @@ from flow3r.app.controller.controller import Controller
 from flow3r.app.layout.pipeline_list_dialog import Ui_PipelineListDialog
 from flow3r.app.widgets.pipeline_config_dialog import PipelineConfigDialog
 from flow3r.core.api.app.app_context import IAppContext
-from flow3r.core.pipeline.pipeline_config import PipelineConfig
+from flow3r.app.config.pipeline_config import PipelineConfig
 
 
 class PipelineListModel(QAbstractListModel):

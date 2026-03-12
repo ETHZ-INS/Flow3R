@@ -23,7 +23,7 @@ from flow3r.app.api.app.widget_service import WidgetService, SessionWidgetServic
 from flow3r.core.pipeline.abc.pipeline import IPipeline, PipelineSubscription, CompositePipelineSubscription, \
     PreviewSubscription, CompositePreviewSubscription
 from flow3r.core.pipeline.abc.pipeline_type import IPipelineType
-from flow3r.core.pipeline.pipeline_config import PipelineConfig
+from flow3r.app.config.pipeline_config import PipelineConfig
 from flow3r.core.placeholder.simple_placeholder_provider import SimplePlaceholderProvider
 from flow3r.core.source.abc.source import ISource
 from flow3r.core.source.abc.source_type import ISourceType
@@ -937,8 +937,11 @@ class Controller(QObject):
         for group_id in changes.groups_removed:
             groups_requiring_preview_stop.add(group_id)
 
-        # TODO: preview is started mid-recording when settings are changed :(
         for group_id in new.all_groups:
+            group = self.groups.get(group_id)
+            if group and group.active_session and group.active_session.recording and group.active_session.recording:
+                continue
+
             if group_id in changes.groups_added:
                 groups_requiring_preview_start.add(group_id)
             elif any(group_id == gid for gid, pid in changes.group_pipeline_updated):
@@ -1171,7 +1174,7 @@ class Controller(QObject):
                 source = self.sources[source_id]
                 source_names[input_name] = source.name
 
-        pipeline.configure(session_context, pipeline_config.active_config.resolve(placeholder_provider), source_names)
+        pipeline.configure(session_context, pipeline_config.active_config.resolve(placeholder_provider))
 
     def _teardown_pipeline(self, group_id: str, pipeline_id: str):
         group = self.groups[group_id]
