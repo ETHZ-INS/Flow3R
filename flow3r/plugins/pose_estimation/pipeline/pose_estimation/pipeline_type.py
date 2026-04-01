@@ -14,11 +14,14 @@ class PoseEstimationPipelineType(IPipelineType[PoseEstimationConfig, PoseEstimat
     def name(self) -> str:
         return "Pose Estimation"
 
-    def get_config_factory(self) -> Callable[[], PoseEstimationConfig]:
+    @property
+    def config_factory(self) -> Callable[[], PoseEstimationConfig]:
         return PoseEstimationConfig
 
-    def get_config_widget_factory(self) -> Callable[[IAppContext, PoseEstimationConfig, QWidget], QWidget]:
+    @property
+    def config_widget_factory(self) -> Callable[[IAppContext, PoseEstimationConfig, QWidget], QWidget]:
         return PoseEstimationConfigWidget
 
-    def get_pipeline_factory(self) -> Callable[[], PoseEstimationPipeline]:
+    @property
+    def pipeline_factory(self) -> Callable[[], PoseEstimationPipeline]:
         return PoseEstimationPipeline

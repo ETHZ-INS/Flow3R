@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import List, Optional
 
 
@@ -31,9 +32,14 @@ class FinishingProcessing(Started, AcquisitionFinished):
     processing_progress: float = 1.0
 
 @dataclass(kw_only=True, frozen=True)
-class Ready(SessionStateBase): pass
-    #existing_files: List[Path] = field(default_factory=list)
+class Ready(SessionStateBase):
+    files: List[Path] = field(default_factory=list)
     #non_empty_folders: List[Path] = field(default_factory=list)
+
+@dataclass(kw_only=True, frozen=True)
+class StartFailed(SessionStateBase):
+    message: str = "Recording could not be started"
+    files: List[Path] = field(default_factory=list)
 
 @dataclass(kw_only=True, frozen=True)
 class Finished(Started, AcquisitionFinished, ProcessingFinished): pass
@@ -59,7 +65,7 @@ class ConfigError(Error):
 @dataclass(kw_only=True, frozen=True)
 class InvalidPlaceholders(Error):
     message: str = "Invalid placeholders"
-    invalid_placeholders: list = field(default_factory=list)
+    invalid_placeholders: List[str] = field(default_factory=list)
 
 @dataclass(kw_only=True, frozen=True)
 class CircularDependency(Error):

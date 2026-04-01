@@ -8,6 +8,9 @@ from flow3r.core.placeholder.placeholder_formatter import PlaceholderFormatter
 
 @dataclass
 class MousePoseEstimationConfig(PipelineConfigBase):
+    TYPE_ID = "pose_estimation.pipeline.mouse_pose_estimation"
+    VERSION = 1
+
     video_file: str = "my_video.mp4"
     pose_results_file: str = "pose_results.csv"
     mouse_pose_model_id: str = None

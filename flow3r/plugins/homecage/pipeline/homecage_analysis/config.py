@@ -8,6 +8,9 @@ from flow3r.core.placeholder.placeholder_formatter import PlaceholderFormatter
 
 @dataclass
 class HomecageAnalysisConfig(PipelineConfigBase):
+    TYPE_ID = "homecage.pipeline.homecage_analysis"
+    VERSION = 1
+
     use_3d_camera: bool = False
     top_video_file: str = "top_video.mp4"
     offset_video_file: str = "offset_video.mp4"
@@ -32,5 +35,14 @@ class HomecageAnalysisConfig(PipelineConfigBase):
     @property
     def inputs(self) -> List[str]:
         if self.use_3d_camera:
-            return ["Top 3D Camera"]
+            return ["Top 3D Video"]
         return ["Top Video", "Offset Video"]
+
+    @property
+    def optional_inputs(self) -> List[str]:
+        return []
+
+    @property
+    def files(self) -> List[str]:
+        # TODO: Maybe return a few example files that would be created in the live_results_input_folder folder?
+        return [self.top_video_file, self.offset_video_file, self.top_pose_results_file, self.offset_pose_results_file]

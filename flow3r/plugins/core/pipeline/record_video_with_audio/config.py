@@ -7,6 +7,9 @@ from flow3r.core.placeholder.placeholder_formatter import PlaceholderFormatter
 
 @dataclass
 class RecordVideoWithAudioConfig(PipelineConfigBase):
+    TYPE_ID = "core.pipeline.record_video_with_audio"
+    VERSION = 1
+
     video_file: str = "my_video.mp4"
 
     def resolve(self, placeholder_provider: IPlaceholderProvider) -> "RecordVideoWithAudioConfig":
@@ -16,3 +19,7 @@ class RecordVideoWithAudioConfig(PipelineConfigBase):
     @property
     def inputs(self) -> list[str]:
         return ["Video", "Audio"]
+
+    @property
+    def files(self) -> list[str]:
+        return [self.video_file]

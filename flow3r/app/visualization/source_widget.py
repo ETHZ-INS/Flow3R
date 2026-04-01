@@ -140,7 +140,6 @@ class SourceWidget(QDockWidget):
 
     @Slot(object)
     def _format_changed(self, fmt: Any):
-        print("_desc_changed:", fmt)
         self._format = fmt
         if fmt is None or self._manually_set_visualizer:
             return
@@ -159,13 +158,11 @@ class SourceWidget(QDockWidget):
         if error:
             message = str(error)
             message = message.replace("\n", "<br>")
-            message += "<br><a href=\"edit\">Edit Camera</a>"
+            message += "<br><a href=\"edit\">Edit Source</a>"
             message += "<br><a href=\"retry\">Retry</a>"
-            print("Showing error")
             self.lbl_error.setText(message)
             self.content.setCurrentIndex(0)
         else:
-            print("Clearing error")
             self.lbl_error.setText("")
             self.content.setCurrentIndex(1)
 

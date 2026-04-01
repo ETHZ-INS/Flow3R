@@ -13,7 +13,6 @@ from flow3r.plugins.core.typing.video import VideoFormat
 
 class VideoFileSource(ISource[VideoFormat, VideoFrame]):
     def __init__(self, config: VideoFileSourceConfig):
-        print(config.loop)
         self._video_source = FFmpegVideoFileSource(Path(config.file_path), grayscale=config.grayscale, playback=True, loop=config.loop)
 
         fmt = VideoFormat(

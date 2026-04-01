@@ -14,11 +14,14 @@ class HomecageAnalysisPipelineType(IPipelineType[HomecageAnalysisConfig, Homecag
     def name(self) -> str:
         return "Homecage Analysis"
 
-    def get_config_factory(self) -> Callable[[], HomecageAnalysisConfig]:
+    @property
+    def config_factory(self) -> Callable[[], HomecageAnalysisConfig]:
         return HomecageAnalysisConfig
 
-    def get_config_widget_factory(self) -> Callable[[IAppContext, HomecageAnalysisConfig, QWidget], QWidget]:
+    @property
+    def config_widget_factory(self) -> Callable[[IAppContext, HomecageAnalysisConfig, QWidget], QWidget]:
         return HomecageAnalysisConfigWidget
 
-    def get_pipeline_factory(self) -> Callable[[], HomecageAnalysisPipeline]:
+    @property
+    def pipeline_factory(self) -> Callable[[], HomecageAnalysisPipeline]:
         return HomecageAnalysisPipeline

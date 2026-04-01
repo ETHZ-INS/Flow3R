@@ -8,19 +8,20 @@ from reactivex.subject import ReplaySubject
 from flow3r.core.source.abc.source import ISource
 from flow3r.core.streaming.stream import Stream
 from flow3r.plugins.core.source.video.source_observable import source_observable
+from flow3r.plugins.core.source.video.util.ffmpeg_webcam_video_source import FFmpegWebcamSource
 from flow3r.plugins.core.source.video.webcam.config import WebcamSourceConfig
 from flow3r.plugins.core.typing.video import VideoFormat
 
 
 class WebcamSource(ISource[VideoFormat, VideoFrame]):
     def __init__(self, config: WebcamSourceConfig):
-        self._video_source = OpenCVWebcamSource(config.device_index, grayscale=config.grayscale)
+        self._video_source = OpenCVWebcamSource(device_index=config.device_index, grayscale=config.grayscale, fps=30, width=3840 if config.device_index == 1 else 1920, height=1080)
         fmt = VideoFormat(
             self._video_source.get_size(),
             self._video_source.get_fps(),
             "mono8" if self._video_source.get_num_channels() == 1 else "rgb24"
         )
-        data = source_observable(self._video_source).pipe(ops.map(lambda f: f.with_image(cv2.cvtColor(f.img, cv2.COLOR_BGR2RGB))), ops.share())
+        data = source_observable(self._video_source, read_timeout_seconds=5.).pipe(ops.map(lambda f: f.with_image(cv2.cvtColor(f.img, cv2.COLOR_BGR2RGB)) if not config.grayscale else f), ops.share())
         self._stream = Stream(fmt, data)
 
     @property

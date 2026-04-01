@@ -5,10 +5,10 @@ from py3r.pose.core.serialization.dynamic_csv_writer import DynamicPoseCSVWriter
 from py3r.pose.core.types import VideoFramePoses
 
 from flow3r.core.streaming.abc.sink import Sink
-from flow3r.plugins.core.typing.video import VideoFormat
+from flow3r.plugins.pose_estimation.typing.pose_format import PoseFormat
 
 
-class PoseResultsWriterSink(Sink[VideoFormat, VideoFramePoses]):
+class PoseResultsWriterSink(Sink[PoseFormat, VideoFramePoses]):
     def __init__(self, results_file: Path):
         super().__init__()
         self._results_file = results_file
@@ -17,7 +17,7 @@ class PoseResultsWriterSink(Sink[VideoFormat, VideoFramePoses]):
     def on_completed(self) -> None:
         print(f"PoseResultsWriterSink completed")
 
-    def setup(self, desc: VideoFormat) -> None:
+    def setup(self, desc: PoseFormat) -> None:
         self._results_file.parent.mkdir(parents=True, exist_ok=True)
         self._writer = DynamicPoseCSVWriter(self._results_file)
 

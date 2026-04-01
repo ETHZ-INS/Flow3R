@@ -25,7 +25,7 @@ class LeaseVisualizerHandle(IVisualizerHandle[TDesc, TData]):
     def set_item(self, item: TData) -> None:
         self._inner.set_item(item)
 
-    def set_error(self, error: Exception) -> None:
+    def set_error(self, error: Optional[Exception]) -> None:
         self._inner.set_error(error)
 
     def set_completed(self, completed: bool) -> None:

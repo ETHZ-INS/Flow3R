@@ -13,15 +13,19 @@ from flow3r.app.api.app.settings_service import SettingsService
 from flow3r.app.api.plugins.plugins import PluginAPI
 from flow3r.app.config.app_config import AppConfig
 from flow3r.app.config.group_config import GroupConfig
+from flow3r.app.config.placeholder_config import PlaceholderConfig
 from flow3r.app.layout.main_window import Ui_WelfareRecorder
 from flow3r.app.controller.controller import Controller
 from flow3r.app.api.app.navigator_service import NavigatorService
 from flow3r.app.controller.widget_controller import WidgetController
 from flow3r.app.api.app.widget_service import WidgetService
+from flow3r.app.widgets.global_placeholder_dialog import GlobalPlaceholderDialog
 from flow3r.app.widgets.group_edit_dialog import GroupEditDialog
 from flow3r.app.widgets.group_list_dialog import GroupListDialog
 from flow3r.app.widgets.pipeline_config_dialog import PipelineConfigDialog
 from flow3r.app.widgets.pipeline_list_dialog import PipelineListDialog
+from flow3r.app.widgets.placeholder_edit_dialog import PlaceholderEditDialog
+from flow3r.app.widgets.placeholder_list_dialog import PlaceholderListDialog
 from flow3r.app.widgets.source_config_dialog import SourceConfigDialog
 from flow3r.app.widgets.source_list_dialog import SourceListDialog
 from flow3r.app.config.pipeline_config import PipelineConfig
@@ -36,12 +40,12 @@ LOG_COLORS = {
 
 
 LOCALAPPDATA = Path(os.environ.get("LOCALAPPDATA", Path.home() / ".local" / "share"))
-AUTO_SAVE_FILE = LOCALAPPDATA / "ETH3RHub" / "Flow3R" / "auto_save.wrc"
+AUTO_SAVE_FILE = LOCALAPPDATA / "ETH3RHub" / "Flow3R" / "auto_save.f3r"
 
 
 class MainWindow(Ui_WelfareRecorder, QMainWindow):
     config_loaded = Signal(str)
-    config_saved = Signal(str, object)
+    config_saved = Signal(str, object, bool)
 
     settings_changed = Signal(object)  # settings object
 
@@ -53,6 +57,9 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
 
     pipeline_added = Signal(object)  # pipeline config
     pipeline_edited = Signal(object)  # pipeline config
+
+    placeholder_added = Signal(object)  # placeholder config
+    placeholder_edited = Signal(object)  # placeholder config
 
     group_assigned_to_source = Signal(str, object)  # source_id, group_id
     pipeline_assignment_changed = Signal(str, object, object)  # group_id, pipeline_ids, source_mapping
@@ -88,6 +95,7 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         self._build_settings_menus()
 
         self.config_file: Optional[Path] = config_file
+        self.super_user: bool = False
         self.auto_save: bool = True
 
         settings_menus = {menu.path: menu for menu in self.plugin_api.settings_menus.get_settings_menus().values()}
@@ -111,7 +119,7 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         self.widget_service.recording_controls_released.connect(self.widget_controller.remove_recording_controls_widget)
         self.widget_service.recording_controls_location_requested.connect(self.widget_controller.set_recording_controls_widget_location)
 
-        self.controller = Controller(self.plugin_api.source_types.get_source_types(), self.plugin_api.pipeline_types.get_pipeline_types(), self.widget_service)
+        self.controller = Controller(self.plugin_api, self.widget_service)
         self.widget_controller._main_window = self
         self.widget_controller.set_controller(self.controller)
 
@@ -125,6 +133,9 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         self.worker_thread.setObjectName("SourceControllerThread")
         self.worker_thread.start()
 
+        self.action_superuser_mode.setCheckable(True)
+        self.action_superuser_mode.triggered.connect(self.toggle_super_user)
+
         self.action_save_project.triggered.connect(self.save_project)
         self.action_load_project.triggered.connect(self.load_project)
         self.action_save_project_as.triggered.connect(self.save_project_as)
@@ -132,10 +143,13 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         self.action_list_sources.triggered.connect(self._list_sources)
         self.action_list_groups.triggered.connect(self._list_groups)
         self.action_list_pipelines.triggered.connect(self._list_pipelines)
+        self.action_list_placeholders.triggered.connect(self._list_placeholders)
 
         self.action_add_source.triggered.connect(self._add_source)
         self.action_add_group.triggered.connect(self._add_group)
         self.action_add_pipeline.triggered.connect(self._add_pipeline)
+        self.action_add_placeholder.triggered.connect(self._add_placeholder)
+        self.action_set_placeholder_values.triggered.connect(self._set_global_placeholders)
 
         self.config_saved.connect(self.controller.save_config)
         self.config_loaded.connect(self.controller.load_config)
@@ -151,12 +165,15 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         self.pipeline_added.connect(self.controller.add_pipeline)
         self.pipeline_edited.connect(self.controller.edit_pipeline)
 
+        self.placeholder_added.connect(self.controller.add_placeholder)
+        self.placeholder_edited.connect(self.controller.edit_placeholder)
+
         self.group_assigned_to_source.connect(self.controller.assign_group)
         self.pipeline_assignment_changed.connect(self.controller.set_pipeline_assignment)
 
         self.controller.log_message.connect(self.add_log_entry)
         self.controller.config_changed.connect(self._config_changed)
-        self.controller.config_change_failed.connect(self._config_change_failed)
+        self.controller.error.connect(self._on_error)
         self.controller.config_loaded.connect(self._project_loaded)
 
         self._config: AppConfig = deepcopy(self.controller.config)
@@ -184,6 +201,12 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
             parent_menu = _get_menu(settings_menu.path[:-1])
             action = parent_menu.addAction(settings_menu.path[-1])
             action.triggered.connect(lambda _, path=settings_menu.path: self._open_settings_menu(path))
+
+    @Slot()
+    def toggle_super_user(self):
+        self.super_user = not self.super_user
+        self.action_superuser_mode.setChecked(self.super_user)
+        self.setWindowTitle("Flow3R" if not self.super_user else "Flow3R (Super User)")
 
     @Slot(str, str)
     def add_log_entry(self, message: str, level: str = "INFO"):
@@ -255,8 +278,6 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
             self.group_added.emit(group_config)
 
     def _edit_group(self, group_id: str):
-        print("_edit_group: ", group_id)
-        print(self._config.all_groups)
         group_config = deepcopy(self._config.all_groups.get(group_id))
         assert group_config is not None
 
@@ -277,11 +298,30 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         pipeline_config = PipelineConfig()
         pipeline_types = list(self.plugin_api.pipeline_types.get_pipeline_types().values())
         dialog = PipelineConfigDialog(self.app_context, pipeline_types, pipeline_config, self)
-        dialog.setWindowTitle("Add pipeline")
+        dialog.setWindowTitle("Add Pipeline")
         res = dialog.exec()
 
         if res == QDialog.DialogCode.Accepted:
             self.pipeline_added.emit(pipeline_config)
+
+    def _list_placeholders(self):
+        placeholder_list_dialog = PlaceholderListDialog(self.controller)
+        placeholder_list_dialog.setWindowTitle("Placeholders")
+        placeholder_list_dialog.exec()
+
+    def _add_placeholder(self):
+        placeholder_config = PlaceholderConfig()
+        dialog = PlaceholderEditDialog(placeholder_config, self)
+        dialog.setWindowTitle("Add Placeholder")
+        res = dialog.exec()
+
+        if res == QDialog.DialogCode.Accepted:
+            self.placeholder_added.emit(placeholder_config)
+
+    def _set_global_placeholders(self):
+        dialog = GlobalPlaceholderDialog(self.controller)
+        dialog.setWindowTitle("Global Placeholders")
+        res = dialog.exec()
 
     def _config_changed(self, config):
         self._config = config
@@ -292,11 +332,11 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
     def _select_save_file(self):
         if self.config_file is None:
             # Default path when opening the file dialog
-            selected_file = str(Path.home() / "project.wrc")
+            selected_file = str(Path.home() / "project.f3r")
         else:
             selected_file = str(self.config_file)
 
-        file_filter = "Welfare Recorder Config Files (*.wrc)"
+        file_filter = "Flow3R Config Files (*.f3r)"
         selected_file, _ = QFileDialog.getSaveFileName(self, "Save Project", selected_file, file_filter)
 
         return Path(selected_file) if selected_file else None
@@ -308,8 +348,9 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         else:
             directory = str(self.config_file)
 
-        file_filter = "Welfare Recorder Config Files (*.wrc)"
-        selected_file, _ = QFileDialog.getOpenFileName(self, "Load Project", directory, file_filter)
+        selected_filter = "Flow3R Config Files (*.f3r)"
+        file_filter = "All files (*.*);;Flow3R Config Files (*.f3r)"
+        selected_file, _ = QFileDialog.getOpenFileName(self, "Load Project", directory, file_filter, selected_filter)
 
         return Path(selected_file) if selected_file else None
 
@@ -342,15 +383,12 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
             "dock_window_state": bytes(dock_window_state)
         }
 
-        self.config_saved.emit(str(config_file), ui_state)
+        self.config_saved.emit(str(config_file), ui_state, self.super_user)
 
     def load_project(self):
-        if self.config_file:
-            selected_file = self.config_file
-        else:
-            selected_file = self._select_load_file()
-            if not selected_file:
-                return
+        selected_file = self._select_load_file()
+        if not selected_file:
+            return
 
         self.config_file = Path(selected_file)
         self._load_project(self.config_file)
@@ -383,12 +421,23 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         if dock_window_state:
             self.dock_window.restoreState(dock_window_state)
 
-    def _config_change_failed(self, error: Exception):
-        self.add_log_entry(f"Config change failed: {error}", "ERROR")
+        if any(
+            self._config.global_placeholder_values.get(placeholder_config.id) is None
+            for placeholder_config in self._config.placeholders.values()
+            if placeholder_config.is_global and not placeholder_config.is_constant
+        ):
+            self._set_global_placeholders()
+
+    def _on_error(self, message: str, exc: Optional[Exception] = None):
+        error_message = message
+        if exc:
+            error_message += f": {exc}"
+
+        self.add_log_entry(error_message, "ERROR")
 
         popup = QMessageBox(self)
         popup.setWindowTitle("Error")
-        popup.setText(f"Config change failed: {error}")
+        popup.setText(error_message)
         popup.setStandardButtons(QMessageBox.StandardButton.Ok)
         popup.exec()
 

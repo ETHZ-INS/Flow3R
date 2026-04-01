@@ -1,6 +1,8 @@
 from flow3r.core.api.plugins.plugins import IPluginAPI
 from flow3r.core.plugin.plugin import IPlugin
+from flow3r.plugins.pose_estimation.pipeline.mouse_pose_estimation.config import MousePoseEstimationConfig
 from flow3r.plugins.pose_estimation.pipeline.mouse_pose_estimation.pipeline_type import MousePoseEstimationPipelineType
+from flow3r.plugins.pose_estimation.pipeline.pose_estimation.config import PoseEstimationConfig
 from flow3r.plugins.pose_estimation.pipeline.pose_estimation.pipeline_type import PoseEstimationPipelineType
 from flow3r.plugins.pose_estimation.settings.pose_estimation_models.entry import PoseEstimationModelsSettingsMenu
 from flow3r.plugins.pose_estimation.settings.pose_estimation_models.settings import PoseEstimationModelsSettings
@@ -15,6 +17,10 @@ class PoseEstimationPlugin(IPlugin):
         return "Pose Estimation"
 
     def initialize(self, api: IPluginAPI):
+        api.config_types.register(PoseEstimationConfig.TYPE_ID, PoseEstimationConfig)
+        api.config_types.register(MousePoseEstimationConfig.TYPE_ID, MousePoseEstimationConfig)
+        api.config_types.register(PoseEstimationModelsSettings.TYPE_ID, PoseEstimationModelsSettings)
+
         api.settings.register_setting(("pose_estimation", "models"), PoseEstimationModelsSettings())
         api.settings_menus.register(PoseEstimationModelsSettingsMenu())
 

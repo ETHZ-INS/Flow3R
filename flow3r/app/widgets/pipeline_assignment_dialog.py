@@ -1,4 +1,4 @@
-from typing import Dict, Optional, List, Tuple, Any, Set
+from typing import Dict, Optional, List, Any, Set
 
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, QTimer, QSize
 from PySide6.QtWidgets import QDialog, QStyledItemDelegate, QComboBox, QAbstractItemView, QApplication, QMenu
@@ -9,18 +9,36 @@ from flow3r.app.config.pipeline_config import PipelineConfig
 from flow3r.app.config.source_config import SourceConfig
 
 
-# ----- Tree node -----
-class Node:
-    def __init__(self, kind: str, name: str, parent: Optional["Node"] = None, node_id: Optional[str] = None):
-        self.kind = kind            # "root" | "pipeline" | "input"
-        self.name = name
-        self.id = node_id           # pipeline_id for pipelines, maybe input_id for inputs
-        self.parent = parent
-        self.children: List[Node] = []
-        self.assigned_source_id: Optional[str] = None  # store source_id or source_name (prefer source_id)
+# ----- Tree nodes -----
+class RootNode:
+    def __init__(self):
+        self.name = "root"
+        self.parent = None
+        self.children: List[PipelineNode] = []
 
     def row(self) -> int:
-        return self.parent.children.index(self) if self.parent else 0
+        return 0
+
+class PipelineNode:
+    def __init__(self, name: str, pipeline_id: str, parent: RootNode):
+        self.name = name
+        self.pipeline_id = pipeline_id
+        self.parent = parent
+        self.children: List[InputNode] = []
+
+    def row(self) -> int:
+        return self.parent.children.index(self)
+
+
+class InputNode:
+    def __init__(self, name: str, optional: bool, parent: PipelineNode):
+        self.name = name
+        self.optional = optional
+        self.parent = parent
+        self.source_id: Optional[str] = None
+
+    def row(self) -> int:
+        return self.parent.children.index(self)
 
 
 # ----- Model -----
@@ -33,27 +51,34 @@ class MappingModel(QAbstractItemModel):
         super().__init__()
         self.pipeline_configs = pipeline_configs
         # Prefer stable IDs internally; show names in UI.
-        self.sources: List[Tuple[str, str]] = [(sc.id, sc.name) for sc in source_configs.values()]
+        self.sources: Dict[str, str] = {sc.id: sc.name for sc in source_configs.values()}
 
         self.pipeline_ids = pipeline_ids
         self.source_mapping = source_mapping
 
-        self.root = Node("root", "root")
-        self._pipeline_nodes: Dict[str, Node] = {}  # pipeline_id -> Node
+        self.root = RootNode()
+        self._pipeline_nodes: Dict[str, PipelineNode] = {}  # pipeline_id -> Node
+        self._input_nodes: Dict[str, InputNode] = {}
 
         for pipeline_id in pipeline_ids:
-            cfg = self.pipeline_configs[pipeline_id]
+            pipeline_config = self.pipeline_configs[pipeline_id]
 
-            pnode = Node("pipeline", cfg.name, parent=self.root, node_id=pipeline_id)
-            self.root.children.append(pnode)
-            self._pipeline_nodes[pipeline_id] = pnode
+            pipeline_node = PipelineNode(pipeline_config.name, pipeline_id=pipeline_config.id, parent=self.root)
+            self.root.children.append(pipeline_node)
+            self._pipeline_nodes[pipeline_id] = pipeline_node
 
             # Build child input nodes (no beginInsertRows needed; parent row is not yet "visible")
-            for input_name in cfg.active_config.inputs:
-                inode = Node("input", input_name, parent=pnode, node_id=None)
+            for input_name in pipeline_config.active_config.inputs:
+                input_node = InputNode(input_name, optional=False, parent=pipeline_node)
                 if pipeline_id in source_mapping:
-                    inode.assigned_source_id = source_mapping[pipeline_id].get(input_name)
-                pnode.children.append(inode)
+                    input_node.source_id = source_mapping[pipeline_id].get(input_name)
+                pipeline_node.children.append(input_node)
+
+            for input_name in pipeline_config.active_config.optional_inputs:
+                input_node = InputNode(input_name, optional=True, parent=pipeline_node)
+                if pipeline_id in source_mapping:
+                    input_node.source_id = source_mapping[pipeline_id].get(input_name)
+                pipeline_node.children.append(input_node)
 
 
     # ---------- required Qt model methods ----------
@@ -62,10 +87,12 @@ class MappingModel(QAbstractItemModel):
 
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
         node = parent.internalPointer() if parent.isValid() else self.root
+        if isinstance(node, InputNode):
+            return 0
         return len(node.children)
 
-    def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.DisplayRole) -> Any:
-        if orientation == Qt.Horizontal and role == Qt.DisplayRole:
+    def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.ItemDataRole.DisplayRole) -> Any:
+        if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
             return ["Pipeline/Input", "Source"][section]
         return None
 
@@ -79,62 +106,59 @@ class MappingModel(QAbstractItemModel):
     def parent(self, index: QModelIndex) -> QModelIndex:
         if not index.isValid():
             return QModelIndex()
-        node: Node = index.internalPointer()
+        node = index.internalPointer()
         parent_node = node.parent
         if parent_node is None or parent_node is self.root:
             return QModelIndex()
         return self.createIndex(parent_node.row(), 0, parent_node)
 
-    def data(self, index: QModelIndex, role: int = Qt.DisplayRole):
+    def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole):
         if not index.isValid():
             return None
-        node: Node = index.internalPointer()
+        node = index.internalPointer()
         col = index.column()
 
-        if role in (Qt.DisplayRole, Qt.EditRole):
+        if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
             if col == self.COL_NAME:
-                return node.name
+                name = node.name
+                if isinstance(node, InputNode) and node.optional:
+                    name += " (opt.)"
+                return name
             if col == self.COL_SOURCE:
-                if node.kind != "input":
+                if not isinstance(node, InputNode):
                     return ""
-                # If you store source_id, convert to display name here:
-                if node.assigned_source_id is None or node.assigned_source_id == "":
+
+                if node.source_id is None:
                     return ""
-                # map id -> name
-                for sid, sname in self.sources:
-                    if sid == node.assigned_source_id:
-                        return sname
-                # fallback if unknown
-                return ""
+
+                return self.sources.get(node.source_id, "")
 
         return None
 
     def flags(self, index: QModelIndex):
         if not index.isValid():
             return Qt.NoItemFlags
-        node: Node = index.internalPointer()
+        node = index.internalPointer()
         col = index.column()
 
         f = Qt.ItemIsEnabled | Qt.ItemIsSelectable
-        if node.kind == "input" and col == self.COL_SOURCE:
+        if isinstance(node, InputNode) and col == self.COL_SOURCE:
             f |= Qt.ItemIsEditable
         return f
 
     def setData(self, index: QModelIndex, value, role: int = Qt.EditRole) -> bool:
-        print(f"setData called with index={index.row()}/{index.column()}, value={value}, role={role}")
         if role != Qt.EditRole or not index.isValid():
             return False
-        node: Node = index.internalPointer()
+        node = index.internalPointer()
 
-        if node.kind == "input" and index.column() == self.COL_SOURCE:
+        if isinstance(node, InputNode) and index.column() == self.COL_SOURCE:
             # Here, store a source_id (recommended). Your delegate can provide IDs.
-            print(f"assigning source {value} to input {node.name}")
-            pipeline_id = node.parent.id
+            pipeline_id = node.parent.pipeline_id
             if pipeline_id not in self.source_mapping:
                 self.source_mapping[pipeline_id] = {}
             self.source_mapping[pipeline_id][node.name] = value or None
 
-            node.assigned_source_id = value or None
+            node.source_id = value or None
             self.dataChanged.emit(index, index, [Qt.DisplayRole, Qt.EditRole])
             return True
         return False
@@ -155,14 +179,18 @@ class MappingModel(QAbstractItemModel):
         insert_row = len(self.root.children)
         self.beginInsertRows(QModelIndex(), insert_row, insert_row)
 
-        pnode = Node("pipeline", cfg.name, parent=self.root, node_id=pipeline_id)
-        self.root.children.insert(insert_row, pnode)
-        self._pipeline_nodes[pipeline_id] = pnode
+        pipeline_node = PipelineNode(cfg.name, pipeline_id=pipeline_id, parent=self.root)
+        self.root.children.insert(insert_row, pipeline_node)
+        self._pipeline_nodes[pipeline_id] = pipeline_node
 
         # Build child input nodes (no beginInsertRows needed; parent row is not yet "visible")
         for input_name in cfg.active_config.inputs:
-            inode = Node("input", input_name, parent=pnode, node_id=None)
-            pnode.children.append(inode)
+            input_node = InputNode(input_name, optional=False, parent=pipeline_node)
+            pipeline_node.children.append(input_node)
+
+        for input_name in cfg.active_config.optional_inputs:
+            input_node = InputNode(input_name, optional=True, parent=pipeline_node)
+            pipeline_node.children.append(input_node)
 
         self.endInsertRows()
         return True
@@ -192,10 +220,10 @@ class SourceComboDelegate(QStyledItemDelegate):
 
     def createEditor(self, parent, option, index):
         node = index.internalPointer()
-        if node.kind == "input" and index.column() == 1:
+        if isinstance(node, InputNode) and index.column() == 1:
             cb = QComboBox(parent)
             cb.addItem("", None)
-            for source_id, source_name in self.model.sources:
+            for source_id, source_name in self.model.sources.items():
                 cb.addItem(source_name, source_id)
 
             # Commit + close immediately on user selection
@@ -269,8 +297,8 @@ class PipelineAssignmentDialog(Ui_PipelineAssignmentDialog, QDialog):
                 continue
 
             node = index.internalPointer()
-            if node.kind == "pipeline":
-                return node.id
+            if isinstance(node, PipelineNode):
+                return node.pipeline_id
         return None
 
     def _selection_changed(self, _selected, _deselected):

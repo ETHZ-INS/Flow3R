@@ -1,9 +1,6 @@
-import threading
-import time
 from pathlib import Path
-from typing import List, Optional, Dict
+from typing import Optional, Dict
 
-import numpy as np
 from py3r.media.streaming.operators import observe_on_bounded
 from py3r.pose.core.tracking.fixed_instances_tracker import FixedInstancesTracker
 from reactivex import operators as ops
@@ -11,8 +8,6 @@ from reactivex import operators as ops
 import reactivex as rx
 from reactivex.disposable import CompositeDisposable
 from reactivex.scheduler import EventLoopScheduler
-from ultralytics import YOLO
-from ultralytics.nn.modules import Conv
 
 from flow3r.core.api.app.session_context import ISessionContext
 from flow3r.core.pipeline.abc.pipeline import IPipeline, PipelineSubscription, PreviewSubscription

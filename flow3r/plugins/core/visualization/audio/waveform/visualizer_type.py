@@ -19,5 +19,5 @@ class WaveformVisualizerType(IVisualizerType):
     def widget_factory(self):
         return WaveformWidget
 
-    def accepts(self, desc: Any) -> bool:
-        return isinstance(desc, AudioFormat)
+    def accepts(self, fmt: Any) -> bool:
+        return isinstance(fmt, AudioFormat)

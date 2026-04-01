@@ -64,8 +64,8 @@ class SourceConfigDialog(QDialog):
             self._current_widget.setParent(None)
 
         source_type: ISourceType = self.dpd_source_type.currentData()
-        config_factory = source_type.get_config_factory()
-        widget_factory = source_type.get_config_widget_factory()
+        config_factory = source_type.config_factory
+        widget_factory = source_type.config_widget_factory
 
         config = self.config.get_sub_config(source_type.name)
         if not config:

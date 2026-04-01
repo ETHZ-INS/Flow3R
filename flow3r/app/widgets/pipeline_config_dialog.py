@@ -63,8 +63,8 @@ class PipelineConfigDialog(QDialog):
             self._current_widget.setParent(None)
 
         pipeline_type: IPipelineType = self.dpd_pipeline_type.currentData()
-        config_factory = pipeline_type.get_config_factory()
-        widget_factory = pipeline_type.get_config_widget_factory()
+        config_factory = pipeline_type.config_factory
+        widget_factory = pipeline_type.config_widget_factory
 
         config = self.config.get_sub_config(pipeline_type.name)
         if not config:

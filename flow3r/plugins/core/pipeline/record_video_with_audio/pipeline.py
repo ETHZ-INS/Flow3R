@@ -1,28 +1,24 @@
 import tempfile
-from concurrent.futures import Future
 from pathlib import Path
-from typing import List, Optional, Dict
+from typing import Optional, Dict
 
 import reactivex as rx
 from reactivex import operators as ops
-from reactivex.disposable import CompositeDisposable
+from reactivex.disposable import CompositeDisposable, Disposable
 from reactivex.scheduler import EventLoopScheduler
 
 from flow3r.core.api.app.session_context import ISessionContext
-from flow3r.core.pipeline.abc.pipeline import IPipeline, PipelineSubscription
+from flow3r.core.pipeline.abc.pipeline import PipelineSubscription, PipelineBase
 from flow3r.core.streaming.abc.stream import IStream
 from flow3r.core.streaming.stream import Stream
-from flow3r.core.visualization.abc.visualizer_handle import IVisualizerHandle
-from flow3r.core.visualization.visualizer_sink import VisualizerSink
 from flow3r.plugins.core.node.audio_writer_transform import AudioWriterTransform
 from flow3r.plugins.core.node.video_audio_muxer import VideoAudioMuxerSink
 from flow3r.plugins.core.node.video_writer_transform import VideoWriterTransform
 from flow3r.plugins.core.pipeline.record_video_with_audio.config import RecordVideoWithAudioConfig
 
 
-class RecordVideoWithAudioPipeline(IPipeline[RecordVideoWithAudioConfig]):
+class RecordVideoWithAudioPipeline(PipelineBase[RecordVideoWithAudioConfig]):
     def __init__(self):
-        self._widget_handle: Optional[IVisualizerHandle] = None
         self._config: Optional[RecordVideoWithAudioConfig] = None
 
         self._main_scheduler = EventLoopScheduler()
@@ -30,8 +26,9 @@ class RecordVideoWithAudioPipeline(IPipeline[RecordVideoWithAudioConfig]):
 
     def configure(self, session_context: ISessionContext, config: RecordVideoWithAudioConfig):
         self._config = config
-        if not self._widget_handle:
-            self._widget_handle = session_context.widget_service.get_visualizer_handle("Video Preview")
+
+    def preview(self, session_context: ISessionContext, sources: Dict[str, IStream]) -> PipelineSubscription:
+        return PipelineSubscription(Disposable(), rx.from_list([None]))
 
     def build(self, session_context: ISessionContext, sources: Dict[str, IStream]) -> PipelineSubscription:
         video_source = sources["Video"]
@@ -44,8 +41,6 @@ class RecordVideoWithAudioPipeline(IPipeline[RecordVideoWithAudioConfig]):
         video_writer_transform = VideoWriterTransform(temp_video_file)
         audio_writer_transform = AudioWriterTransform(temp_audio_file)
         video_audio_muxer_sink = VideoAudioMuxerSink(Path(self._config.video_file))
-
-        visualizer_sink = VisualizerSink(session_context.widget_service, "Video Preview")
 
         shared_video_source = Stream(video_source.format, video_source.data.pipe(ops.observe_on(self._main_scheduler), ops.share()))
 
@@ -61,13 +56,10 @@ class RecordVideoWithAudioPipeline(IPipeline[RecordVideoWithAudioConfig]):
         )
         muxer_sub = video_audio_muxer_sink.subscribe(video_audio_muxer_stream)
 
-        visualizer_sub = visualizer_sink.subscribe(shared_video_source)
-
-        disposable = CompositeDisposable(muxer_sub, visualizer_sub)
+        disposable = CompositeDisposable(muxer_sub)
         primary_done = muxer_sub.done
 
         return PipelineSubscription(disposable, primary_done)
 
     def dispose(self):
-        if self._widget_handle:
-            self._widget_handle.dispose()
+        pass

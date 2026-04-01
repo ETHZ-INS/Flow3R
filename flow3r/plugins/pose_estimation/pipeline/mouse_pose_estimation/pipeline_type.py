@@ -14,11 +14,14 @@ class MousePoseEstimationPipelineType(IPipelineType[MousePoseEstimationConfig, M
     def name(self) -> str:
         return "Mouse Pose Estimation"
 
-    def get_config_factory(self) -> Callable[[], MousePoseEstimationConfig]:
+    @property
+    def config_factory(self) -> Callable[[], MousePoseEstimationConfig]:
         return MousePoseEstimationConfig
 
-    def get_config_widget_factory(self) -> Callable[[IAppContext, MousePoseEstimationConfig, QWidget], QWidget]:
+    @property
+    def config_widget_factory(self) -> Callable[[IAppContext, MousePoseEstimationConfig, QWidget], QWidget]:
         return MousePoseEstimationConfigWidget
 
-    def get_pipeline_factory(self) -> Callable[[], MousePoseEstimationPipeline]:
+    @property
+    def pipeline_factory(self) -> Callable[[], MousePoseEstimationPipeline]:
         return MousePoseEstimationPipeline

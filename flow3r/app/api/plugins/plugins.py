@@ -1,3 +1,4 @@
+from flow3r.app.api.plugins.config_type_registry import ConfigTypeRegistry
 from flow3r.app.api.plugins.pipeline_type_registry import PipelineTypeRegistry
 from flow3r.app.api.plugins.settings_menu_registry import SettingsMenuRegistry
 from flow3r.app.api.plugins.settings_registry import SettingsRegistry
@@ -8,11 +9,16 @@ from flow3r.core.api.plugins.plugins import IPluginAPI
 
 class PluginAPI(IPluginAPI):
     def __init__(self):
+        self._config_types = ConfigTypeRegistry()
         self._source_types = SourceTypeRegistry()
         self._visualizer_types = VisualizerTypeRegistry()
         self._pipeline_types = PipelineTypeRegistry()
         self._settings_registry = SettingsRegistry()
         self._settings_menus = SettingsMenuRegistry()
+
+    @property
+    def config_types(self) -> ConfigTypeRegistry:
+        return self._config_types
 
     @property
     def source_types(self) -> SourceTypeRegistry:

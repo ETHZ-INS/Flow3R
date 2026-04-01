@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import List
 
 from flow3r.core.pipeline.abc.pipeline_config import PipelineConfigBase
 from flow3r.core.placeholder.abc.placeholder_provider import IPlaceholderProvider
@@ -7,6 +8,9 @@ from flow3r.core.placeholder.placeholder_formatter import PlaceholderFormatter
 
 @dataclass
 class RecordVideoConfig(PipelineConfigBase):
+    TYPE_ID = "core.pipeline.record_video"
+    VERSION = 1
+
     video_file: str = "my_video.mp4"
 
     def resolve(self, placeholder_provider: IPlaceholderProvider) -> "RecordVideoConfig":
@@ -14,5 +18,9 @@ class RecordVideoConfig(PipelineConfigBase):
         return RecordVideoConfig(video_file=video_file)
 
     @property
-    def inputs(self) -> list[str]:
+    def inputs(self) -> List[str]:
         return ["Video"]
+
+    @property
+    def files(self) -> List[str]:
+        return [self.video_file]

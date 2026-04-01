@@ -29,6 +29,7 @@ class AudioWriterSink(Sink[AudioFormat, AudioChunk]):
 
     def setup(self, desc: AudioFormat) -> None:
         try:
+            self._audio_file.parent.mkdir(parents=True, exist_ok=True)
             self._writer = self._factory(self._audio_file, desc)
             self._writer.open()
         except Exception as e:

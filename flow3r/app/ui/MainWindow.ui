@@ -156,7 +156,7 @@
     <addaction name="action_load_project"/>
     <addaction name="action_save_project"/>
     <addaction name="action_save_project_as"/>
-    <addaction name="action_enable_superuser_mode"/>
+    <addaction name="action_superuser_mode"/>
    </widget>
    <widget class="QMenu" name="menuCameras">
     <property name="title">
@@ -176,8 +176,9 @@
     <property name="title">
      <string>Placeholders</string>
     </property>
-    <addaction name="action_configure_placeholders"/>
+    <addaction name="action_list_placeholders"/>
     <addaction name="action_add_placeholder"/>
+    <addaction name="action_set_placeholder_values"/>
    </widget>
    <widget class="QMenu" name="menuGroups">
     <property name="title">
@@ -243,7 +244,7 @@
     <string>Add Placeholder</string>
    </property>
   </action>
-  <action name="action_configure_placeholders">
+  <action name="action_list_placeholders">
    <property name="text">
     <string>Placeholders...</string>
    </property>
@@ -253,9 +254,14 @@
     <string>Processing Pipelines...</string>
    </property>
   </action>
-  <action name="action_enable_superuser_mode">
+  <action name="action_superuser_mode">
    <property name="text">
-    <string>Enable Superuser Mode</string>
+    <string>Super User Mode</string>
+   </property>
+  </action>
+  <action name="action_set_placeholder_values">
+   <property name="text">
+    <string>Set Placeholder Values</string>
    </property>
   </action>
  </widget>

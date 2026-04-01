@@ -9,4 +9,4 @@ class SettingsView(ISettingsView):
         self._settings = settings
 
     def get(self, key_path: KeyPath) -> Any:
-        return self._settings[key_path]
+        return self._settings.get(key_path)

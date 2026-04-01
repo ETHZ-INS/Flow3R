@@ -1,147 +1,107 @@
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
 from PySide6 import QtWidgets, QtCore, QtGui
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QWidget, QMenu, QFrame
 from py3r.media.types import VideoFrame
+from py3r.pose.core.visualization.pose_renderer import PoseRenderer
 
-from flow3r.core.visualization.abc.visualizer_handle import IVisualizerHandle
+from flow3r.core.visualization.abc.numpy_image_visualizer_widget import BaseNumpyImageVisualizerWidget
 from flow3r.plugins.core.typing.video import VideoFormat
+from flow3r.plugins.pose_estimation.typing.pose_format import PoseFormat
 
 
-class VideoWidget(QWidget):
+class SettingsDialog(QtWidgets.QDialog):
+    color_mode_changed = QtCore.Signal(str)
+
+    def __init__(self, color_mode: str, parent: Optional[QtWidgets.QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Pose Visualization Settings")
+        self.resize(300, 200)
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+
+        frm_settings = QFrame(self)
+        frm_settings_layout = QtWidgets.QFormLayout(frm_settings)
+        frm_settings_layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(frm_settings)
+
+        self.dpd_color_mode = QtWidgets.QComboBox(frm_settings)
+        self.dpd_color_mode.addItems(["Color", "Grayscale", "Auto"])
+        self.dpd_color_mode.setCurrentText(color_mode)
+        frm_settings_layout.addRow("Color Mode", self.dpd_color_mode)
+
+        self.dpd_color_mode.currentTextChanged.connect(self.color_mode_changed.emit)
+
+
+class VideoWidget(BaseNumpyImageVisualizerWidget[VideoFormat, VideoFrame]):
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
 
-        self._label = QtWidgets.QLabel(self)
-        self._label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        self._label.setStyleSheet("background: none;")
-        self._label.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Expanding,
-            QtWidgets.QSizePolicy.Policy.Expanding,
-        )
-        self._label.setMinimumSize(20, 20)
+        self._pose_renderer: Optional[PoseRenderer] = None
+        self._latest_item: Optional[VideoFrame] = None
+        self.color_mode = "Auto"
 
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self._label)
+    def _reset_visualizer_state(self) -> None:
+        self._latest_item = None
+        self.color_mode = "Auto"
 
-        self._handle: Optional[IVisualizerHandle[VideoFormat, VideoFrame]] = None
+    def _on_format(self, fmt: Optional[Tuple[VideoFormat, PoseFormat]]) -> None:
+        self.request_render()
 
-        # latest-only buffer
-        self._pending: Optional[np.ndarray] = None
-        self._render_timer = QtCore.QTimer(self)
-        self._render_timer.setInterval(0)  # render ASAP on event loop
-        self._render_timer.timeout.connect(self._render_latest)
+    def _on_item(self, item: Optional[VideoFrame]) -> None:
+        self._latest_item = item
+        self.request_render()
 
-        # keep last frame pixmap around so we can rescale on resize
-        self._pixmap_raw: Optional[QtGui.QPixmap] = None
-
-    def set_handle(self, handle: Optional[IVisualizerHandle[VideoFormat, VideoFrame]]) -> None:
-        # disconnect old
-        if self._handle is not None:
-            try:
-                self._handle.item_changed.disconnect(self._on_frame)
-                self._handle.error_changed.disconnect(self._on_error)
-                self._handle.completed_changed.disconnect(self._on_completed)
-            except (TypeError, RuntimeError):
-                pass
-
-        self._handle = handle
-        self._pending = None
-        self._render_timer.stop()
-        self._pixmap_raw = None
-        self._label.clear()
-
-        if self._handle is not None:
-            self._handle.item_changed.connect(self._on_frame)
-            self._handle.error_changed.connect(self._on_error)
-            self._handle.completed_changed.connect(self._on_completed)
-
-            if self._handle.item:
-                self._on_frame(self._handle.item)
-            if self._handle.error:
-                self._on_error(self._handle.error)
-            if self._handle.completed:
-                self._on_completed()
-
-    def closeEvent(self, event) -> None:
-        self.set_handle(None)
-        super().closeEvent(event)
-
-    def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
-        super().resizeEvent(event)
-        # Recompute scaled pixmap for the new size
-        self._update_scaled_pixmap()
-
-    @QtCore.Slot(object)
-    def _on_frame(self, frame: Optional[VideoFrame]) -> None:
-        if not frame:
-            return
-        self._pending = frame.img
-        if not self._render_timer.isActive():
-            self._render_timer.start()
-
-    @QtCore.Slot(object)
     def _on_error(self, err: Optional[Exception]) -> None:
         if err:
-            self._label.setText(str(err))
+            self.set_status_text(str(err))
         else:
-            self._label.setText("")
+            self.set_status_text("")
 
-    @QtCore.Slot()
     def _on_completed(self) -> None:
-        pass
+        if self.handle() is not None and self.handle().completed:
+            self.set_status_text("Video completed.")
 
-    @QtCore.Slot()
-    def _render_latest(self) -> None:
-        self._render_timer.stop()
-        frame = self._pending
-        if frame is None:
-            self._label.setText("Waiting for video...")
-            return
+    def _generate_image(self) -> Optional[np.ndarray]:
+        if self._latest_item is None:
+            self.set_status_text("Waiting for video...")
+            return None
 
-        self._pending = None
+        frame = self._latest_item
+        img = self._convert_color_mode(frame.img)
 
-        try:
-            self._pixmap_raw = self._frame_to_pixmap_rgb(frame)
-        except Exception as e:
-            self._pixmap_raw = None
-            self._label.setText(f"Frame conversion error:\n{e}")
-            return
+        return img
 
-        self._update_scaled_pixmap()
-
-    def _update_scaled_pixmap(self) -> None:
-        """Scale the last received frame pixmap to the current label size."""
-        if self._pixmap_raw is None:
-            return
-
-        target = self._label.size()
-        if target.width() <= 0 or target.height() <= 0:
-            return
-
-        scaled = self._pixmap_raw.scaled(
-            target,
-            QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-            QtCore.Qt.TransformationMode.FastTransformation
-        )
-        self._label.setPixmap(scaled)
-
-    @staticmethod
-    def _frame_to_pixmap_rgb(frame: np.ndarray) -> QtGui.QPixmap:
+    def _convert_color_mode(self, frame: np.ndarray) -> np.ndarray:
         if frame.ndim == 2:
             if frame.dtype != np.uint8:
                 frame = np.clip(frame, 0, 255).astype(np.uint8)
-            h, w = frame.shape
-            qimg = QtGui.QImage(frame.data, w, h, w, QtGui.QImage.Format.Format_Grayscale8)
-            return QtGui.QPixmap.fromImage(qimg.copy())
+            if self.color_mode == "Color":
+                frame = np.stack([frame] * 3, axis=2)
+            return frame
 
         if frame.ndim == 3 and frame.shape[2] == 3:
+            if self.color_mode == "Grayscale":
+                frame = np.mean(frame, axis=2)
             if frame.dtype != np.uint8:
                 frame = np.clip(frame, 0, 255).astype(np.uint8)
-            h, w, _ = frame.shape
-            qimg = QtGui.QImage(frame.data, w, h, 3 * w, QtGui.QImage.Format.Format_RGB888)
-            return QtGui.QPixmap.fromImage(qimg.copy())
+            return frame
 
         raise ValueError(f"Unsupported frame shape: {frame.shape}")
+
+    def populate_context_menu(self, menu: QMenu) -> None:
+        settings_action = menu.addAction("Settings")
+        settings_action.triggered.connect(self._on_settings_triggered)
+
+    def _on_settings_triggered(self) -> None:
+        if self._pose_renderer is None:
+            return
+
+        dialog = SettingsDialog(self.color_mode, self)
+        dialog.exec()
+
+    def closeEvent(self, event: QtGui.QCloseEvent) -> None:
+        self.set_handle(None)
+        super().closeEvent(event)

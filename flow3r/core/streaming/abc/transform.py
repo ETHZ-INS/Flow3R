@@ -56,14 +56,18 @@ class Transform(Generic[TDescIn, TDataIn, TDescOut, TDataOut], ABC):
     def pipe(self, stream: IStream[TDescIn, TDataIn]) -> Stream[TDescOut, TDataOut]:
         desc_in = stream.format
 
-        # Perform one-time setup eagerly before data starts flowing.
-        self.setup(desc_in)
+        try:
+            # Perform one-time setup eagerly before data starts flowing.
+            self.setup(desc_in)
 
-        # Infer output format eagerly as well.
-        out_desc = self.infer_format(desc_in)
+            # Infer output format eagerly as well.
+            out_desc = self.infer_format(desc_in)
 
-        # Build the transformed data observable once.
-        out = self.transform_observable(stream.data)
+            # Build the transformed data observable once.
+            out = self.transform_observable(stream.data)
+        except Exception as exc:
+            out_desc = None
+            out = rx.throw(exc)
 
         def data_factory(observer, _sched=None):
             closed = False

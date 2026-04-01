@@ -1,4 +1,5 @@
-from typing import Protocol, Callable, TypeVar, Tuple
+from dataclasses import dataclass
+from typing import Protocol, Callable, TypeVar, Tuple, Generic
 
 from PySide6.QtWidgets import QWidget
 
@@ -14,6 +15,18 @@ class IPipelineType(Protocol[TConfig, TPipeline]):
     def name(self) -> str: ...
     @property
     def category(self) -> Tuple[str, ...]: ...
-    def get_config_factory(self) -> Callable[[], TConfig]: ...
-    def get_config_widget_factory(self) -> Callable[[IAppContext, TConfig, QWidget], QWidget]: ...
-    def get_pipeline_factory(self) -> Callable[[], IPipeline]: ...
+    @property
+    def config_factory(self) -> Callable[[], TConfig]: ...
+    @property
+    def config_widget_factory(self) -> Callable[[IAppContext, TConfig, QWidget], QWidget]: ...
+    @property
+    def pipeline_factory(self) -> Callable[[], IPipeline]: ...
+
+
+@dataclass
+class PipelineType(Generic[TConfig, TPipeline]):
+    name: str
+    category: Tuple[str, ...]
+    config_factory: Callable[[], TConfig]
+    config_widget_factory: Callable[[IAppContext, TConfig, QWidget], QWidget]
+    pipeline_factory: Callable[[], IPipeline]

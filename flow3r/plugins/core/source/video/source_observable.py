@@ -17,9 +17,7 @@ class ISource(Protocol[TData]):
     def read(self, timeout: float) -> TData: ...
 
 
-def source_observable(source: ISource[TData]) -> Observable[TData]:
-    read_timeout_s = 0.5  # keep this reasonably small for responsive shutdown
-
+def source_observable(source: ISource[TData], read_timeout_seconds: float = 0.5) -> Observable[TData]:
     def _subscribe(observer: Observer[TData], _=None):
         stop = threading.Event()
         done = threading.Event()
@@ -35,7 +33,7 @@ def source_observable(source: ISource[TData]) -> Observable[TData]:
             try:
                 while not stop.is_set():
                     try:
-                        item = source.read(read_timeout_s)
+                        item = source.read(read_timeout_seconds)
                         if item is None:
                             raise RuntimeError("Source returned None")
                     except Exception as ex:
@@ -65,7 +63,7 @@ def source_observable(source: ISource[TData]) -> Observable[TData]:
             stop.set()
             # Wait for the acquisition thread to exit so close happens after read returns.
             # Because read uses a timeout, this should be quick.
-            done.wait(timeout=1.0)
+            done.wait(timeout=2.0)
 
         return Disposable(dispose)
 

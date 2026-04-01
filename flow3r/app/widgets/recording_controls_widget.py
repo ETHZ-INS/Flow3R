@@ -9,7 +9,7 @@ from flow3r.app.config.group_config import GroupConfig
 from flow3r.app.layout.recording_controls_widget import Ui_RecordingControlsWidget
 from flow3r.app.controller.session_state import SessionStateBase, Ready, Running, AcquisitionFinished, \
     FinishingProcessing, \
-    FinishingRecording, NotReady, MissingInfo, Error, ConfigError, InvalidPlaceholders, Started
+    FinishingRecording, NotReady, MissingInfo, Error, ConfigError, InvalidPlaceholders, Started, StartFailed
 
 
 class ClickableLabel(QLabel):
@@ -64,7 +64,7 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
         self.group_id = group_id
         self.group_name: Optional[str] = group_name
         self.session_id: Optional[str] = None
-        self.state: SessionStateBase = NotReady(recording_number=None)
+        self.state: SessionStateBase = NotReady(recording_number=0)
 
         self.start_time: Optional[datetime] = None
         self.timer = QTimer(self)
@@ -124,7 +124,7 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
             self._stop_timer()
 
     def _update_btn_start(self):
-        enabled = self.session_id is not None and isinstance(self.state, (Ready, Running))
+        enabled = self.session_id is not None and isinstance(self.state, (Ready, StartFailed, Running))
         self.btn_start.setEnabled(enabled)
 
         if isinstance(self.state, Running):
@@ -141,6 +141,9 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
             #self.lbl_status.setText("Ready - <a href=\"fill_placeholders\">Edit Information</a>")
             self.lbl_status.setText("Ready")
             self.lbl_status.setStyleSheet("QLabel { color: black; }")
+        elif isinstance(self.state, StartFailed):
+            self.lbl_status.setText(f"Start failed: {self.state.message}")
+            self.lbl_status.setStyleSheet("QLabel { color: red; }")
         elif isinstance(self.state, Started):
             if isinstance(self.state, FinishingProcessing):
                 self.lbl_status.setText(f"Finishing processing ({self.state.processing_progress*100:.0f}%)...")
@@ -210,11 +213,25 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
     def _start_recording(self):
         if not self.session_id:
             return
+
         if isinstance(self.state, Running):
             if self.state.duration is not None and not self._confirm_stop_recording():
                 return
             self.recording_stop.emit(self.group_id, self.session_id)
         else:
+            files_that_will_be_overwritten = []
+            if isinstance(self.state, (Ready, StartFailed)):
+                files = self.state.files
+                for file in files:
+                    if file.exists():
+                        files_that_will_be_overwritten.append(file)
+
+            if files_that_will_be_overwritten:
+                file_list_str = "\n".join(str(file) for file in files_that_will_be_overwritten)
+                reply = QMessageBox.question(self, "Confirm Start Recording", f"The following files already exist and will be overwritten:\n{file_list_str}\nDo you want to continue?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                if reply != QMessageBox.StandardButton.Yes:
+                    return
+
             self.recording_start.emit(self.group_id, self.session_id)
 
     def _confirm_stop_recording(self):

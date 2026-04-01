@@ -24,7 +24,7 @@ class VisualizerSink(Sink[TDesc, TData]):
         self._visualizer_handle.set_format(fmt)
 
     def on_next(self, item: TData) -> None:
-        assert self._visualizer_handle is not None
+        #assert self._visualizer_handle is not None
         self._visualizer_handle.set_item(item)
 
     def on_error(self, exc: Exception) -> None:

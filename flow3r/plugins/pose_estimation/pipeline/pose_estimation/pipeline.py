@@ -1,6 +1,8 @@
 from pathlib import Path
 from typing import List, Optional, Dict
 
+from py3r.media.streaming.operators import observe_on_bounded
+from py3r.pose.core.tracking.fixed_instances_tracker import FixedInstancesTracker
 from reactivex import operators as ops
 
 import reactivex as rx
@@ -20,6 +22,7 @@ from flow3r.plugins.core.node.video_segment_writer import VideoSegmentWriter
 from flow3r.plugins.core.node.video_spool import VideoSpool
 from flow3r.plugins.core.node.video_writer_sink import VideoWriterSink
 from flow3r.plugins.pose_estimation.node.pose_estimation_transform import PoseEstimationTransform
+from flow3r.plugins.pose_estimation.node.pose_filter_transform import PoseFilterTransform
 from flow3r.plugins.pose_estimation.node.pose_render_transform import PoseRenderTransform
 from flow3r.plugins.pose_estimation.node.pose_results_writer import PoseResultsWriterSink
 from flow3r.plugins.pose_estimation.node.video_pacer import VideoPacer
@@ -67,11 +70,14 @@ class PoseEstimationPipeline(IPipeline[PoseEstimationConfig]):
 
         source = sources["Video"]
 
-        video_stream = source.pipe(ops.observe_on(_main_scheduler), ops.share())
+        video_stream = source.pipe(observe_on_bounded(_main_scheduler, maxsize=16, policy="drop_oldest"), ops.share())
 
         pose_estimation_transform = PoseEstimationTransform(pose_model_service, self._current_model_config, batch_size=8)
-        pose_input_stream = video_stream.pipe(ops.observe_on(_pose_estimation_scheduler))
+        pose_input_stream = video_stream.pipe(observe_on_bounded(_pose_estimation_scheduler, maxsize=16))
         pose_stream = pose_estimation_transform.pipe(pose_input_stream).pipe(ops.observe_on(_main_scheduler))
+
+        pose_tracker_transform = PoseFilterTransform(FixedInstancesTracker(["mouse_top"]))
+        pose_stream = pose_tracker_transform.pipe(pose_stream)
 
         pose_preview_pacer = VideoPacer(buffer_size=16)
         pose_preview_stream = Stream(
@@ -105,11 +111,11 @@ class PoseEstimationPipeline(IPipeline[PoseEstimationConfig]):
         do_nothing_sink = DoNothingSink()
 
         pose_estimation_transform = PoseEstimationTransform(pose_model_service, self._current_model_config, batch_size=32)
-        pose_render_transform = PoseRenderTransform()
+        #pose_render_transform = PoseRenderTransform()
         pose_preview_pacer = VideoPacer(buffer_size=150)
 
-        vis_video_file = Path(self._config.video_file).with_suffix(".vis.mp4")
-        vis_video_writer_sink = VideoWriterSink(vis_video_file)
+        #vis_video_file = Path(self._config.video_file).with_suffix(".vis.mp4")
+        #vis_video_writer_sink = VideoWriterSink(vis_video_file)
 
         pose_results_file = Path(self._config.pose_results_file)
         pose_results_writer = PoseResultsWriterSink(pose_results_file)
