@@ -22,6 +22,7 @@ class PathWidget(QWidget):
         self.layout.setSpacing(0)
 
         self.txt_path = QLineEdit(self)
+        self.txt_path.setMinimumSize(QSize(200, 0))
         self.txt_path.editingFinished.connect(self._path_changed)
         self.layout.addWidget(self.txt_path)
 

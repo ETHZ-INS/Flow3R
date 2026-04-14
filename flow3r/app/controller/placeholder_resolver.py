@@ -1,5 +1,5 @@
 import re
-from typing import Dict
+from typing import Dict, Set
 
 PLACEHOLDER_PATTERN = re.compile(r"{([a-zA-Z_][a-zA-Z0-9_]*)}")
 
@@ -8,8 +8,10 @@ class PlaceholderResolutionError(Exception):
     pass
 
 
-class UnknownPlaceholderError(PlaceholderResolutionError):
-    pass
+class MissingPlaceholderError(PlaceholderResolutionError):
+    def __init__(self, message: str, placeholder_name: str):
+        super().__init__(message)
+        self.placeholder_name = placeholder_name
 
 
 class CyclicPlaceholderError(PlaceholderResolutionError):
@@ -29,7 +31,7 @@ def resolve_placeholders(placeholders: Dict[str, str]) -> Dict[str, str]:
             raise CyclicPlaceholderError(f"Cyclic reference detected: {cycle}")
 
         if name not in placeholders:
-            raise UnknownPlaceholderError(f"Unknown placeholder: {name}")
+            raise MissingPlaceholderError(f"Missing placeholder: {name}", name)
 
         visiting.add(name)
         raw_value = placeholders[name]

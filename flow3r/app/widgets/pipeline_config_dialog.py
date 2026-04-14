@@ -1,7 +1,7 @@
 from typing import List, Dict, Optional
 
 from PySide6.QtWidgets import QDialog, QComboBox, QVBoxLayout, QWidget, QLineEdit, QDialogButtonBox, QFormLayout, \
-    QSizePolicy
+    QSizePolicy, QLabel
 
 from flow3r.core.api.app.app_context import IAppContext
 from flow3r.core.pipeline.abc.pipeline_type import IPipelineType
@@ -31,8 +31,11 @@ class PipelineConfigDialog(QDialog):
             self.dpd_pipeline_type.addItem(pipeline_type.name, pipeline_type)
 
         self.dpd_pipeline_type.setCurrentText(self.config.pipeline_type)
-        pipeline_form_layout.addRow("pipeline Type", self.dpd_pipeline_type)
+        pipeline_form_layout.addRow("Pipeline Type", self.dpd_pipeline_type)
         self.dpd_pipeline_type.currentTextChanged.connect(self._pipeline_type_changed)
+
+        self.lbl_source_config_title = QLabel("Settings")
+        layout.addWidget(self.lbl_source_config_title)
 
         self.content = QWidget()
         self.content_layout = QVBoxLayout(self.content)

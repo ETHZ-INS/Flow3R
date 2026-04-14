@@ -76,7 +76,8 @@ def determine_location(sources: List[SourceConfig], pipelines: List[PipelineConf
     if len(sources) == 0 or len(pipelines) == 0:
         return "hidden", None
     elif len(sources) == 1:
-        return "source", sources[0].id
+        #return "source", sources[0].id
+        return "bottom", None
     else:
         return "bottom", None
 

@@ -9,7 +9,7 @@ from flow3r.app.config.group_config import GroupConfig
 from flow3r.app.layout.recording_controls_widget import Ui_RecordingControlsWidget
 from flow3r.app.controller.session_state import SessionStateBase, Ready, Running, AcquisitionFinished, \
     FinishingProcessing, \
-    FinishingRecording, NotReady, MissingInfo, Error, ConfigError, InvalidPlaceholders, Started, StartFailed
+    FinishingRecording, NotReady, MissingPlaceholder, Error, ConfigError, InvalidPlaceholders, Started, StartFailed
 
 
 class ClickableLabel(QLabel):
@@ -155,7 +155,8 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
                 self.lbl_status.setText("Recording...")
                 self.lbl_status.setStyleSheet("QLabel { color: green; }")
         elif isinstance(self.state, NotReady):
-            if isinstance(self.state, MissingInfo):
+            print(self.state)
+            if isinstance(self.state, MissingPlaceholder):
                 self.lbl_status.setText("Not Ready: <a href=\"fill_placeholders\">Missing Information</a>")
             else:
                 self.lbl_status.setText(f"Not Ready: {self.state.reason}")
@@ -244,6 +245,7 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
         self.recording_stop.emit(self.group_id, self.session_id)
 
     def _status_link_clicked(self, link: str):
+        print(f"Status link clicked: {link}")
         self.goto.emit([link])
 
     def contextMenuEvent(self, event):

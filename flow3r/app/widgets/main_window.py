@@ -443,3 +443,8 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
 
     def keyPressEvent(self, event):
         pass
+
+    def closeEvent(self, event):
+        self.worker_thread.quit()
+        self.worker_thread.wait(5000)  # 5-second grace period
+        super().closeEvent(event)

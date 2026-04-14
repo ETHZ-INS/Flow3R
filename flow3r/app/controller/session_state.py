@@ -53,9 +53,9 @@ class Error(SessionStateBase):
     message: str = "Error"
 
 @dataclass(kw_only=True, frozen=True)
-class MissingInfo(NotReady):
-    message: str = "Missing info"
-    missing_placeholders: list = field(default_factory=list)
+class MissingPlaceholder(NotReady):
+    message: str = "Missing placeholder"
+    placeholder_name: str = ""
 
 @dataclass(kw_only=True, frozen=True)
 class ConfigError(Error):

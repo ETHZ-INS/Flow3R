@@ -61,7 +61,7 @@ class WidgetController(QObject):
     def remove_source_handle(self, source_id: str, session_id: str) -> None:
         self._source_handles[source_id].pop(session_id, None)
 
-    @Slot(str, str, object)
+    @Slot(str, str, str, object)
     def add_visualizer_handle(self, group_id: str, widget_id: str, session_id: str, handle: IVisualizerHandle) -> None:
         print(f"add_visualizer_handle: {group_id}, {widget_id}, {session_id}")
         if (group_id, widget_id) not in self._visualizer_handles:
