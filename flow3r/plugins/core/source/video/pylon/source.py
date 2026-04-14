@@ -3,7 +3,6 @@ from pathlib import Path
 from py3r.media.types import VideoFrame
 from py3r.media.video.pylon_camera_source import PylonCameraSource as BasePylonCameraSource
 from reactivex import operators as ops
-from reactivex.subject import ReplaySubject
 
 from flow3r.core.source.abc.source import ISource
 from flow3r.core.streaming.stream import Stream
