@@ -16,8 +16,11 @@ from flow3r.plugins.core.node.video_writer_sink import VideoWriterSink
 from flow3r.plugins.core.typing.video import VideoFormat
 
 
-def video_writer_factory(segment_file: Path, desc: VideoFormat):
-    return FFmpegVideoFileWriter(segment_file, desc.size, desc.fps, grayscale=desc.fmt=="mono8", quality="low")
+def video_writer_factory(quality: str):
+    print(f"Creating video writer factory with quality: {quality}")
+    def _factory(segment_file: Path, desc: VideoFormat):
+        return FFmpegVideoFileWriter(segment_file, desc.size, desc.fps, grayscale=desc.fmt=="mono8", quality=quality)
+    return _factory
 
 
 class RecordVideoPipeline(PipelineBase[RecordVideoConfig]):
@@ -28,16 +31,15 @@ class RecordVideoPipeline(PipelineBase[RecordVideoConfig]):
         self._writer_scheduler = EventLoopScheduler()
 
     def configure(self, session_context: ISessionContext, config: RecordVideoConfig):
+        print(f"Configuring RecordVideoPipeline with config: {config}")
         self._config = config
 
     def preview(self, session_context: ISessionContext, sources: Dict[str, IStream]) -> PreviewSubscription:
         return PreviewSubscription(CompositeDisposable(), rx.from_list([None]))
 
     def build(self, session_context: ISessionContext, sources: Dict[str, IStream]) -> PipelineSubscription:
-        print(self._config.video_file)
-        print(Path(self._config.video_file).absolute())
         source = sources["Video"]
-        video_writer_sink = VideoWriterSink(Path(self._config.video_file), factory=video_writer_factory)
+        video_writer_sink = VideoWriterSink(Path(self._config.video_file), factory=video_writer_factory(self._config.video_quality))
 
         shared_source = Stream(source.format, source.data.pipe(ops.observe_on(self._main_scheduler), ops.share()))
         video_writer_stream = Stream(source.format, shared_source.data.pipe(ops.observe_on(self._writer_scheduler)))
