@@ -1,15 +1,19 @@
 from typing import List, Dict, Optional
 
 from PySide6.QtWidgets import QDialog, QComboBox, QVBoxLayout, QWidget, QLineEdit, QDialogButtonBox, QFormLayout, \
-    QLabel, QSizePolicy
+    QLabel, QSizePolicy, QMessageBox
 
 from flow3r.core.source.abc.source_type import ISourceType
+from flow3r.core.widgets.config_widget import IConfigWidget
 from flow3r.app.config.source_config import SourceConfig
 
 
 class SourceConfigDialog(QDialog):
-    def __init__(self, source_types: List[ISourceType], config: SourceConfig = None, parent=None):
+    def __init__(self, source_types: List[ISourceType], config: Optional[SourceConfig] = None, parent=None):
         super().__init__(parent)
+
+        if config is None:
+            raise ValueError("config must be provided")
 
         self.source_types = source_types
         self.config = config
@@ -50,15 +54,37 @@ class SourceConfigDialog(QDialog):
         self.button_box.accepted.connect(self.accept)
         self.button_box.rejected.connect(self.reject)
 
-        self._widget_cache: Dict[str, QWidget] = {}
-        self._current_widget: Optional[QWidget] = None
+        self._widget_cache: Dict[str, IConfigWidget] = {}
+        self._current_source_type: Optional[ISourceType] = None
+        self._current_widget: Optional[IConfigWidget] = None
 
         self.show_source_type_config_widget()
 
         self.adjustSize()
         self.resize(400, self.height())
 
+    def accept(self):
+        try:
+            self._commit_current_widget()
+        except Exception as e:
+            QMessageBox.critical(self, "Invalid configuration", str(e))
+            return
+        super().accept()
+
+    def _commit_current_widget(self):
+        """Commit the current widget's config back into the source config. Raises on error."""
+        if self._current_widget and self._current_source_type:
+            new_config = self._current_widget.get_config()
+            self.config.set_sub_config(self._current_source_type.name, new_config)
+
     def show_source_type_config_widget(self):
+        # Commit the departing widget before switching so its result is not lost
+        # even if get_config() returns a new object rather than mutating in place.
+        try:
+            self._commit_current_widget()
+        except Exception:
+            pass  # Best-effort; don't block the user from switching types
+
         if self._current_widget:
             self.content_layout.removeWidget(self._current_widget)
             self._current_widget.setParent(None)
@@ -79,6 +105,7 @@ class SourceConfigDialog(QDialog):
 
         widget.setParent(self.content)
 
+        self._current_source_type = source_type
         self._current_widget = widget
         self.content_layout.addWidget(widget)
 

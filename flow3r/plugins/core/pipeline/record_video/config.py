@@ -8,8 +8,8 @@ from flow3r.core.placeholder.placeholder_formatter import PlaceholderFormatter
 
 @dataclass
 class RecordVideoConfig(PipelineConfigBase):
-    TYPE_ID = "core.pipeline.record_video"
-    VERSION = 1
+    TYPE_ID: ClassVar[str] = "core.pipeline.record_video"
+    VERSION: ClassVar[int] = 1
 
     QUALITY_CHOICES: ClassVar[Dict[str, str]] = {
         "low": "Low",

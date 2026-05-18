@@ -52,6 +52,7 @@ class SourceWidget(QDockWidget):
         self.lbl_error.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_error.setWordWrap(True)
         self.lbl_error.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.lbl_error.setMinimumWidth(0)
         self.lbl_error.linkActivated.connect(self._on_link_activated)
         self.content.addWidget(self.lbl_error)
 
@@ -70,7 +71,6 @@ class SourceWidget(QDockWidget):
         self.recording_controls_widget: Optional[RecordingControlsWidget] = None
 
     def set_handle(self, handle: Optional[IVisualizerHandle[Any, Any]]):
-        print("set_handle")
         if self._handle:
             self._handle.format_changed.disconnect(self._format_changed)
             self._handle.error_changed.disconnect(self._error)

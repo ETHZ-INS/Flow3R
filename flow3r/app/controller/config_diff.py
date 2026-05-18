@@ -37,6 +37,7 @@ class ChangeSet:
     group_pipeline_removed: Set[Tuple[str, str]]
     group_pipeline_updated: Set[Tuple[str, str]]
     group_recording_duration_changed: Dict[str, Tuple[Optional[float], Optional[float]]]
+    group_placeholder_values_changed: Dict[str, Dict[str, Tuple[Optional[str], Optional[str]]]]
 
 
 @dataclass(frozen=True)
@@ -145,6 +146,18 @@ def diff_config(old: AppConfig, new: AppConfig) -> ChangeSet:
             if pipeline_id in old_group_config.pipeline_ids and pipeline_id in pipelines_updated:
                 group_pipeline_updated.add((group_config.id, pipeline_id))
 
+    group_placeholder_values_changed: Dict[str, Dict[str, Tuple[Optional[str], Optional[str]]]] = {}
+    for group_id in set(old.group_placeholder_values) | set(new.group_placeholder_values):
+        old_vals = old.group_placeholder_values.get(group_id, {})
+        new_vals = new.group_placeholder_values.get(group_id, {})
+        changed_phs = {
+            placeholder_id: (old_vals.get(placeholder_id), new_vals.get(placeholder_id))
+            for placeholder_id in set(old_vals) | set(new_vals)
+            if old_vals.get(placeholder_id) != new_vals.get(placeholder_id)
+        }
+        if changed_phs:
+            group_placeholder_values_changed[group_id] = changed_phs
+
     return ChangeSet(
         settings_changed=settings_changed,
         global_placeholder_values_changed=global_placeholder_values_changed,
@@ -167,6 +180,7 @@ def diff_config(old: AppConfig, new: AppConfig) -> ChangeSet:
         group_pipeline_removed=group_pipeline_removed,
         group_pipeline_updated=group_pipeline_updated,
         group_recording_duration_changed=group_recording_duration_changed,
+        group_placeholder_values_changed=group_placeholder_values_changed,
     )
 
 
@@ -213,6 +227,7 @@ def _placeholder_context_changed(changes: ChangeSet) -> bool:
         or changes.placeholders_removed
         or changes.placeholders_updated
         or changes.global_placeholder_values_changed
+        or changes.group_placeholder_values_changed
     )
 
 

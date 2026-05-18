@@ -3,13 +3,44 @@ from typing import Optional
 
 from PySide6.QtCore import Signal, Slot, QTimer, Qt
 from PySide6.QtGui import QCursor
-from PySide6.QtWidgets import QMenu, QWidget, QMessageBox, QLabel
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QInputDialog, QMenu, QWidget, QMessageBox, QLabel, QSizePolicy
 
 from flow3r.app.config.group_config import GroupConfig
 from flow3r.app.layout.recording_controls_widget import Ui_RecordingControlsWidget
 from flow3r.app.controller.session_state import SessionStateBase, Ready, Running, AcquisitionFinished, \
     FinishingProcessing, \
     FinishingRecording, NotReady, MissingPlaceholder, Error, ConfigError, InvalidPlaceholders, Started, StartFailed
+
+
+class ElidingLabel(QLabel):
+    """A single-line QLabel that elides text with '…' and shows the full text as a tooltip."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._full_text = ""
+        self._is_rich_text = False
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.setMinimumWidth(0)
+
+    def setFullText(self, text: str):
+        self._full_text = " ".join(text.splitlines())
+        self._is_rich_text = "<" in text  # simple heuristic for HTML content
+        if self._is_rich_text:
+            self.setToolTip("")
+            super().setText(text)
+        else:
+            self.setToolTip(text)
+            self._elide()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if not self._is_rich_text:
+            self._elide()
+
+    def _elide(self):
+        fm = self.fontMetrics()
+        elided = fm.elidedText(self._full_text, Qt.TextElideMode.ElideRight, self.width())
+        super().setText(elided)
 
 
 class ClickableLabel(QLabel):
@@ -21,8 +52,9 @@ class ClickableLabel(QLabel):
         self.setStyleSheet("color: grey;")
 
     def enterEvent(self, event):
-        self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.setStyleSheet("color: grey; text-decoration: underline;")
+        if self.isEnabled():
+            self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            self.setStyleSheet("color: grey; text-decoration: underline;")
         super().enterEvent(event)
 
     def leaveEvent(self, event):
@@ -31,7 +63,7 @@ class ClickableLabel(QLabel):
         super().leaveEvent(event)
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
+        if self.isEnabled() and event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()
         super().mousePressEvent(event)
 
@@ -39,12 +71,13 @@ class ClickableLabel(QLabel):
 class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
     recording_start = Signal(str, str)  # group_id, session_id
     recording_stop = Signal(str, str)  # group_id, session_id
-    recording_detach = Signal(str, int)  # group_id, session_id
+    open_placeholder_dialog_for_start = Signal(str, str)  # group_id, session_id
 
     active_session_requested = Signal(str)
 
-    goto = Signal(list)  # Signal to open a config dialog
     edit_group = Signal(str)  # group_id
+    set_placeholder_values = Signal(str)  # group_id
+    set_recording_number = Signal(str, int)  # group_id, number
 
     def __init__(self, group_id: str, group_name: str, parent=None):
         super().__init__(parent)
@@ -53,18 +86,48 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
         self.frm_preview.setVisible(False)
         self.lbl_recording_time.setText("0:00:00")
 
+        # Replace the generated lbl_status with an ElidingLabel
+        layout = self.lbl_status.parent().layout()
+        index = layout.indexOf(self.lbl_status)
+        self.lbl_status.deleteLater()
+        self.lbl_status = ElidingLabel(parent=self)
+        self.lbl_status.setMinimumWidth(50)
+        self.lbl_status.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred))
+        layout.insertWidget(index, self.lbl_status)
+
         self.lbl_duration.deleteLater()
         self.lbl_duration = ClickableLabel(text="/ -:--:--", parent=self.frm_controls)
         self.lbl_duration.setAlignment(Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignLeft)
         self.frm_controls.layout().addWidget(self.lbl_duration)
-        self.lbl_duration.setToolTip(
-            "Click to configure recording duration"
-        )
+        self.lbl_duration.setToolTip("Click to configure recording duration")
+
+        # Replace lbl_group_name with a header row:
+        #   static group-name label  +  clickable recording-number label
+        vlayout = self.lbl_group_name.parent().layout()
+        header_idx = vlayout.indexOf(self.lbl_group_name)
+        self.lbl_group_name.deleteLater()
+
+        header_frame = QFrame(self)
+        header_frame.setFrameShape(QFrame.Shape.NoFrame)
+        header_layout = QHBoxLayout(header_frame)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(4)
+
+        self.lbl_group_name = QLabel(parent=header_frame)
+        header_layout.addWidget(self.lbl_group_name)
+
+        self.lbl_recording_number = ClickableLabel(parent=header_frame)
+        self.lbl_recording_number.setToolTip("Click to change recording number")
+        header_layout.addWidget(self.lbl_recording_number)
+        header_layout.addStretch()
+
+        vlayout.insertWidget(header_idx, header_frame)
 
         self.group_id = group_id
         self.group_name: Optional[str] = group_name
         self.session_id: Optional[str] = None
         self.state: SessionStateBase = NotReady(recording_number=0)
+        self._pending_auto_start: bool = False
 
         self.start_time: Optional[datetime] = None
         self.timer = QTimer(self)
@@ -74,10 +137,12 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
         self.action_configure_group.triggered.connect(self._configure_group)
 
         self.lbl_group_name.setText(group_name)
+        self.lbl_recording_number.setText("- Recording #0")
 
         self.lbl_status.linkActivated.connect(self._status_link_clicked)
         self.btn_start.clicked.connect(self._start_recording)
         self.lbl_duration.clicked.connect(self._configure_group)
+        self.lbl_recording_number.clicked.connect(self._recording_number_clicked)
         self.timer.timeout.connect(self._update_timer)
 
     def show_group_name(self):
@@ -99,9 +164,8 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
     def set_active_session(self, group_id: str, session_id: str, state: SessionStateBase):
         if group_id != self.group_id:
             return
-
-        print(f"Active session changed for group {group_id}: {session_id}")
-
+        if session_id != self.session_id:
+            self._pending_auto_start = False
         self.session_id = session_id
         self.set_session_state(group_id, session_id, state)
 
@@ -118,59 +182,70 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
         if isinstance(state, Running) and not isinstance(state, AcquisitionFinished):
             self._ensure_timer_running(state.start_time)
         elif isinstance(state, AcquisitionFinished):
-            print("Acquisition finished, stopping timer")
             self._stop_timer(state.stop_time)
         else:
             self._stop_timer()
 
+        if self._pending_auto_start:
+            if isinstance(self.state, (Ready, StartFailed)):
+                self._pending_auto_start = False
+                self._start_recording()
+            else:
+                # Unexpected state — cancel the pending flag rather than leaving it stuck.
+                self._pending_auto_start = False
+
     def _update_btn_start(self):
-        enabled = self.session_id is not None and isinstance(self.state, (Ready, StartFailed, Running))
+        enabled = self.session_id is not None and isinstance(
+            self.state, (Ready, StartFailed, Running, MissingPlaceholder)
+        )
         self.btn_start.setEnabled(enabled)
 
         if isinstance(self.state, Running):
             self.btn_start.setText("Stop")
+        elif isinstance(self.state, MissingPlaceholder):
+            self.btn_start.setText("Start\u2026")  # ellipsis signals a dialog will open first
         else:
             self.btn_start.setText("Start")
 
     def _update_lbl_group_name(self):
-        group_name = self.group_name or ""
-        self.lbl_group_name.setText(f"{group_name} - Recording #{self.state.recording_number}")
-            
+        self.lbl_group_name.setText(self.group_name or "")
+        self.lbl_recording_number.setText(f"- Recording #{self.state.recording_number}")
+        self.lbl_recording_number.setEnabled(not isinstance(self.state, Running))
+
     def _update_lbl_status(self):
         if isinstance(self.state, Ready):
-            #self.lbl_status.setText("Ready - <a href=\"fill_placeholders\">Edit Information</a>")
-            self.lbl_status.setText("Ready")
+            self.lbl_status.setFullText("Ready - <a href=\"fill_placeholders\">Edit Placeholders</a>")
             self.lbl_status.setStyleSheet("QLabel { color: black; }")
         elif isinstance(self.state, StartFailed):
-            self.lbl_status.setText(f"Start failed: {self.state.message}")
+            self.lbl_status.setFullText(f"Start failed: {self.state.message}")
             self.lbl_status.setStyleSheet("QLabel { color: red; }")
         elif isinstance(self.state, Started):
             if isinstance(self.state, FinishingProcessing):
-                self.lbl_status.setText(f"Finishing processing ({self.state.processing_progress*100:.0f}%)...")
+                self.lbl_status.setFullText(f"Finishing processing ({self.state.processing_progress*100:.0f}%)...")
                 self.lbl_status.setStyleSheet("QLabel { color: orange; }")
             elif isinstance(self.state, FinishingRecording):
-                self.lbl_status.setText("Finishing recording...")
+                self.lbl_status.setFullText("Finishing recording...")
                 self.lbl_status.setStyleSheet("QLabel { color: green; }")
             else:
-                self.lbl_status.setText("Recording...")
+                self.lbl_status.setFullText("Recording...")
                 self.lbl_status.setStyleSheet("QLabel { color: green; }")
         elif isinstance(self.state, NotReady):
-            print(self.state)
             if isinstance(self.state, MissingPlaceholder):
-                self.lbl_status.setText("Not Ready: <a href=\"fill_placeholders\">Missing Information</a>")
+                self.lbl_status.setFullText("Almost Ready: <a href=\"fill_placeholders\">Missing Information</a>")
+                self.lbl_status.setStyleSheet("QLabel { color: orange; }")
             else:
-                self.lbl_status.setText(f"Not Ready: {self.state.reason}")
-            self.lbl_status.setStyleSheet("QLabel { color: red; }")
+                self.lbl_status.setFullText(f"Not Ready: {self.state.reason}")
+                self.lbl_status.setStyleSheet("QLabel { color: red; }")
         elif isinstance(self.state, Error):
             if isinstance(self.state, ConfigError):
-                self.lbl_status.setText(f"Config Error: <a href=\"config_error\">{self.state.message}</a>")
+                self.lbl_status.setFullText(f"Config Error: <a href=\"config_error\">{self.state.message}</a>")
             elif isinstance(self.state, InvalidPlaceholders):
-                self.lbl_status.setText(f"Error: invalid placeholders: {', '.join(self.state.invalid_placeholders)}")
+                self.lbl_status.setFullText(f"Error: invalid placeholders: {', '.join(self.state.invalid_placeholders)}")
             else:
-                self.lbl_status.setText(f"Error: {self.state.message}")
+                self.lbl_status.setFullText(f"Error: {self.state.message}")
             self.lbl_status.setStyleSheet("QLabel { color: red; }")
         else:
-            self.lbl_status.setText("")
+            self.lbl_status.setFullText("")
             self.lbl_status.setStyleSheet("QLabel { color: black; }")
 
     def _ensure_timer_running(self, start_time: datetime):
@@ -208,8 +283,23 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
         self.lbl_duration.setText(duration_str)
 
     def _configure_group(self):
-        print("Configure Group")
         self.edit_group.emit(self.group_id)
+
+    def trigger_start_stop(self):
+        """Public entry point for keyboard shortcuts — behaves identically to clicking Start/Stop."""
+        self._start_recording()
+
+    @Slot(str, str)
+    def on_auto_start_requested(self, group_id: str, session_id: str) -> None:
+        """Set the pending-auto-start flag when the placeholder dialog requests a start.
+
+        The actual start (including the file-overwrite confirmation) is deferred until
+        ``set_session_state`` delivers a ``Ready`` or ``StartFailed`` state — i.e. after
+        the placeholder values committed by the dialog have been processed by the worker
+        thread and the resolved file paths are available for the overwrite check.
+        """
+        if group_id == self.group_id and session_id == self.session_id:
+            self._pending_auto_start = True
 
     def _start_recording(self):
         if not self.session_id:
@@ -219,6 +309,8 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
             if self.state.duration is not None and not self._confirm_stop_recording():
                 return
             self.recording_stop.emit(self.group_id, self.session_id)
+        elif isinstance(self.state, MissingPlaceholder):
+            self.open_placeholder_dialog_for_start.emit(self.group_id, self.session_id)
         else:
             files_that_will_be_overwritten = []
             if isinstance(self.state, (Ready, StartFailed)):
@@ -245,8 +337,27 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
         self.recording_stop.emit(self.group_id, self.session_id)
 
     def _status_link_clicked(self, link: str):
-        print(f"Status link clicked: {link}")
-        self.goto.emit([link])
+        if link == "fill_placeholders":
+            self.set_placeholder_values.emit(self.group_id)
 
     def contextMenuEvent(self, event):
         self.context_menu.exec(event.globalPos())
+
+    def _recording_number_clicked(self):
+        menu = QMenu(self)
+        action_reset = menu.addAction("Reset to 1")
+        action_set = menu.addAction("Set to specific number…")
+        action = menu.exec(QCursor.pos())
+        if action == action_reset:
+            self.set_recording_number.emit(self.group_id, 1)
+        elif action == action_set:
+            value, ok = QInputDialog.getInt(
+                self,
+                "Set Recording Number",
+                "Recording number:",
+                self.state.recording_number,
+                1,
+                99999,
+            )
+            if ok:
+                self.set_recording_number.emit(self.group_id, value)

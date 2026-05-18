@@ -28,7 +28,7 @@ class SettingsDialog(QtWidgets.QDialog):
         layout.addWidget(frm_settings)
 
         self.dpd_color_mode = QtWidgets.QComboBox(frm_settings)
-        self.dpd_color_mode.addItems(["Color", "Grayscale", "Auto"])
+        self.dpd_color_mode.addItems(["Auto", "Grayscale"])
         self.dpd_color_mode.setCurrentText(color_mode)
         frm_settings_layout.addRow("Color Mode", self.dpd_color_mode)
 
@@ -41,14 +41,20 @@ class VideoWidget(BaseNumpyImageVisualizerWidget[VideoFormat, VideoFrame]):
 
         self._pose_renderer: Optional[PoseRenderer] = None
         self._latest_item: Optional[VideoFrame] = None
-        self.color_mode = "Auto"
+        self._color_mode = "Auto"
+        self._video_fmt: Optional[VideoFormat] = None
 
     def _reset_visualizer_state(self) -> None:
         self._latest_item = None
-        self.color_mode = "Auto"
+        self._color_mode = "Auto"
+        self._video_fmt = None
 
-    def _on_format(self, fmt: Optional[Tuple[VideoFormat, PoseFormat]]) -> None:
+    def _on_format(self, fmt: Optional[VideoFormat]) -> None:
+        self._video_fmt = fmt
         self.request_render()
+
+    def _pixel_fmt(self) -> str:
+        return "mono8" if self._color_mode == "Grayscale" else self._video_fmt.fmt if self._video_fmt is not None else "bgr24"
 
     def _on_item(self, item: Optional[VideoFrame]) -> None:
         self._latest_item = item
@@ -78,12 +84,10 @@ class VideoWidget(BaseNumpyImageVisualizerWidget[VideoFormat, VideoFrame]):
         if frame.ndim == 2:
             if frame.dtype != np.uint8:
                 frame = np.clip(frame, 0, 255).astype(np.uint8)
-            if self.color_mode == "Color":
-                frame = np.stack([frame] * 3, axis=2)
             return frame
 
         if frame.ndim == 3 and frame.shape[2] == 3:
-            if self.color_mode == "Grayscale":
+            if self._color_mode == "Grayscale":
                 frame = np.mean(frame, axis=2)
             if frame.dtype != np.uint8:
                 frame = np.clip(frame, 0, 255).astype(np.uint8)
@@ -99,7 +103,7 @@ class VideoWidget(BaseNumpyImageVisualizerWidget[VideoFormat, VideoFrame]):
         if self._pose_renderer is None:
             return
 
-        dialog = SettingsDialog(self.color_mode, self)
+        dialog = SettingsDialog(self._color_mode, self)
         dialog.exec()
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:

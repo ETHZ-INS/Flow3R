@@ -170,6 +170,8 @@ class SourceListDialog(Ui_SourceListDialog, QDialog):
         self.source_types = source_types
         self._config: Optional[AppConfig] = None
 
+        self.btn_deactivate.setVisible(False)
+
         self.source_list_model = SourceListModel()
         self.source_delegate = SourceDelegate()
 

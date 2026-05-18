@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from py3r.media.streaming.observables.reader_observable import reader_observable
 from py3r.media.types import VideoFrame
 from py3r.media.video.pylon_camera_source import PylonCameraSource as BasePylonCameraSource
 from reactivex import operators as ops
@@ -7,7 +8,6 @@ from reactivex import operators as ops
 from flow3r.core.source.abc.source import ISource
 from flow3r.core.streaming.stream import Stream
 from flow3r.plugins.core.source.video.pylon.config import PylonCameraSourceConfig
-from flow3r.plugins.core.source.video.source_observable import source_observable
 from flow3r.plugins.core.typing.video import VideoFormat
 
 
@@ -19,7 +19,7 @@ class PylonCameraSource(ISource[VideoFormat, VideoFrame]):
             self._video_source.get_fps(),
             "mono8" if self._video_source.get_num_channels() == 1 else "rgb24"
         )
-        data = source_observable(self._video_source).pipe(ops.share())
+        data = reader_observable(self._video_source, read_timeout_seconds=2.0, max_consecutive_errors=30).pipe(ops.share())
         self._stream = Stream(fmt, data)
 
     @property

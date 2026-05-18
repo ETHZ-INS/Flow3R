@@ -23,7 +23,7 @@ session-state calculation) are fully delegated to self.runtime
 import os
 from contextlib import contextmanager
 from copy import deepcopy
-from typing import Any, Dict, Iterator, Optional, Set, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 
 import yaml
 from PySide6.QtCore import QObject, Signal, Slot
@@ -106,7 +106,8 @@ class Controller(QObject):
     # Signals
     # ------------------------------------------------------------------
 
-    log_message = Signal(str)
+    # (message, level) where level is "INFO", "WARNING", or "ERROR"
+    log_message = Signal(str, str)
 
     # Settings
     settings_snapshot = Signal(object)
@@ -115,6 +116,7 @@ class Controller(QObject):
     # Full config snapshot / change
     config_snapshot = Signal(AppConfig)
     config_changed = Signal(AppConfig)
+    persistent_config_changed = Signal(AppConfig)  # fired only when on-disk state changes
 
     # Errors
     error = Signal(str, object)
@@ -147,9 +149,17 @@ class Controller(QObject):
     session_state_changed = Signal(str, str, SessionStateBase)
 
     # Recording lifecycle — forwarded from self.runtime
-    primary_finished = Signal(str, str, object)
-    secondary_finished = Signal(str, str, object)
+    primary_finished = Signal(str, str, object, object)    # group_id, session_id, exc, timestamp
+    secondary_finished = Signal(str, str, object, object)  # group_id, session_id, exc, timestamp
     progress_updated = Signal(str, str, object)
+    recording_started = Signal(str, str, object)        # group_id, session_id, start_time
+    recording_stop_requested = Signal(str, str, object) # group_id, session_id, stop_time
+
+    # Placeholder values — forwarded from self.runtime
+    group_placeholder_values_changed = Signal(str, object)  # group_id, Dict[str, Any]
+
+    # Pipeline warnings — call context.warn(msg) inside a pipeline to emit this
+    pipeline_warning = Signal(str, str, str)  # group_id, session_id, message
 
     # Persistence
     config_loaded = Signal(object)
@@ -181,6 +191,10 @@ class Controller(QObject):
         self.runtime.primary_finished.connect(self.primary_finished)
         self.runtime.secondary_finished.connect(self.secondary_finished)
         self.runtime.progress_updated.connect(self.progress_updated)
+        self.runtime.recording_started.connect(self.recording_started)
+        self.runtime.recording_stop_requested.connect(self.recording_stop_requested)
+        self.runtime.pipeline_warning.connect(self.pipeline_warning)
+        self.runtime.group_placeholder_values_changed.connect(self.group_placeholder_values_changed)
 
     # ------------------------------------------------------------------
     # Config property
@@ -223,8 +237,6 @@ class Controller(QObject):
             if reply:
                 reply.finished.emit(True, None)
         except Exception as exc:
-            import traceback
-            traceback.print_exc()
             _logger.error("Config transaction failed: %s", exc, exc_info=True)
             self.error.emit("Config change failed", exc)
             if reply:
@@ -250,6 +262,10 @@ class Controller(QObject):
         self._config = new_config
         self.runtime.runtime_settings = new_config.settings
         self.runtime.runtime_global_placeholder_values = new_config.global_placeholder_values_dict
+        self.runtime.runtime_group_placeholder_values = {
+            group_id: new_config.group_placeholder_values_dict(group_id)
+            for group_id in new_config.all_groups
+        }
 
         self._log_changeset(changes)
 
@@ -257,11 +273,12 @@ class Controller(QObject):
             try:
                 self._apply_runtime_changes(changes, effects, old_config, new_config)
             except Exception:
-                import traceback
-                traceback.print_exc()
+                _logger.error("Runtime reconciliation failed after commit", exc_info=True)
         finally:
             # Config signals are always emitted, even if runtime reconciliation fails.
             self.config_changed.emit(deepcopy(self._config))
+            if self._has_persistent_changes(changes):
+                self.persistent_config_changed.emit(deepcopy(self._config))
             self._emit_entity_signals(changes)
             self.runtime.refresh_all_group_states()
 
@@ -276,6 +293,21 @@ class Controller(QObject):
         for source_config in changed_sources:
             if self.runtime.is_group_recording(source_config.implicit_group_id):
                 raise Exception("Cannot edit source while it is used in a recording")
+
+    def _has_persistent_changes(self, changes: ChangeSet) -> bool:
+        """Return True if changes affect state that is saved to disk.
+
+        global_placeholder_values_changed is intentionally excluded — placeholder
+        values are not currently persisted.  When a "remember me" option is added
+        for global placeholders, extend this check accordingly.
+        """
+        return bool(
+            changes.settings_changed
+            or changes.sources_added or changes.sources_removed or changes.sources_updated
+            or changes.groups_added or changes.groups_removed or changes.groups_updated
+            or changes.pipelines_added or changes.pipelines_removed or changes.pipelines_updated
+            or changes.placeholders_added or changes.placeholders_removed or changes.placeholders_updated
+        )
 
     # ------------------------------------------------------------------
     # Runtime reconciliation — called by _commit after each config change
@@ -292,6 +324,11 @@ class Controller(QObject):
         # ── Global placeholder values ──────────────────────────────────────────
         for ph_id, (old_val, new_val) in changes.global_placeholder_values_changed.items():
             lines.append(f"  global-placeholder-value  {ph_id!r}: {old_val!r} → {new_val!r}")
+
+        # ── Group placeholder values ───────────────────────────────────────────
+        for group_id, ph_changes in changes.group_placeholder_values_changed.items():
+            for ph_id, (old_val, new_val) in ph_changes.items():
+                lines.append(f"  group-placeholder-value  {group_id!r}/{ph_id!r}: {old_val!r} → {new_val!r}")
 
         # ── Sources ────────────────────────────────────────────────────────────
         for sc in changes.sources_added.values():
@@ -409,6 +446,10 @@ class Controller(QObject):
         )
         if placeholder_context_changed:
             rt.propagate_global_placeholder_values(new.global_placeholder_values_dict)
+
+        # 6d. Propagate per-group placeholder-value changes to non-started sessions.
+        for group_id in changes.group_placeholder_values_changed:
+            rt.propagate_group_placeholder_values(group_id, new.group_placeholder_values_dict(group_id))
 
         # 7. Ensure every group has an active session.
         for group_id in new.all_groups:
@@ -571,6 +612,10 @@ class Controller(QObject):
     def send_active_session_snapshot(self, group_id: str) -> None:
         self.runtime.send_active_session_snapshot(group_id)
 
+    @Slot()
+    def send_group_placeholder_snapshots(self) -> None:
+        self.runtime.send_group_placeholder_snapshots()
+
     # ------------------------------------------------------------------
     # Config CRUD — settings
     # ------------------------------------------------------------------
@@ -580,7 +625,6 @@ class Controller(QObject):
         assert all(isinstance(k, tuple) for k in patch.keys())
         with self.transaction() as config:
             _logger.info("Settings change: %s", {str(k): v for k, v in patch.items()})
-            print(f"set_settings: {patch}")
             for key_path, value in patch.items():
                 config.settings[key_path] = deepcopy(value)
 
@@ -735,11 +779,36 @@ class Controller(QObject):
             assert placeholder_id in config.placeholders
             config.placeholders.pop(placeholder_id, None)
 
-    @Slot(object)
-    def update_global_placeholder_values(self, changed_values: Dict[str, str]) -> None:
+    @Slot(list)
+    def reorder_placeholders(self, ordered_ids: List[str]) -> None:
         with self.transaction() as config:
-            for placeholder_id, value in changed_values.items():
-                config.global_placeholder_values[placeholder_id] = value
+            config.placeholders = type(config.placeholders)(
+                (id, config.placeholders[id])
+                for id in ordered_ids
+                if id in config.placeholders
+            )
+
+    @Slot(object, object)
+    def update_placeholder_values(self, global_values: Dict[str, str], group_values: Dict[str, Dict[str, str]]) -> None:
+        """Merge global and per-group placeholder values into config.
+
+        An empty string is treated as "unset": the key is removed from the
+        stored dict so that callers can detect missing values via key absence.
+        """
+        with self.transaction() as config:
+            for placeholder_id, value in global_values.items():
+                if value:
+                    config.global_placeholder_values[placeholder_id] = value
+                else:
+                    config.global_placeholder_values.pop(placeholder_id, None)
+            for group_id, values in group_values.items():
+                if group_id not in config.group_placeholder_values:
+                    config.group_placeholder_values[group_id] = {}
+                for placeholder_id, value in values.items():
+                    if value:
+                        config.group_placeholder_values[group_id][placeholder_id] = value
+                    else:
+                        config.group_placeholder_values[group_id].pop(placeholder_id, None)
 
     # ------------------------------------------------------------------
     # Runtime operations — delegated to self.runtime
@@ -750,9 +819,45 @@ class Controller(QObject):
         """Reconcile the full runtime state with the committed config."""
         self.runtime.reconcile_runtime(self._config)
 
+    @Slot(str, int)
+    def set_recording_number(self, group_id: str, number: int) -> None:
+        """Set the recording number of a group to *number*.
+
+        The next session will use ``number + 1``.  Pass ``0`` to effectively
+        reset to 1 on the next recording.
+        """
+        self.runtime.set_recording_number(group_id, number)
+
     @Slot(str, str)
     def start_recording(self, group_id: str, session_id: str) -> None:
         self.runtime.start_recording(group_id, session_id)
+        # If the recording successfully started, clear recording-persistence
+        # placeholder values from the config so the user can fill them in for
+        # the next session while this recording is still running.
+        if self.runtime.is_group_recording(group_id):
+            self._clear_recording_persistence_placeholders(group_id)
+
+    def _clear_recording_persistence_placeholders(self, group_id: str) -> None:
+        """Remove group-scoped recording-persistence placeholder values from config.
+
+        Called immediately after a recording starts so the UI fields are empty and
+        ready for the next session.  The already-started session retains its own
+        copy of the values baked into its session object.
+        """
+        recording_ph_ids = {
+            ph_id
+            for ph_id, ph in self._config.placeholders.items()
+            if ph.persistence == "recording" and not ph.is_global
+        }
+        if not recording_ph_ids:
+            return
+        current_group_vals = self._config.group_placeholder_values.get(group_id, {})
+        if not any(ph_id in current_group_vals for ph_id in recording_ph_ids):
+            return
+        with self.transaction() as config:
+            group_vals = config.group_placeholder_values.get(group_id, {})
+            for ph_id in recording_ph_ids:
+                group_vals.pop(ph_id, None)
 
     @Slot(str, str)
     def stop_recording(self, group_id: str, session_id: str) -> None:
@@ -783,6 +888,20 @@ class Controller(QObject):
             yaml.dump({"write_protected": super_user, "config": config_dict, "ui_state": ui_state}, f)
         _logger.info("Config saved to: %s", config_file)
 
+    @Slot()
+    def new_project(self) -> None:
+        blank = AppConfig()
+        with self.transaction() as config:
+            config.settings = blank.settings
+            config.groups = blank.groups
+            config.implicit_groups = blank.implicit_groups
+            config.sources = blank.sources
+            config.pipelines = blank.pipelines
+            config.placeholders = blank.placeholders
+            config.global_placeholder_values = blank.global_placeholder_values
+            config.group_placeholder_values = blank.group_placeholder_values
+        self.config_loaded.emit({})
+
     @Slot(str)
     def load_config(self, config_file: str) -> None:
         _logger.info("Loading config from: %s", config_file)
@@ -798,6 +917,8 @@ class Controller(QObject):
             config.sources = new_config.sources
             config.pipelines = new_config.pipelines
             config.placeholders = new_config.placeholders
+            config.global_placeholder_values = new_config.global_placeholder_values
+            config.group_placeholder_values = new_config.group_placeholder_values
 
         _logger.info("Config loaded successfully from: %s", config_file)
         self.config_loaded.emit(data["ui_state"])

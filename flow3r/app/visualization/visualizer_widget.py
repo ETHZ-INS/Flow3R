@@ -42,14 +42,15 @@ class VisualizerWidget(QDockWidget):
             self._handle.format_changed.disconnect(self._desc_changed)
 
         self._handle = handle
-        if self._visualizer:
-            self._visualizer.set_handle(handle)
 
         if self._handle:
             self._handle.format_changed.connect(self._desc_changed)
 
             if self._handle.format:
                 self._desc_changed(self._handle.format)
+
+        if self._visualizer:
+            self._visualizer.set_handle(self._handle)
 
     def set_visualizer(self, visualizer_type: Optional[IVisualizerType], manual: bool = False):
         self.visualizer_frame.layout().children().clear()

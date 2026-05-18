@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from typing import ClassVar
+
 from flow3r.core.pipeline.abc.pipeline_config import PipelineConfigBase
 from flow3r.core.placeholder.abc.placeholder_provider import IPlaceholderProvider
 from flow3r.core.placeholder.placeholder_formatter import PlaceholderFormatter
@@ -7,8 +9,8 @@ from flow3r.core.placeholder.placeholder_formatter import PlaceholderFormatter
 
 @dataclass
 class RecordVideoWithAudioConfig(PipelineConfigBase):
-    TYPE_ID = "core.pipeline.record_video_with_audio"
-    VERSION = 1
+    TYPE_ID: ClassVar[str] = "core.pipeline.record_video_with_audio"
+    VERSION: ClassVar[int] = 1
 
     video_file: str = "my_video.mp4"
 

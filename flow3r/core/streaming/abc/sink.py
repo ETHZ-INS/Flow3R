@@ -8,6 +8,9 @@ from reactivex import Observable
 from reactivex.subject import ReplaySubject
 
 from flow3r.core.streaming.abc.stream import IStream
+from flow3r.logger import get_logger
+
+_logger = get_logger(__name__)
 
 TDesc = TypeVar("TDesc")
 TData = TypeVar("TData")
@@ -68,15 +71,15 @@ class Sink(Generic[TDesc, TData], ABC):
                 return
             closed = True
 
-            if data_sub is not None:
-                data_sub.dispose()
-                data_sub = None
-
             try:
+                if data_sub is not None:
+                    data_sub.dispose()
+                    data_sub = None
                 self.cleanup()
             except Exception:
                 pass
             finally:
+                _logger.debug("Sink done %s exc=%s", self.__class__.__name__, exc)
                 if exc is not None:
                     done_subject.on_error(exc)
                 else:

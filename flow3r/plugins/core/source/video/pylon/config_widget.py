@@ -1,8 +1,9 @@
 from typing import List
 
-from PySide6.QtWidgets import QWidget, QFormLayout, QComboBox
+from PySide6.QtWidgets import QFormLayout, QComboBox
 from pypylon import pylon
 
+from flow3r.core.widgets.config_widget import IConfigWidget
 from flow3r.core.widgets.path_input import PathWidget
 from flow3r.plugins.core.source.video.pylon.config import PylonCameraSourceConfig
 
@@ -12,7 +13,7 @@ def get_available_pylon_devices() -> List[str]:
     return [device.GetSerialNumber() for device in devices]
 
 
-class PylonCameraSourceConfigWidget(QWidget):
+class PylonCameraSourceConfigWidget(IConfigWidget):
     def __init__(self, config: PylonCameraSourceConfig, parent=None):
         super().__init__(parent)
 
@@ -35,6 +36,9 @@ class PylonCameraSourceConfigWidget(QWidget):
 
         self.dpd_device.currentTextChanged.connect(self._device_changed)
         self.txt_config_file.path_changed.connect(self._config_file_changed)
+
+    def get_config(self) -> PylonCameraSourceConfig:
+        return self.config
 
     def _device_changed(self, value: str):
         self.config.device = value

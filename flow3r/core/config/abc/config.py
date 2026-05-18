@@ -23,9 +23,6 @@ class IConfig(Protocol):
 
 class ITypedConfig(IConfig, Protocol):
     TYPE_ID: ClassVar[str]
-#    @classmethod
-#    def from_dict(cls, data: Mapping[str, Any], type_registry: Dict[str, Type["ITypedConfig"]]) -> Self: ...
-#    def to_dict(self) -> Mapping[str, Any]: ...
 
 
 @dataclass

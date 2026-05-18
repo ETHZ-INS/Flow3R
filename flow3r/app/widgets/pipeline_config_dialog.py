@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QDialog, QComboBox, QVBoxLayout, QWidget, QLineEdi
 
 from flow3r.core.api.app.app_context import IAppContext
 from flow3r.core.pipeline.abc.pipeline_type import IPipelineType
+from flow3r.core.widgets.config_widget import IConfigWidget
 from flow3r.app.config.pipeline_config import PipelineConfig
 
 
@@ -52,13 +53,19 @@ class PipelineConfigDialog(QDialog):
         self.button_box.accepted.connect(self.accept)
         self.button_box.rejected.connect(self.reject)
 
-        self._widget_cache: Dict[str, QWidget] = {}
-        self._current_widget: Optional[QWidget] = None
+        self._widget_cache: Dict[str, IConfigWidget] = {}
+        self._current_widget: Optional[IConfigWidget] = None
 
         self.show_pipeline_type_config_widget()
 
         self.adjustSize()
         self.resize(400, self.height())
+
+    def accept(self):
+        if self._current_widget:
+            pipeline_type: IPipelineType = self.dpd_pipeline_type.currentData()
+            self.config.set_sub_config(pipeline_type.name, self._current_widget.get_config())
+        super().accept()
 
     def show_pipeline_type_config_widget(self):
         if self._current_widget:
@@ -72,7 +79,6 @@ class PipelineConfigDialog(QDialog):
         config = self.config.get_sub_config(pipeline_type.name)
         if not config:
             config = config_factory()
-            print("Setting up new config:")
             self.config.set_sub_config(pipeline_type.name, config)
 
         widget = self._widget_cache.get(pipeline_type.name)

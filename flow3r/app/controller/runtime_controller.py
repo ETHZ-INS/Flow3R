@@ -84,14 +84,25 @@ class RuntimeController(QObject):
     active_session_snapshot = Signal(str, str, SessionStateBase) # group_id, session_id, state
 
     # Recording lifecycle — consumed by the UI layer
-    primary_finished = Signal(str, str, object)    # group_id, session_id, exc
-    secondary_finished = Signal(str, str, object)  # group_id, session_id, exc
+    primary_finished = Signal(str, str, object, object)    # group_id, session_id, exc, timestamp
+    secondary_finished = Signal(str, str, object, object)  # group_id, session_id, exc, timestamp
     progress_updated = Signal(str, str, object)    # group_id, session_id, progress
 
+    # Recording lifecycle events forwarded to the UI log
+    recording_started = Signal(str, str, object)        # group_id, session_id, start_time
+    recording_stop_requested = Signal(str, str, object) # group_id, session_id, stop_time
+
+    # Pipeline warnings — emitted when a pipeline calls context.warn(message)
+    pipeline_warning = Signal(str, str, str)  # group_id, session_id, message
+
+    # Placeholder values — emitted when a group's active-session placeholder values change
+    group_placeholder_values_changed = Signal(str, object)  # group_id, Dict[str, Any]
+
     # Internal: cross the rx-thread → Qt-main-thread boundary
-    _rx_primary_done = Signal(str, str, object)
-    _rx_secondary_done = Signal(str, str, object)
+    _rx_primary_done = Signal(str, str, object, object)    # group_id, session_id, exc, timestamp
+    _rx_secondary_done = Signal(str, str, object, object)  # group_id, session_id, exc, timestamp
     _rx_progress = Signal(str, str, object)
+    _rx_warning = Signal(str, str, str)  # group_id, session_id, message
 
     # ------------------------------------------------------------------
     # Construction
@@ -111,11 +122,15 @@ class RuntimeController(QObject):
         # Config-derived snapshots written by Controller after each commit
         self.runtime_settings: Dict = {}
         self.runtime_global_placeholder_values: Dict[str, str] = {}
+        # Per-group merged placeholder values (global + group-scoped), keyed by group_id.
+        # Updated by Controller after each commit whenever placeholder state changes.
+        self.runtime_group_placeholder_values: Dict[str, Dict[str, str]] = {}
 
         # Route recording signals back onto the Qt main thread
         self._rx_primary_done.connect(self._on_primary_done, Qt.ConnectionType.QueuedConnection)
         self._rx_secondary_done.connect(self._on_secondary_done, Qt.ConnectionType.QueuedConnection)
         self._rx_progress.connect(self._on_progress, Qt.ConnectionType.QueuedConnection)
+        self._rx_warning.connect(self._on_warning, Qt.ConnectionType.QueuedConnection)
 
     # ------------------------------------------------------------------
     # Utilities
@@ -200,6 +215,11 @@ class RuntimeController(QObject):
             pid: dict(mapping)
             for pid, mapping in group_config.source_mapping.items()
         }
+        group.required_placeholder_names = [
+            pc.name
+            for pc in config.placeholders.values()
+            if not pc.is_constant
+        ]
 
     def ensure_active_session(self, group_id: str) -> None:
         """Create an initial session for group_id if none exists yet."""
@@ -208,12 +228,23 @@ class RuntimeController(QObject):
             return
         session_id = group.new_session()
         group.sessions[session_id].global_placeholder_values = deepcopy(
-            self.runtime_global_placeholder_values
+            self.runtime_group_placeholder_values.get(
+                group_id, self.runtime_global_placeholder_values
+            )
         )
+        self._emit_group_placeholder_values(group_id)
 
     # ------------------------------------------------------------------
     # Config snapshot propagation — push committed changes into sessions
     # ------------------------------------------------------------------
+
+    def _emit_group_placeholder_values(self, group_id: str) -> None:
+        """Emit the current active-session placeholder values for *group_id*."""
+        group = self.groups.get(group_id)
+        if group and group.active_session:
+            self.group_placeholder_values_changed.emit(
+                group_id, deepcopy(group.active_session.get_placeholder_values())
+            )
 
     def propagate_group_name(self, group_id: str, new_name: str) -> None:
         """Update the group name on all non-started sessions for this group."""
@@ -223,6 +254,7 @@ class RuntimeController(QObject):
         for session in group.sessions.values():
             if not self._session_has_started(session):
                 session.group_name = new_name
+        self._emit_group_placeholder_values(group_id)
 
     def propagate_recording_duration(self, group_id: str, new_duration: Optional[float]) -> None:
         """Update the recording duration on all non-started sessions for this group."""
@@ -233,13 +265,33 @@ class RuntimeController(QObject):
             if not self._session_has_started(session):
                 session.recording_duration = new_duration
 
-    def propagate_global_placeholder_values(self, new_values: Dict[str, str]) -> None:
-        """Update global placeholder values on every non-started session across all groups."""
-        snapshot = deepcopy(new_values)
-        for group in self.groups.values():
+    def propagate_global_placeholder_values(self, new_global_values: Dict[str, str]) -> None:
+        """Update placeholder values on every non-started session across all groups.
+
+        For groups that have per-group placeholder values the merged per-group dict is
+        used (because global values are already folded into runtime_group_placeholder_values
+        by the controller).  Falls back to *new_global_values* for groups that have no
+        per-group customisation.
+        """
+        for group_id, group in self.groups.items():
+            values = self.runtime_group_placeholder_values.get(group_id, new_global_values)
+            snapshot = deepcopy(values)
             for session in group.sessions.values():
                 if not self._session_has_started(session):
                     session.global_placeholder_values = snapshot
+            self._emit_group_placeholder_values(group_id)
+
+    def propagate_group_placeholder_values(self, group_id: str, values: Dict[str, str]) -> None:
+        """Update the merged placeholder values for *group_id* and push to non-started sessions."""
+        group = self.groups.get(group_id)
+        if group is None:
+            return
+        self.runtime_group_placeholder_values[group_id] = values
+        snapshot = deepcopy(values)
+        for session in group.sessions.values():
+            if not self._session_has_started(session):
+                session.global_placeholder_values = snapshot
+        self._emit_group_placeholder_values(group_id)
 
     # ------------------------------------------------------------------
     # Group controls lifecycle
@@ -361,8 +413,7 @@ class RuntimeController(QObject):
 
         try:
             placeholder_values = resolve_placeholders(
-                active_session.global_placeholder_values
-                | active_session.get_placeholder_values()
+                active_session.get_placeholder_values()
             )
             placeholder_provider = SimplePlaceholderProvider(placeholder_values)
 
@@ -425,6 +476,7 @@ class RuntimeController(QObject):
                 self._set_source_preview_error(source_config.id, self._format_exception(exc))
 
     def teardown_source_widget(self, source_id: str) -> None:
+        _logger.debug("Tearing down source '%s'", source_id)
         entry = self.sources.pop(source_id, None)
         if not entry or not entry.widget_handle:
             return
@@ -470,7 +522,7 @@ class RuntimeController(QObject):
         entry.source = source
 
     def teardown_source(self, source_id: str) -> None:
-        print(f"_teardown_source({source_id})")
+        _logger.debug("Tearing down source '%s'", source_id)
         entry = self.sources.get(source_id)
         if not entry or not entry.source:
             return
@@ -520,11 +572,10 @@ class RuntimeController(QObject):
                 traceback.print_exc()
 
     def stop_preview(self, source_id: str) -> None:
-        print(f"_stop_preview({source_id})")
+        _logger.debug("Stopping source preview for '%s'", source_id)
         entry = self.sources.get(source_id)
         if not entry or not entry.preview_sub:
             return
-        print("Unsubscribing from source preview")
         try:
             entry.preview_sub.dispose()
         except Exception:
@@ -542,7 +593,7 @@ class RuntimeController(QObject):
         if group.preview.preview_sub is not None:
             try:
                 group.preview.preview_sub.dispose()
-                print("Disposed preview subscription")
+                _logger.debug("Disposed pipeline preview subscription for group '%s'", group_id)
             except Exception:
                 traceback.print_exc()
         for connection in group.preview.connections:
@@ -654,10 +705,10 @@ class RuntimeController(QObject):
             return
 
         def _preview_done(_):
-            print(f"Preview done ({group_id})")
+            _logger.debug("Pipeline preview completed for group '%s'", group_id)
 
         def _preview_failed(exc: Exception):
-            print(f"Preview failed ({group_id}): {exc}")
+            _logger.warning("Pipeline preview failed for group '%s': %s", group_id, exc)
             self.stop_pipeline_preview(group_id)
             self._set_group_preview_error(group_id, self._format_exception(exc))
             self._refresh_group_state(group_id)
@@ -739,10 +790,21 @@ class RuntimeController(QObject):
 
         # --- Placeholder resolution (checked before pipeline_errors so that a
         #     missing/cyclic placeholder wins over any derivative pipeline error) ---
+
+        # Explicitly check every defined (non-constant) placeholder has a value.
+        # resolve_placeholders only raises MissingPlaceholderError when a value
+        # *references* an absent name via {token} syntax; a standalone unset
+        # placeholder would pass through silently without this guard.
+        raw_placeholder_values = session.get_placeholder_values()
+        for name in group.required_placeholder_names:
+            if name not in raw_placeholder_values:
+                return MissingPlaceholder(
+                    recording_number=session.recording_number, duration=duration,
+                    message=f"Missing placeholder: {name}", placeholder_name=name,
+                )
+
         try:
-            placeholder_values = resolve_placeholders(
-                session.global_placeholder_values | session.get_placeholder_values()
-            )
+            placeholder_values = resolve_placeholders(raw_placeholder_values)
             placeholder_provider = SimplePlaceholderProvider(placeholder_values)
         except MissingPlaceholderError as exc:
             return MissingPlaceholder(
@@ -802,7 +864,7 @@ class RuntimeController(QObject):
         if active_session_id:
             state = self._get_session_state(group_id, active_session_id)
         else:
-            state = NotReady(reason="No active session", recording_number=group.recording_number)
+            state = NotReady(reason="No active session", recording_number=group.next_recording_number)
         self.active_session_changed.emit(group_id, active_session_id, state)
 
     def _refresh_group_state(self, group_id: str) -> None:
@@ -824,6 +886,42 @@ class RuntimeController(QObject):
             self._refresh_group_state(group_id)
 
     # ------------------------------------------------------------------
+    # Recording number management
+    # ------------------------------------------------------------------
+
+    def set_recording_number(self, group_id: str, number: int) -> None:
+        """Set the recording number for a group to a specific value.
+
+        If there is an active session that has not yet started recording, it
+        immediately receives *number* as its recording_number and the group
+        counter advances to ``number + 1`` so the following session continues
+        from the right place.
+
+        If there is no pending session (or the active one is already recording),
+        *number* is stored as next_recording_number so the next call to
+        new_session() picks it up.
+        """
+        group = self.groups.get(group_id)
+        if group is None:
+            _logger.warning("set_recording_number: unknown group %s", group_id)
+            return
+        number = max(1, number)
+        session = group.active_session
+        if session is not None and (session.recording is None or session.recording.start_time is None):
+            # Pending session exists — give it this number, advance counter past it.
+            session.recording_number = number
+            group.next_recording_number = number + 1
+        else:
+            # No pending session — just set the counter; new_session() will use it.
+            group.next_recording_number = number
+        _logger.info(
+            "Recording number for group %s (%s) set to %d",
+            group.group_name, group_id, number,
+        )
+        self._emit_group_placeholder_values(group_id)
+        self._refresh_group_state(group_id)
+
+    # ------------------------------------------------------------------
     # Snapshot requests
     # ------------------------------------------------------------------
 
@@ -833,6 +931,15 @@ class RuntimeController(QObject):
         if group and group.active_session_id:
             state = self._get_session_state(group_id, group.active_session_id)
             self.active_session_snapshot.emit(group_id, group.active_session_id, state)
+
+    @Slot()
+    def send_group_placeholder_snapshots(self) -> None:
+        """Emit current placeholder values for every group that has an active session."""
+        for group in self.groups.values():
+            if group.active_session:
+                self.group_placeholder_values_changed.emit(
+                    group.group_id, deepcopy(group.active_session.get_placeholder_values())
+                )
 
     # ------------------------------------------------------------------
     # Full runtime reconciliation (called by Controller.reconcile_runtime)
@@ -947,7 +1054,6 @@ class RuntimeController(QObject):
         self._refresh_group_state(group_id)
 
     def _recording_finished(self, group_id: str, session_id: str) -> None:
-        print(f"_recording_finished({group_id}, {session_id})")
         group = self.groups.get(group_id)
         assert group is not None
         session = group.sessions.get(session_id)
@@ -974,13 +1080,16 @@ class RuntimeController(QObject):
         # Create the next session, seeding it from the current runtime snapshots.
         new_session_id = group.new_session()
         group.sessions[new_session_id].global_placeholder_values = deepcopy(
-            self.runtime_global_placeholder_values
+            self.runtime_group_placeholder_values.get(
+                group_id, self.runtime_global_placeholder_values
+            )
         )
 
         self._update_active_session(group_id)
         self._update_session_state(group_id, session_id)
         self.start_pipeline_preview(group_id)
         self._refresh_group_state(group_id)
+        self._emit_group_placeholder_values(group_id)
 
     # ------------------------------------------------------------------
     # Recording — start / stop
@@ -990,7 +1099,6 @@ class RuntimeController(QObject):
     def start_recording(self, group_id: str, session_id: str) -> None:
         from reactivex import operators as ops
 
-        print(f"start_recording({group_id}, {session_id})")
         group = self.groups.get(group_id)
         if group is None:
             return
@@ -1058,7 +1166,7 @@ class RuntimeController(QObject):
 
         try:
             placeholder_values = resolve_placeholders(
-                session.global_placeholder_values | session.get_placeholder_values()
+                session.get_placeholder_values()
             )
             placeholder_provider = SimplePlaceholderProvider(placeholder_values)
             session_context = SessionContext(
@@ -1090,6 +1198,7 @@ class RuntimeController(QObject):
             recording.connections = [obs.connect() for obs in source_observables]
             session.recording = recording
             recording.start.on_next(None)
+            self.recording_started.emit(group_id, session_id, recording.start_time)
             _logger.info(
                 "Recording started (group=%s, session=%s, started_at=%s)",
                 group_id, session_id, recording.start_time.isoformat(timespec="seconds"),
@@ -1103,19 +1212,17 @@ class RuntimeController(QObject):
             return
 
         def _primary_done(_):
-            print("Primary done")
-            self._rx_primary_done.emit(group_id, session_id, None)
+            self._rx_primary_done.emit(group_id, session_id, None, datetime.now())
 
         def _primary_failed(exc: Exception):
-            print(f"Primary failed: {exc}")
-            self._rx_primary_done.emit(group_id, session_id, exc)
+            self._rx_primary_done.emit(group_id, session_id, exc, datetime.now())
 
         def _secondary_done(_):
-            self._rx_secondary_done.emit(group_id, session_id, None)
+            self._rx_secondary_done.emit(group_id, session_id, None, datetime.now())
 
         def _secondary_failed(exc: Exception):
             traceback.print_tb(exc.__traceback__)
-            self._rx_secondary_done.emit(group_id, session_id, exc)
+            self._rx_secondary_done.emit(group_id, session_id, exc, datetime.now())
 
         def _progress_cb(progress: Tuple[int, int]):
             self._rx_progress.emit(group_id, session_id, progress)
@@ -1134,7 +1241,7 @@ class RuntimeController(QObject):
 
     @Slot(str, str)
     def stop_recording(self, group_id: str, session_id: str) -> None:
-        print(f"stop_recording({group_id}, {session_id})")
+        return
         group = self.groups.get(group_id)
         assert group is not None, f"Group {group_id} not found"
         session = group.sessions.get(session_id)
@@ -1142,12 +1249,12 @@ class RuntimeController(QObject):
 
         if session.recording and not session.recording.stop_time:
             session.recording.stop_time = datetime.now()
+            self.recording_stop_requested.emit(group_id, session_id, session.recording.stop_time)
             _logger.info(
                 "Recording stop requested (group=%s, session=%s, stopped_at=%s)",
                 group_id, session_id,
                 session.recording.stop_time.isoformat(timespec="seconds"),
             )
-            print("Sending stop signal to recording pipeline.")
             session.recording.stop.on_next(None)
 
         self._update_session_state(group_id, session_id)
@@ -1156,9 +1263,13 @@ class RuntimeController(QObject):
     # Recording lifecycle — signal handlers (QueuedConnection, main thread)
     # ------------------------------------------------------------------
 
-    @Slot(str, str, object)
-    def _on_primary_done(self, group_id: str, session_id: str, exc: Optional[Exception]) -> None:
-        print(f"_on_primary_done({group_id}, {session_id}, {exc})")
+    @Slot(str, str, str)
+    def _on_warning(self, group_id: str, session_id: str, message: str) -> None:
+        """Re-emit a pipeline warning on the Qt main thread as a public signal."""
+        self.pipeline_warning.emit(group_id, session_id, message)
+
+    @Slot(str, str, object, object)
+    def _on_primary_done(self, group_id: str, session_id: str, exc: Optional[Exception], timestamp: datetime) -> None:
         group = self.groups.get(group_id)
         assert group is not None
         session = group.sessions.get(session_id)
@@ -1167,8 +1278,8 @@ class RuntimeController(QObject):
         if session.recording:
             if session.recording.primary_finished:
                 return
-            print("Session primary done.")
             session.recording.primary_finished = True
+            session.recording.acquisition_finished_time = timestamp
             if exc:
                 _logger.error(
                     "Primary recording pipeline failed (group=%s, session=%s): %s",
@@ -1180,11 +1291,10 @@ class RuntimeController(QObject):
                 self._recording_finished(group_id, session_id)
 
         self._update_session_state(group_id, session_id)
-        self.primary_finished.emit(group_id, session_id, exc)
+        self.primary_finished.emit(group_id, session_id, exc, timestamp)
 
-    @Slot(str, str, object)
-    def _on_secondary_done(self, group_id: str, session_id: str, exc: Optional[Exception]) -> None:
-        print(f"_on_secondary_done({group_id}, {session_id}, {exc})")
+    @Slot(str, str, object, object)
+    def _on_secondary_done(self, group_id: str, session_id: str, exc: Optional[Exception], timestamp: datetime) -> None:
         group = self.groups.get(group_id)
         assert group is not None
         session = group.sessions.get(session_id)
@@ -1193,8 +1303,8 @@ class RuntimeController(QObject):
         if session.recording:
             if session.recording.secondary_finished:
                 return
-            print("Session secondary done.")
             session.recording.secondary_finished = True
+            session.recording.processing_finished_time = timestamp
             if exc:
                 _logger.error(
                     "Secondary recording pipeline failed (group=%s, session=%s): %s",
@@ -1208,7 +1318,8 @@ class RuntimeController(QObject):
                 self._recording_finished(group_id, session_id)
 
         self._update_session_state(group_id, session_id)
-        self.secondary_finished.emit(group_id, session_id, exc)
+        if session.recording and session.recording.stop_time is not None:
+            self.secondary_finished.emit(group_id, session_id, exc, timestamp)
 
     @Slot(str, str, object)
     def _on_progress(self, group_id: str, session_id: str, progress: Tuple[int, int]) -> None:

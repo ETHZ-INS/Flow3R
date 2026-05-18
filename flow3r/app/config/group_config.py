@@ -8,6 +8,8 @@ from flow3r.core.config.abc.config import ConfigBase, ITypedConfig
 
 @dataclass
 class GroupConfig(ConfigBase):
+    VERSION = 1
+
     RECORDING_MODES: ClassVar[Dict[str, str]] = {
         'manual': 'Manual',
         'timed': 'Timed'

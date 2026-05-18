@@ -4,6 +4,8 @@ from PySide6.QtCore import QMargins, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QFileDialog, QSizePolicy, QToolButton, QLineEdit, QHBoxLayout, QWidget
 
+from flow3r.core.widgets.placeholder_line_edit import PlaceholderLineEdit
+
 
 class PathWidget(QWidget):
     path_changed = Signal(str)
@@ -16,7 +18,7 @@ class PathWidget(QWidget):
         self.layout.setContentsMargins(QMargins(0, 0, 0, 0))
         self.layout.setSpacing(0)
 
-        self.txt_path = QLineEdit(self)
+        self.txt_path = PlaceholderLineEdit(self)#QLineEdit(self)
         self.txt_path.editingFinished.connect(self._path_changed)
         self.layout.addWidget(self.txt_path)
 

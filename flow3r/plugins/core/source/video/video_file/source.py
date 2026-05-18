@@ -1,7 +1,9 @@
 from pathlib import Path
 
+from py3r.media.streaming.observables.reader_observable import reader_observable
 from py3r.media.types import VideoFrame
 from py3r.media.video.ffmpeg_video_file_source import FFmpegVideoFileSource
+from py3r.media.video.opencv_video_file_source import OpenCVVideoFileSource
 from reactivex import operators as ops
 
 from flow3r.core.source.abc.source import ISource
@@ -13,7 +15,7 @@ from flow3r.plugins.core.typing.video import VideoFormat
 
 class VideoFileSource(ISource[VideoFormat, VideoFrame]):
     def __init__(self, config: VideoFileSourceConfig):
-        self._video_source = FFmpegVideoFileSource(Path(config.file_path), grayscale=config.grayscale, playback=True, loop=config.loop)
+        self._video_source = OpenCVVideoFileSource(Path(config.file_path), grayscale=config.grayscale, playback=True, loop=config.loop)
 
         fmt = VideoFormat(
             self._video_source.get_size(),
@@ -21,7 +23,7 @@ class VideoFileSource(ISource[VideoFormat, VideoFrame]):
             "mono8" if self._video_source.get_num_channels() == 1 else "rgb24"
         )
 
-        self._frame_observable = source_observable(self._video_source)
+        self._frame_observable = reader_observable(self._video_source)
         self._stream = Stream(fmt, self._frame_observable.pipe(ops.share()))
 
     @property

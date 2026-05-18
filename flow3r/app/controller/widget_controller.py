@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Dict, Optional, Literal, Tuple, List
 
 from PySide6.QtCore import QObject, Slot, Qt, Signal
-from PySide6.QtWidgets import QMainWindow, QWidget
+from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout
 
 from flow3r.app.visualization.source_widget import SourceWidget
 from flow3r.app.visualization.visualizer_widget import VisualizerWidget
@@ -16,6 +16,7 @@ from flow3r.core.visualization.abc.visualizer_type import IVisualizerType
 @dataclass
 class _RecordingControlsWidgetEntry:
     widget: RecordingControlsWidget
+    container: QWidget          # permanent zero-margin slot in _bottom_widget layout
     location: Literal["hidden", "source", "bottom"] = "hidden"
     source_id: Optional[str] = None
 
@@ -44,12 +45,30 @@ class WidgetController(QObject):
         self._source_widgets: Dict[str, SourceWidget] = {}
         self._visualizer_widgets: Dict[Tuple[str, str], VisualizerWidget] = {}
         self._recording_control_widgets: Dict[str, _RecordingControlsWidgetEntry] = {}
+        self._group_order: List[str] = []
 
     def set_controller(self, controller):
         assert self._controller is None
         self._controller = controller
         self.source_snapshot_requested.connect(controller.send_source_snapshot)
         self.group_snapshot_requested.connect(controller.send_group_snapshot)
+        controller.config_changed.connect(self._on_config_changed)
+
+    @Slot(object)
+    def _on_config_changed(self, config) -> None:
+        self._group_order = list(config.all_groups.keys())
+        self._reorder_containers()
+
+    def _reorder_containers(self) -> None:
+        """Re-sort group containers in _bottom_widget layout to match _group_order."""
+        layout = self._bottom_widget.layout()
+        for position, group_id in enumerate(self._group_order):
+            entry = self._recording_control_widgets.get(group_id)
+            if entry is None:
+                continue
+            current = layout.indexOf(entry.container)
+            if current != -1 and current != position:
+                layout.insertWidget(position, entry.container)
 
     @Slot(str, str, object)
     def add_source_handle(self, source_id: str, session_id: str, handle: IVisualizerHandle) -> None:
@@ -63,14 +82,12 @@ class WidgetController(QObject):
 
     @Slot(str, str, str, object)
     def add_visualizer_handle(self, group_id: str, widget_id: str, session_id: str, handle: IVisualizerHandle) -> None:
-        print(f"add_visualizer_handle: {group_id}, {widget_id}, {session_id}")
         if (group_id, widget_id) not in self._visualizer_handles:
             self._visualizer_handles[(group_id, widget_id)] = {}
         self._visualizer_handles[(group_id, widget_id)][session_id] = handle
 
     @Slot(str, str)
     def remove_visualizer_handle(self, group_id: str, widget_id: str, session_id: str) -> None:
-        print(f"remove_visualizer_handle: {group_id}, {widget_id}, {session_id}")
         self._visualizer_handles[(group_id, widget_id)].pop(session_id, None)
 
     @Slot(str)
@@ -99,7 +116,16 @@ class WidgetController(QObject):
         if widget:
             widget.set_handle(None)
             if widget.recording_controls_widget:
-                widget.recording_controls_widget.setParent(self._bottom_widget)
+                rc_widget = widget.recording_controls_widget
+                # Put the recording controls widget back into its container slot.
+                for entry in self._recording_control_widgets.values():
+                    if entry.widget is rc_widget:
+                        entry.container.layout().addWidget(rc_widget)
+                        entry.container.setVisible(False)
+                        rc_widget.setVisible(False)
+                        entry.location = "hidden"
+                        entry.source_id = None
+                        break
             self._dock_window.removeDockWidget(widget)
             widget.deleteLater()
 
@@ -139,21 +165,35 @@ class WidgetController(QObject):
         widget = RecordingControlsWidget(group_id, "Unknown", parent=self._bottom_widget)
         widget.recording_start.connect(self._controller.start_recording)
         widget.recording_stop.connect(self._controller.stop_recording)
+        widget.set_recording_number.connect(self._controller.set_recording_number)
         widget.edit_group.connect(self._main_window._edit_group)
+        widget.set_placeholder_values.connect(self._main_window._set_group_placeholders)
+        widget.open_placeholder_dialog_for_start.connect(self._main_window._fill_and_start_recording)
         widget.active_session_requested.connect(self._controller.send_active_session_snapshot)
         self._controller.group_snapshot.connect(widget.group_changed)
         self._controller.group_changed.connect(widget.group_changed)
         self._controller.active_session_snapshot.connect(widget.set_active_session)
         self._controller.active_session_changed.connect(widget.set_active_session)
         self._controller.session_state_changed.connect(widget.set_session_state)
+        self._main_window.auto_start_requested.connect(widget.on_auto_start_requested)
         widget.request_active_session()
 
         self.group_snapshot_requested.emit(group_id)
 
-        entry = _RecordingControlsWidgetEntry(widget)
+        # Create a permanent zero-margin container slot for this group.
+        container = QWidget(self._bottom_widget)
+        container_layout = QVBoxLayout(container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(0)
+        container_layout.addWidget(widget)
+        container.setVisible(False)
+
+        entry = _RecordingControlsWidgetEntry(widget, container)
         self._recording_control_widgets[group_id] = entry
-        self._bottom_widget.layout().addWidget(widget)
-        widget.setVisible(False)
+
+        # Append then sort — _group_order already contains this group_id.
+        self._bottom_widget.layout().addWidget(container)
+        self._reorder_containers()
 
     @Slot(str)
     def remove_recording_controls_widget(self, group_id: str) -> None:
@@ -162,11 +202,10 @@ class WidgetController(QObject):
             if entry.location == "source":
                 old_source_widget = self._source_widgets[entry.source_id]
                 old_source_widget.set_recording_controls_widget(None)
-            elif entry.location == "bottom":
-                self._bottom_widget.layout().removeWidget(entry.widget)
-            elif entry.location == "hidden":
-                self._bottom_widget.layout().removeWidget(entry.widget)
-            entry.widget.deleteLater()
+                entry.widget.deleteLater()
+            # Remove the container (and widget if still inside it) from the layout.
+            self._bottom_widget.layout().removeWidget(entry.container)
+            entry.container.deleteLater()
 
     @Slot(str, str, object)
     def set_recording_controls_widget_location(self, group_id: str, location: Literal["hidden", "source", "bottom"], source_id: Optional[str] = None) -> None:
@@ -177,15 +216,17 @@ class WidgetController(QObject):
         if entry.location == location and entry.source_id == source_id:
             return
 
+        # ── Tear down current location ────────────────────────────────────────
         if entry.location == "source":
             old_source_widget = self._source_widgets[entry.source_id]
             old_source_widget.set_recording_controls_widget(None)
-        elif entry.location == "bottom":
-            self._bottom_widget.layout().removeWidget(entry.widget)
-        elif entry.location == "hidden":
-            self._bottom_widget.layout().removeWidget(entry.widget)
+            # Return widget to its container so visibility changes below are coherent.
+            entry.container.layout().addWidget(entry.widget)
 
+        # ── Set up new location ───────────────────────────────────────────────
         if location == "source":
+            entry.container.layout().removeWidget(entry.widget)
+            entry.container.setVisible(False)
             source_widget = self._source_widgets[source_id]
             source_widget.set_recording_controls_widget(entry.widget)
             entry.widget.setVisible(True)
@@ -193,13 +234,13 @@ class WidgetController(QObject):
             entry.location = location
             entry.source_id = source_id
         elif location == "bottom":
-            self._bottom_widget.layout().addWidget(entry.widget)
             entry.widget.setVisible(True)
             entry.widget.show_group_name()
+            entry.container.setVisible(True)
             entry.location = location
             entry.source_id = None
         elif location == "hidden":
-            self._bottom_widget.layout().addWidget(entry.widget)
             entry.widget.setVisible(False)
+            entry.container.setVisible(False)
             entry.location = location
             entry.source_id = None

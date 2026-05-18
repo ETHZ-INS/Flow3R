@@ -17,14 +17,15 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QPalette, QPixmap, QRadialGradient, QTransform)
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QComboBox, QDateTimeEdit,
     QDialog, QDialogButtonBox, QFormLayout, QFrame,
-    QLabel, QLayout, QLineEdit, QSizePolicy,
-    QSpacerItem, QTimeEdit, QVBoxLayout, QWidget)
+    QKeySequenceEdit, QLabel, QLayout, QLineEdit,
+    QSizePolicy, QSpacerItem, QTimeEdit, QVBoxLayout,
+    QWidget)
 
 class Ui_GroupEditDialog(object):
     def setupUi(self, GroupEditDialog):
         if not GroupEditDialog.objectName():
             GroupEditDialog.setObjectName(u"GroupEditDialog")
-        GroupEditDialog.resize(400, 177)
+        GroupEditDialog.resize(400, 205)
         sizePolicy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -77,11 +78,21 @@ class Ui_GroupEditDialog(object):
 
         self.tme_duration = QTimeEdit(self.frm_recording_configuration)
         self.tme_duration.setObjectName(u"tme_duration")
-        self.tme_duration.setDateTime(QDateTime(QDate(2000, 12, 31), QTime(21, 10, 0)))
+        self.tme_duration.setDateTime(QDateTime(QDate(2000, 12, 31), QTime(20, 10, 0)))
         self.tme_duration.setMaximumTime(QTime(23, 59, 0))
         self.tme_duration.setCurrentSection(QDateTimeEdit.HourSection)
 
         self.formLayout.setWidget(2, QFormLayout.FieldRole, self.tme_duration)
+
+        self.key_shortcut = QKeySequenceEdit(self.frm_recording_configuration)
+        self.key_shortcut.setObjectName(u"key_shortcut")
+
+        self.formLayout.setWidget(3, QFormLayout.FieldRole, self.key_shortcut)
+
+        self.label_4 = QLabel(self.frm_recording_configuration)
+        self.label_4.setObjectName(u"label_4")
+
+        self.formLayout.setWidget(3, QFormLayout.LabelRole, self.label_4)
 
 
         self.verticalLayout.addWidget(self.frm_recording_configuration)
@@ -116,5 +127,6 @@ class Ui_GroupEditDialog(object):
 
         self.lbl_tme_duration.setText(QCoreApplication.translate("GroupEditDialog", u"Duration:", None))
         self.tme_duration.setDisplayFormat(QCoreApplication.translate("GroupEditDialog", u"HH'h' mm'm' ss.zzz's'", None))
+        self.label_4.setText(QCoreApplication.translate("GroupEditDialog", u"Shortcut Key:", None))
     # retranslateUi
 

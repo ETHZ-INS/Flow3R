@@ -35,7 +35,6 @@ class SettingsService(QObject):
         return self._cache_state.get(key_path, default)
 
     def set(self, key_path: KeyPath, value: Any) -> None:
-        print("set", key_path, value)
         self.patch_requested.emit({key_path: deepcopy(value)})
 
     def set_many(self, patch: Dict[KeyPath, Any]) -> None:
@@ -43,7 +42,6 @@ class SettingsService(QObject):
 
     @Slot(object)
     def _on_store_changed(self, patch: Dict[KeyPath, Any]) -> None:
-        print("Store changed", patch)
         # Update cache then notify UI subscribers
         for k, v in patch.items():
             self._cache_state[k] = deepcopy(v)
@@ -51,7 +49,6 @@ class SettingsService(QObject):
 
     @Slot(object)
     def _on_store_snapshot(self, state: Dict[KeyPath, Any]) -> None:
-        print("Store snapshot", state)
         self._cache_state = deepcopy(state)
         self.changed.emit(deepcopy(state))
         self._controller.settings_snapshot.disconnect(self._on_store_snapshot)

@@ -1,5 +1,5 @@
 from dataclasses import dataclass, replace
-from typing import List, Self
+from typing import ClassVar, List, Self
 
 from flow3r.core.pipeline.abc.pipeline_config import PipelineConfigBase
 from flow3r.core.placeholder.abc.placeholder_provider import IPlaceholderProvider
@@ -8,8 +8,8 @@ from flow3r.core.placeholder.placeholder_formatter import PlaceholderFormatter
 
 @dataclass
 class RecordAudioConfig(PipelineConfigBase):
-    TYPE_ID = "core.pipeline.record_audio"
-    VERSION = 1
+    TYPE_ID: ClassVar[str] = "core.pipeline.record_audio"
+    VERSION: ClassVar[int] = 1
 
     audio_file: str = "my_audio.wav"
 

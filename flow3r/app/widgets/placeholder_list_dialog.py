@@ -2,7 +2,10 @@ from copy import deepcopy
 from typing import Optional, List
 
 from PySide6 import QtWidgets
-from PySide6.QtCore import QAbstractListModel, Qt, QModelIndex, QSize, QRect, Signal
+from PySide6.QtCore import (
+    QAbstractListModel, Qt, QModelIndex, QSize, QRect, Signal,
+    QByteArray, QDataStream, QIODevice, QMimeData,
+)
 from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QDialog, QStyledItemDelegate, QStyle, QMenu
 
@@ -18,10 +21,64 @@ class PlaceholderListModel(QAbstractListModel):
     PlaceholderRole = Qt.ItemDataRole.UserRole + 1
     NameRole = Qt.ItemDataRole.UserRole + 2
 
+    _MIME_TYPE = "application/x-placeholder-row"
+
+    reordered = Signal(list)  # list[str] of placeholder ids in new order
+
     def __init__(self):
         super().__init__()
-
         self._placeholders: List[PlaceholderConfig] = []
+
+    # ...existing code...
+
+    def flags(self, index):
+        base = super().flags(index)
+        if index.isValid():
+            return base | Qt.ItemFlag.ItemIsDragEnabled | Qt.ItemFlag.ItemIsDropEnabled
+        return base | Qt.ItemFlag.ItemIsDropEnabled
+
+    def supportedDropActions(self):
+        return Qt.DropAction.MoveAction
+
+    def mimeTypes(self):
+        return [self._MIME_TYPE]
+
+    def mimeData(self, indexes):
+        mime = QMimeData()
+        buf = QByteArray()
+        stream = QDataStream(buf, QIODevice.OpenModeFlag.WriteOnly)
+        stream.writeInt32(indexes[0].row())
+        mime.setData(self._MIME_TYPE, buf)
+        return mime
+
+    def dropMimeData(self, mime, action, row, column, parent):
+        if action == Qt.DropAction.IgnoreAction:
+            return True
+        if not mime.hasFormat(self._MIME_TYPE):
+            return False
+
+        buf = mime.data(self._MIME_TYPE)
+        stream = QDataStream(buf, QIODevice.OpenModeFlag.ReadOnly)
+        src_row = stream.readInt32()
+
+        # -1 means "drop onto empty area" → append to end
+        dst_row = self.rowCount() if (row == -1 and not parent.isValid()) else (
+            parent.row() if row == -1 else row
+        )
+
+        if src_row == dst_row or src_row + 1 == dst_row:
+            return False  # no-op
+
+        item = self._placeholders[src_row]
+        adjusted_dst = dst_row if dst_row <= src_row else dst_row - 1
+
+        self.beginResetModel()
+        self._placeholders.pop(src_row)
+        self._placeholders.insert(adjusted_dst, item)
+        self.endResetModel()
+
+        self.reordered.emit([p.id for p in self._placeholders])
+        return True
 
     def rowCount(self, parent=None):
         return len(self._placeholders)
@@ -137,6 +194,11 @@ class PlaceholderListDialog(Ui_PlaceholderListDialog, QDialog):
 
         self.lst_placeholders.setModel(self.placeholder_list_model)
         self.lst_placeholders.setItemDelegate(self.placeholder_delegate)
+        self.lst_placeholders.setDragEnabled(True)
+        self.lst_placeholders.setAcceptDrops(True)
+        self.lst_placeholders.setDropIndicatorShown(True)
+        self.lst_placeholders.setDragDropMode(QtWidgets.QAbstractItemView.DragDropMode.InternalMove)
+        self.lst_placeholders.setDefaultDropAction(Qt.DropAction.MoveAction)
 
         self.lst_placeholders.selectionModel().selectionChanged.connect(self._selected_placeholder_changed)
         self.lst_placeholders.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -154,6 +216,7 @@ class PlaceholderListDialog(Ui_PlaceholderListDialog, QDialog):
         self.placeholder_added.connect(self.controller.add_placeholder)
         self.placeholder_edited.connect(self.controller.edit_placeholder)
         self.placeholder_removed.connect(self.controller.remove_placeholder)
+        self.placeholder_list_model.reordered.connect(self.controller.reorder_placeholders)
 
         self.btn_add.clicked.connect(self.add_placeholder)
         self.btn_edit.clicked.connect(self.edit_placeholder)

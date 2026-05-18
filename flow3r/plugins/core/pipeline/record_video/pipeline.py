@@ -13,13 +13,13 @@ from flow3r.core.streaming.abc.stream import IStream
 from flow3r.core.streaming.stream import Stream
 from flow3r.plugins.core.pipeline.record_video.config import RecordVideoConfig
 from flow3r.plugins.core.node.video_writer_sink import VideoWriterSink
+from flow3r.plugins.core.pipeline.util.pyav_video_file_writer import PyAVVideoFileWriter
 from flow3r.plugins.core.typing.video import VideoFormat
 
 
 def video_writer_factory(quality: str):
-    print(f"Creating video writer factory with quality: {quality}")
     def _factory(segment_file: Path, desc: VideoFormat):
-        return FFmpegVideoFileWriter(segment_file, desc.size, desc.fps, grayscale=desc.fmt=="mono8", quality=quality)
+        return PyAVVideoFileWriter(segment_file, desc.size, desc.fps, grayscale=desc.fmt=="mono8", quality=quality)
     return _factory
 
 
@@ -31,7 +31,6 @@ class RecordVideoPipeline(PipelineBase[RecordVideoConfig]):
         self._writer_scheduler = EventLoopScheduler()
 
     def configure(self, session_context: ISessionContext, config: RecordVideoConfig):
-        print(f"Configuring RecordVideoPipeline with config: {config}")
         self._config = config
 
     def preview(self, session_context: ISessionContext, sources: Dict[str, IStream]) -> PreviewSubscription:
@@ -47,7 +46,7 @@ class RecordVideoPipeline(PipelineBase[RecordVideoConfig]):
         video_writer_sub = video_writer_sink.subscribe(video_writer_stream)
 
         disposable = CompositeDisposable(video_writer_sub)
-        primary_done = rx.zip(video_writer_sub.done).pipe(ops.take(1))
+        primary_done = video_writer_sub.done
         return PipelineSubscription(disposable, primary_done)
 
     def dispose(self):

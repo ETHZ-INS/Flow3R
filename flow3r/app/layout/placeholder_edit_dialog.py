@@ -24,7 +24,7 @@ class Ui_PlaceholderEditDialog(object):
     def setupUi(self, PlaceholderEditDialog):
         if not PlaceholderEditDialog.objectName():
             PlaceholderEditDialog.setObjectName(u"PlaceholderEditDialog")
-        PlaceholderEditDialog.resize(500, 295)
+        PlaceholderEditDialog.resize(500, 320)
         sizePolicy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -86,41 +86,56 @@ class Ui_PlaceholderEditDialog(object):
 
         self.formLayout.setWidget(3, QFormLayout.LabelRole, self.label_4)
 
-        self.chb_global = QCheckBox(self.frm_placeholder_configuration)
-        self.chb_global.setObjectName(u"chb_global")
+        self.dpd_scope = QComboBox(self.frm_placeholder_configuration)
+        self.dpd_scope.addItem("")
+        self.dpd_scope.addItem("")
+        self.dpd_scope.setObjectName(u"dpd_scope")
 
-        self.formLayout.setWidget(3, QFormLayout.FieldRole, self.chb_global)
+        self.formLayout.setWidget(3, QFormLayout.FieldRole, self.dpd_scope)
+
+        self.label_8 = QLabel(self.frm_placeholder_configuration)
+        self.label_8.setObjectName(u"label_8")
+
+        self.formLayout.setWidget(4, QFormLayout.LabelRole, self.label_8)
+
+        self.dpd_persistence = QComboBox(self.frm_placeholder_configuration)
+        self.dpd_persistence.addItem("")
+        self.dpd_persistence.addItem("")
+        self.dpd_persistence.addItem("")
+        self.dpd_persistence.setObjectName(u"dpd_persistence")
+
+        self.formLayout.setWidget(4, QFormLayout.FieldRole, self.dpd_persistence)
+
+        self.label_6 = QLabel(self.frm_placeholder_configuration)
+        self.label_6.setObjectName(u"label_6")
+
+        self.formLayout.setWidget(5, QFormLayout.LabelRole, self.label_6)
+
+        self.chb_constant = QCheckBox(self.frm_placeholder_configuration)
+        self.chb_constant.setObjectName(u"chb_constant")
+
+        self.formLayout.setWidget(5, QFormLayout.FieldRole, self.chb_constant)
+
+        self.label_7 = QLabel(self.frm_placeholder_configuration)
+        self.label_7.setObjectName(u"label_7")
+
+        self.formLayout.setWidget(6, QFormLayout.LabelRole, self.label_7)
+
+        self.txt_value = QLineEdit(self.frm_placeholder_configuration)
+        self.txt_value.setObjectName(u"txt_value")
+
+        self.formLayout.setWidget(6, QFormLayout.FieldRole, self.txt_value)
 
         self.label_5 = QLabel(self.frm_placeholder_configuration)
         self.label_5.setObjectName(u"label_5")
 
-        self.formLayout.setWidget(6, QFormLayout.LabelRole, self.label_5)
+        self.formLayout.setWidget(7, QFormLayout.LabelRole, self.label_5)
 
         self.txt_description = QTextEdit(self.frm_placeholder_configuration)
         self.txt_description.setObjectName(u"txt_description")
         self.txt_description.setMinimumSize(QSize(0, 40))
 
-        self.formLayout.setWidget(6, QFormLayout.FieldRole, self.txt_description)
-
-        self.label_6 = QLabel(self.frm_placeholder_configuration)
-        self.label_6.setObjectName(u"label_6")
-
-        self.formLayout.setWidget(4, QFormLayout.LabelRole, self.label_6)
-
-        self.chb_constant = QCheckBox(self.frm_placeholder_configuration)
-        self.chb_constant.setObjectName(u"chb_constant")
-
-        self.formLayout.setWidget(4, QFormLayout.FieldRole, self.chb_constant)
-
-        self.label_7 = QLabel(self.frm_placeholder_configuration)
-        self.label_7.setObjectName(u"label_7")
-
-        self.formLayout.setWidget(5, QFormLayout.LabelRole, self.label_7)
-
-        self.txt_value = QLineEdit(self.frm_placeholder_configuration)
-        self.txt_value.setObjectName(u"txt_value")
-
-        self.formLayout.setWidget(5, QFormLayout.FieldRole, self.txt_value)
+        self.formLayout.setWidget(7, QFormLayout.FieldRole, self.txt_description)
 
 
         self.verticalLayout.addWidget(self.frm_placeholder_configuration)
@@ -145,7 +160,7 @@ class Ui_PlaceholderEditDialog(object):
     # setupUi
 
     def retranslateUi(self, PlaceholderEditDialog):
-        PlaceholderEditDialog.setWindowTitle(QCoreApplication.translate("PlaceholderEditDialog", u"Configure Group", None))
+        PlaceholderEditDialog.setWindowTitle(QCoreApplication.translate("PlaceholderEditDialog", u"Configure Placeholder", None))
         self.label.setText(QCoreApplication.translate("PlaceholderEditDialog", u"### Placeholder Settings", None))
         self.label_3.setText(QCoreApplication.translate("PlaceholderEditDialog", u"Name:", None))
         self.txt_name.setText(QCoreApplication.translate("PlaceholderEditDialog", u"new_placeholder", None))
@@ -156,11 +171,18 @@ class Ui_PlaceholderEditDialog(object):
 
         self.lbl_tme_duration.setText(QCoreApplication.translate("PlaceholderEditDialog", u"Label:", None))
         self.txt_label.setText(QCoreApplication.translate("PlaceholderEditDialog", u"New Placeholder", None))
-        self.label_4.setText(QCoreApplication.translate("PlaceholderEditDialog", u"Global:", None))
-        self.chb_global.setText("")
-        self.label_5.setText(QCoreApplication.translate("PlaceholderEditDialog", u"Description:", None))
+        self.label_4.setText(QCoreApplication.translate("PlaceholderEditDialog", u"Scope:", None))
+        self.dpd_scope.setItemText(0, QCoreApplication.translate("PlaceholderEditDialog", u"Global", None))
+        self.dpd_scope.setItemText(1, QCoreApplication.translate("PlaceholderEditDialog", u"Group", None))
+
+        self.label_8.setText(QCoreApplication.translate("PlaceholderEditDialog", u"Persistence:", None))
+        self.dpd_persistence.setItemText(0, QCoreApplication.translate("PlaceholderEditDialog", u"Session (forgotten on restart)", None))
+        self.dpd_persistence.setItemText(1, QCoreApplication.translate("PlaceholderEditDialog", u"Project (saved to project file)", None))
+        self.dpd_persistence.setItemText(2, QCoreApplication.translate("PlaceholderEditDialog", u"Recording (reset after each recording)", None))
+
         self.label_6.setText(QCoreApplication.translate("PlaceholderEditDialog", u"Constant:", None))
         self.chb_constant.setText("")
         self.label_7.setText(QCoreApplication.translate("PlaceholderEditDialog", u"Value:", None))
+        self.label_5.setText(QCoreApplication.translate("PlaceholderEditDialog", u"Description:", None))
     # retranslateUi
 

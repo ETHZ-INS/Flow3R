@@ -1,9 +1,10 @@
-from PySide6.QtWidgets import QWidget, QSpinBox, QFormLayout
+from PySide6.QtWidgets import QSpinBox, QFormLayout
 
+from flow3r.core.widgets.config_widget import IConfigWidget
 from flow3r.plugins.core.source.audio.microphone.config import MicrophoneSourceConfig
 
 
-class MicrophoneSourceConfigWidget(QWidget):
+class MicrophoneSourceConfigWidget(IConfigWidget):
     def __init__(self, config: MicrophoneSourceConfig, parent=None):
         super().__init__(parent)
 
@@ -24,6 +25,9 @@ class MicrophoneSourceConfigWidget(QWidget):
 
         self.spn_device.valueChanged.connect(self._device_changed)
         self.spn_sample_rate.valueChanged.connect(self._sample_rate_changed)
+
+    def get_config(self) -> MicrophoneSourceConfig:
+        return self.config
 
     def _device_changed(self, value: int):
         self.config.device_index = value

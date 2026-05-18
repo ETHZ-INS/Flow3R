@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>400</width>
-    <height>177</height>
+    <height>205</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -103,7 +103,7 @@
        <widget class="QTimeEdit" name="tme_duration">
         <property name="dateTime">
          <datetime>
-          <hour>21</hour>
+          <hour>20</hour>
           <minute>10</minute>
           <second>0</second>
           <year>2000</year>
@@ -123,6 +123,16 @@
         </property>
         <property name="displayFormat">
          <string>HH'h' mm'm' ss.zzz's'</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QKeySequenceEdit" name="key_shortcut"/>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="label_4">
+        <property name="text">
+         <string>Shortcut Key:</string>
         </property>
        </widget>
       </item>

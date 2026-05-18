@@ -15,3 +15,4 @@ class SessionContext(ISessionContext):
     @property
     def settings(self) -> ISettingsView:
         return self._settings
+

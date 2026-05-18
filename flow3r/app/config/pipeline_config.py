@@ -9,6 +9,8 @@ from flow3r.core.placeholder.abc.placeholder_provider import IPlaceholderProvide
 
 @dataclass
 class PipelineConfig(ConfigBase):
+    VERSION = 1
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     name: str = "New Pipeline"
     pipeline_type: str = "Record Video"
@@ -52,7 +54,7 @@ class PipelineConfig(ConfigBase):
             sub_config_type = type_registry.get(sub_config_type_id)
 
             if sub_config_type is None:
-                raise ConfigError(f"Unknown config type: {source_type}")
+                raise ConfigError(f"Unknown config type: {sub_config_type_id}")
 
             sub_configs[source_type] = sub_config_type.from_dict(sub_config_data, type_registry)
 

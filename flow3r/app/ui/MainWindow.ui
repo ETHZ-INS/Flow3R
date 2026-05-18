@@ -153,6 +153,7 @@
     <property name="title">
      <string>File</string>
     </property>
+    <addaction name="action_new_project"/>
     <addaction name="action_load_project"/>
     <addaction name="action_save_project"/>
     <addaction name="action_save_project_as"/>
@@ -262,6 +263,11 @@
   <action name="action_set_placeholder_values">
    <property name="text">
     <string>Set Placeholder Values</string>
+   </property>
+  </action>
+  <action name="action_new_project">
+   <property name="text">
+    <string>New Project</string>
    </property>
   </action>
  </widget>

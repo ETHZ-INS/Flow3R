@@ -1,12 +1,14 @@
 import uuid
 from dataclasses import dataclass, field
-from typing import ClassVar, Dict, Any, Type, Self
+from typing import ClassVar, Dict, Any, Type, Self, Literal
 
 from flow3r.core.config.abc.config import ConfigBase, ITypedConfig
 
 
 @dataclass
 class PlaceholderConfig(ConfigBase):
+    VERSION = 1
+
     PLACEHOLDER_TYPES: ClassVar[dict] = {
         'text': "Text",
         'folder': "Folder Path",
@@ -18,6 +20,7 @@ class PlaceholderConfig(ConfigBase):
     type: str = 'text'
     label: str = 'New Placeholder'
     is_global: bool = True
+    persistence: Literal['session', 'project', 'recording'] = 'session'
     is_constant: bool = False
     constant_value: str = ''
     description: str = ''
@@ -29,6 +32,7 @@ class PlaceholderConfig(ConfigBase):
             'type': self.type,
             'label': self.label,
             'is_global': self.is_global,
+            'persistence': self.persistence,
             'is_constant': self.is_constant,
             'constant_value': self.constant_value,
             'description': self.description,
@@ -42,6 +46,7 @@ class PlaceholderConfig(ConfigBase):
             type=data['type'],
             label=data['label'],
             is_global=data['is_global'],
+            persistence=data.get('persistence', 'session'),
             is_constant=data['is_constant'],
             constant_value=data['constant_value'],
             description=data['description'],

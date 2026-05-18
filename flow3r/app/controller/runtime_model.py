@@ -59,6 +59,8 @@ class Recording:
     stop: Subject
     start_time: Optional[datetime] = None
     stop_time: Optional[datetime] = None
+    acquisition_finished_time: Optional[datetime] = None
+    processing_finished_time: Optional[datetime] = None
     connections: Optional[List[DisposableBase]] = None
     pipeline_sub: Optional[PipelineSubscription] = None
     primary_finished: bool = False
@@ -99,8 +101,6 @@ class Session:
 
     # ---- set at session creation, frozen once recording starts ----
 
-    placeholder_recording_start_time: datetime = field(default_factory=datetime.now)
-
     # ---- written during recording ----
 
     recording: Optional[Recording] = None
@@ -111,11 +111,22 @@ class Session:
     # ------------------------------------------------------------------
 
     def get_placeholder_values(self) -> Dict[str, Any]:
-        """Return the per-session placeholder substitution values."""
-        return {
+        """Return all placeholder substitution values for this session.
+
+        Merges global placeholder values with per-session values.
+        Uses the recording's actual start time if the recording has started,
+        otherwise falls back to datetime.now() as an approximation (used when
+        previewing output file paths before recording begins).
+        """
+        start_time = (
+            self.recording.start_time
+            if self.recording is not None and self.recording.start_time is not None
+            else datetime.now()
+        )
+        return self.global_placeholder_values | {
             "group_name": self.group_name,
             "recording_number": str(self.recording_number),
-            "recording_start_time": self.placeholder_recording_start_time.strftime("%Y%m%d-%H%M%S"),
+            "recording_start_time": start_time.strftime("%Y-%m-%dT%H-%M-%S"),
         }
 
 
@@ -138,7 +149,7 @@ class Group:
     # ---- sessions ----
 
     sessions: Dict[str, "Session"] = field(default_factory=dict)
-    recording_number: int = 0
+    next_recording_number: int = 1
     active_session_id: Optional[str] = None
 
     # ---- config snapshots (written by the controller, read by runtime ops) ----
@@ -173,6 +184,11 @@ class Group:
     # Ordered list of source IDs that belong to this group.
     source_ids: List[str] = field(default_factory=list)
 
+    # Names of all non-constant user-defined placeholders that must have a
+    # value before recording can start.  Snapshot of config.placeholders,
+    # kept up to date by sync_group_snapshot on every commit.
+    required_placeholder_names: List[str] = field(default_factory=list)
+
     # ---- mutable fields kept in sync from config ----
 
     recording_duration: Optional[float] = None
@@ -206,15 +222,15 @@ class Group:
 
     def new_session(self, active: bool = True) -> str:
         """Create and register a new session, returning its ID."""
-        self.recording_number += 1
         session_id = str(uuid.uuid4())
         self.sessions[session_id] = Session(
             group_id=self.group_id,
             session_id=session_id,
             group_name=self.group_name,
-            recording_number=self.recording_number,
+            recording_number=self.next_recording_number,
             recording_duration=self.recording_duration,
         )
+        self.next_recording_number += 1
         if active:
             self.active_session_id = session_id
         return session_id
