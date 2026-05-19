@@ -1,11 +1,12 @@
-:: The pyinstaller command is provided by the pyinstaller Python module, so the command needs to be executed inside the conda environment
 call conda activate Flow3R
-pyinstaller^
- --add-data "flow3r/app/res/flow3r.png;./flow3r/app/res"^
- --add-data "flow3r/app/res/flow3r.ico;./flow3r/app/res"^
- --add-data "flow3r/app/res/style.qss;./flow3r/app/res"^
- --onedir^
- --noconsole^
- --name "Flow3R"^
- --icon "flow3r/app/res/flow3r.ico"^
- main.py -y
+
+pyinstaller ^
+ --paths src ^
+ --add-data "src/flow3r/app/res/flow3r.png;flow3r/app/res" ^
+ --add-data "src/flow3r/app/res/flow3r.ico;flow3r/app/res" ^
+ --add-data "src/flow3r/app/res/style.qss;flow3r/app/res" ^
+ --onedir ^
+ --noconsole ^
+ --name "Flow3R" ^
+ --icon "src/flow3r/app/res/flow3r.ico" ^
+ src/main.py -y

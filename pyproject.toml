@@ -44,4 +44,4 @@ flow3r = "main:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["flow3r*"]
+include = ["src*"]
