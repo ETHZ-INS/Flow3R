@@ -8,4 +8,4 @@ pyinstaller^
  --noconsole^
  --name "Flow3Rb"^
  --icon "flow3r/app/res/flow3r.ico"^
- test_open_two_pyav_cameras.py -y
+ main.py -y
