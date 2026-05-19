@@ -256,13 +256,31 @@ class RuntimeController(QObject):
                 session.group_name = new_name
         self._emit_group_placeholder_values(group_id)
 
-    def propagate_recording_duration(self, group_id: str, new_duration: Optional[float]) -> None:
-        """Update the recording duration on all non-started sessions for this group."""
+    def propagate_recording_duration(
+        self,
+        group_id: str,
+        new_duration: Optional[float],
+        include_started: bool = False,
+    ) -> None:
+        """Update the recording duration for sessions in this group.
+
+        By default only sessions that have not yet started are updated.
+        When *include_started* is ``True``, sessions that are actively
+        recording (``Running`` state — i.e. started but not yet stopping)
+        are also updated.  Sessions in ``FinishingRecording`` or
+        ``FinishingProcessing`` are never touched.
+        """
         group = self.groups.get(group_id)
         if group is None:
             return
         for session in group.sessions.values():
             if not self._session_has_started(session):
+                session.recording_duration = new_duration
+            elif (
+                include_started
+                and session.recording is not None
+                and session.recording.stop_time is None
+            ):
                 session.recording_duration = new_duration
 
     def propagate_global_placeholder_values(self, new_global_values: Dict[str, str]) -> None:
@@ -1241,7 +1259,6 @@ class RuntimeController(QObject):
 
     @Slot(str, str)
     def stop_recording(self, group_id: str, session_id: str) -> None:
-        return
         group = self.groups.get(group_id)
         assert group is not None, f"Group {group_id} not found"
         session = group.sessions.get(session_id)

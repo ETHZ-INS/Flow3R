@@ -161,8 +161,8 @@ class GroupDelegate(QStyledItemDelegate):
 class GroupListDialog(Ui_GroupListDialog, QDialog):
     config_snapshot_requested = Signal()
 
-    group_added = Signal(GroupConfig)
-    group_edited = Signal(GroupConfig)
+    group_added = Signal(object)
+    group_edited = Signal(object, bool)  # group_config, change_running_duration
     group_removed = Signal(str)
 
     pipeline_assignment_changed = Signal(str, object, object)  # group_id, pipeline_ids, source_mapping
@@ -265,7 +265,7 @@ class GroupListDialog(Ui_GroupListDialog, QDialog):
         res = dialog.exec()
 
         if res == QDialog.DialogCode.Accepted:
-            self.group_edited.emit(group)
+            self.group_edited.emit(group, False)
 
     def remove_group(self):
         index = self.lst_groups.currentIndex()

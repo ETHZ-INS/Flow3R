@@ -57,7 +57,7 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
     source_edited = Signal(object)  # source config
 
     group_added = Signal(object)  # group config
-    group_edited = Signal(object)  # group config
+    group_edited = Signal(object, bool)  # group config, change_active_duration
 
     pipeline_added = Signal(object)  # pipeline config
     pipeline_edited = Signal(object)  # pipeline config
@@ -316,9 +316,18 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         if res == QDialog.DialogCode.Accepted:
             self.group_added.emit(group_config)
 
+    def _confirm_change_running_duration(self):
+        popup = QMessageBox(self)
+        popup.setWindowTitle("Change Running Duration")
+        popup.setText("Do you want to change the duration of the currently running recording?\nThis may immediately stop the recording if it's already past the new duration.")
+        popup.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        popup.setDefaultButton(QMessageBox.StandardButton.No)
+        return popup.exec() == QMessageBox.StandardButton.Yes
+
     def _edit_group(self, group_id: str):
-        group_config = deepcopy(self._config.all_groups.get(group_id))
-        assert group_config is not None
+        old_group_config = self._config.all_groups.get(group_id)
+        assert old_group_config is not None
+        group_config = deepcopy(old_group_config)
 
         existing_keys = {
             gc.recording_config.shortcut_key
@@ -329,8 +338,23 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         dialog.setWindowTitle("Edit Group")
         res = dialog.exec()
 
+        duration_changed = False
+        if group_config.recording_config.recording_mode != old_group_config.recording_config.recording_mode or \
+            group_config.recording_config.recording_duration != old_group_config.recording_config.recording_duration:
+            duration_changed = True
+
+        active_recording = False
+        for group_id, session_id in self._active_recordings:
+            if group_id == group_id:
+                active_recording = True
+                break
+
+        change_active_duration = False
+        if active_recording and duration_changed:
+            change_active_duration = self._confirm_change_running_duration()
+
         if res == QDialog.DialogCode.Accepted:
-            self.group_edited.emit(group_config)
+            self.group_edited.emit(group_config, change_active_duration)
 
     def _list_pipelines(self):
         pipeline_types = list(self.plugin_api.pipeline_types.get_pipeline_types().values())

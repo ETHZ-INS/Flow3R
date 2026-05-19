@@ -1,0 +1,23 @@
+# Internal ETH3RHub packages
+py3r_media @ git+https://github.com/ETHZ-INS/Py3R-Media.git@v0.5.0
+
+# Qt UI
+PySide6 >= 6.6
+
+# Video / audio I/O
+av >= 12.0
+opencv-python >= 4.8
+cv2_enumerate_cameras >= 0.1.7
+sounddevice >= 0.4
+soundfile >= 0.12
+pypylon >= 1.9
+
+# Scientific / numerics
+numpy >= 1.26
+pyqtgraph >= 0.13
+
+# Reactive streams
+reactivex >= 4.0
+
+# Serialisation
+pyyaml >= 6.0

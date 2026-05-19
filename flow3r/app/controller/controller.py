@@ -23,7 +23,7 @@ session-state calculation) are fully delegated to self.runtime
 import os
 from contextlib import contextmanager
 from copy import deepcopy
-from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, OrderedDict
 
 import yaml
 from PySide6.QtCore import QObject, Signal, Slot
@@ -36,7 +36,7 @@ from flow3r.app.config.group_config import GroupConfig
 from flow3r.app.config.pipeline_config import PipelineConfig
 from flow3r.app.config.placeholder_config import PlaceholderConfig
 from flow3r.app.config.source_config import SourceConfig
-from flow3r.app.controller.commit import ConfigChangeReply
+from flow3r.app.controller.commit import ConfigChangeReply, Transaction
 from flow3r.app.controller.config_diff import ChangeSet, EffectSet, calculate_effects, diff_config
 from flow3r.app.controller.runtime_controller import RuntimeController
 from flow3r.app.controller.session_state import SessionStateBase
@@ -177,7 +177,7 @@ class Controller(QObject):
         self._config = AppConfig()
 
         # Transaction state
-        self._draft: Optional[AppConfig] = None
+        self._draft: Optional[Transaction] = None
         self._in_tx: int = 0
 
         # Runtime layer — owns all live sources, groups, sessions, pipelines.
@@ -210,15 +210,20 @@ class Controller(QObject):
     # ------------------------------------------------------------------
 
     @contextmanager
-    def transaction(self, reply: Optional[ConfigChangeReply] = None) -> Iterator[AppConfig]:
-        """Context manager that yields a mutable draft config.
+    def transaction(self, reply: Optional[ConfigChangeReply] = None) -> Iterator[Transaction]:
+        """Context manager that yields a mutable :class:`Transaction`.
+
+        The transaction's ``config`` field is a deep-copy draft of the
+        committed config.  Callers edit ``tx.config`` and set any
+        per-transaction flags (e.g. ``tx.propagate_duration_group_ids``)
+        before the block exits.
 
         On clean exit the draft is committed (config signals are emitted and
         the runtime hook is called).  On exception the draft is discarded and
         the error signal is emitted.
 
-        Nested transactions reuse the same draft; only the outermost exit
-        triggers a commit.
+        Nested transactions reuse the same :class:`Transaction`; only the
+        outermost exit triggers a commit.
         """
         if self._in_tx != 0:
             self._in_tx += 1
@@ -229,7 +234,7 @@ class Controller(QObject):
             return
 
         self._in_tx = 1
-        self._draft = deepcopy(self._config)
+        self._draft = Transaction(config=deepcopy(self._config))
         try:
             assert self._draft is not None
             yield self._draft
@@ -245,8 +250,9 @@ class Controller(QObject):
             self._draft = None
             self._in_tx = 0
 
-    def _commit(self, new_config: AppConfig) -> None:
-        """Validate, diff and commit new_config, then reconcile the runtime."""
+    def _commit(self, tx: Transaction) -> None:
+        """Validate, diff and commit tx.config, then reconcile the runtime."""
+        new_config = tx.config
         old_config = self._config
 
         self._repair_config(new_config)
@@ -271,7 +277,7 @@ class Controller(QObject):
 
         try:
             try:
-                self._apply_runtime_changes(changes, effects, old_config, new_config)
+                self._apply_runtime_changes(changes, effects, old_config, new_config, tx.propagate_duration_group_ids)
             except Exception:
                 _logger.error("Runtime reconciliation failed after commit", exc_info=True)
         finally:
@@ -391,6 +397,7 @@ class Controller(QObject):
         effects: EffectSet,
         old: AppConfig,
         new: AppConfig,
+        propagate_duration_group_ids: Set[str],
     ) -> None:
         """Read the config diff and orchestrate the corresponding runtime operations."""
         rt = self.runtime  # local alias for brevity
@@ -433,9 +440,16 @@ class Controller(QObject):
         for group_id, new_name in changes.group_name_changed:
             rt.propagate_group_name(group_id, new_name)
 
-        # 6b. Propagate recording-duration changes to non-started sessions.
+        # 6b. Propagate recording-duration changes to sessions.
+        #     Non-started sessions always receive the update.
+        #     Running sessions (started but not yet stopping) receive the update
+        #     only when the user has explicitly opted in for that group.
         for group_id, (_old_dur, new_dur) in changes.group_recording_duration_changed.items():
-            rt.propagate_recording_duration(group_id, new_dur)
+            rt.propagate_recording_duration(
+                group_id,
+                new_dur,
+                include_started=(group_id in propagate_duration_group_ids),
+            )
 
         # 6c. Propagate global placeholder-value changes to non-started sessions.
         placeholder_context_changed = bool(
@@ -623,10 +637,10 @@ class Controller(QObject):
     @Slot(object)
     def set_settings(self, patch: Dict[Tuple[str, ...], Any]) -> None:
         assert all(isinstance(k, tuple) for k in patch.keys())
-        with self.transaction() as config:
+        with self.transaction() as tx:
             _logger.info("Settings change: %s", {str(k): v for k, v in patch.items()})
             for key_path, value in patch.items():
-                config.settings[key_path] = deepcopy(value)
+                tx.config.settings[key_path] = deepcopy(value)
 
     # ------------------------------------------------------------------
     # Config CRUD — sources
@@ -634,22 +648,22 @@ class Controller(QObject):
 
     @Slot(object)
     def add_source(self, source_config: SourceConfig, reply: Optional[ConfigChangeReply] = None) -> None:
-        with self.transaction(reply) as config:
-            assert source_config.id not in config.sources
-            config.sources[source_config.id] = source_config
+        with self.transaction(reply) as tx:
+            assert source_config.id not in tx.config.sources
+            tx.config.sources[source_config.id] = source_config
 
     @Slot(object)
     def edit_source(self, source_config: SourceConfig) -> None:
-        with self.transaction() as config:
-            assert source_config.id in config.sources
-            config.sources[source_config.id] = source_config
+        with self.transaction() as tx:
+            assert source_config.id in tx.config.sources
+            tx.config.sources[source_config.id] = source_config
 
     @Slot(str)
     def remove_source(self, source_id: str) -> None:
-        with self.transaction() as config:
-            assert source_id in config.sources
-            config.sources.pop(source_id, None)
-            config.implicit_groups.pop(source_id, None)
+        with self.transaction() as tx:
+            assert source_id in tx.config.sources
+            tx.config.sources.pop(source_id, None)
+            tx.config.implicit_groups.pop(source_id, None)
 
     @Slot(str)
     def setup_source(self, source_id: str) -> None:
@@ -671,31 +685,33 @@ class Controller(QObject):
 
     @Slot(object)
     def add_group(self, group_config: GroupConfig) -> None:
-        with self.transaction() as config:
-            assert group_config.id not in config.groups
-            config.groups[group_config.id] = group_config
+        with self.transaction() as tx:
+            assert group_config.id not in tx.config.groups
+            tx.config.groups[group_config.id] = group_config
 
     @Slot(object)
-    def edit_group(self, group_config: GroupConfig) -> None:
-        with self.transaction() as config:
-            assert group_config.id in config.all_groups
-            if group_config.id in config.groups:
-                config.groups[group_config.id] = group_config
-            elif group_config.id in config.implicit_groups:
-                config.implicit_groups[group_config.id] = group_config
+    def edit_group(self, group_config: GroupConfig, propagate_duration: bool = False) -> None:
+        with self.transaction() as tx:
+            assert group_config.id in tx.config.all_groups
+            if group_config.id in tx.config.groups:
+                tx.config.groups[group_config.id] = group_config
+            elif group_config.id in tx.config.implicit_groups:
+                tx.config.implicit_groups[group_config.id] = group_config
+            if propagate_duration:
+                tx.propagate_duration_group_ids.add(group_config.id)
 
     @Slot(str)
     def remove_group(self, group_id: str) -> None:
-        with self.transaction() as config:
-            assert group_id in config.groups
-            config.groups.pop(group_id, None)
+        with self.transaction() as tx:
+            assert group_id in tx.config.groups
+            tx.config.groups.pop(group_id, None)
 
     @Slot(str, object)
     def assign_group(self, source_id: str, group_id: Optional[str]) -> None:
-        with self.transaction() as config:
-            assert source_id in config.sources, f"SourceConfig {source_id} not found"
-            assert group_id is None or group_id in config.groups, f"GroupConfig {group_id} not found"
-            config.sources[source_id].group_id = group_id
+        with self.transaction() as tx:
+            assert source_id in tx.config.sources, f"SourceConfig {source_id} not found"
+            assert group_id is None or group_id in tx.config.groups, f"GroupConfig {group_id} not found"
+            tx.config.sources[source_id].group_id = group_id
 
     # ------------------------------------------------------------------
     # Config CRUD — pipelines
@@ -703,36 +719,36 @@ class Controller(QObject):
 
     @Slot(object)
     def add_pipeline(self, pipeline_config: PipelineConfig) -> None:
-        with self.transaction() as config:
-            assert pipeline_config.id not in config.pipelines
-            config.pipelines[pipeline_config.id] = pipeline_config
+        with self.transaction() as tx:
+            assert pipeline_config.id not in tx.config.pipelines
+            tx.config.pipelines[pipeline_config.id] = pipeline_config
 
     @Slot(object)
     def edit_pipeline(self, pipeline_config: PipelineConfig) -> None:
-        with self.transaction() as config:
-            assert pipeline_config.id in config.pipelines
-            config.pipelines[pipeline_config.id] = pipeline_config
+        with self.transaction() as tx:
+            assert pipeline_config.id in tx.config.pipelines
+            tx.config.pipelines[pipeline_config.id] = pipeline_config
 
     @Slot(str)
     def remove_pipeline(self, pipeline_id: str) -> None:
-        with self.transaction() as config:
-            assert pipeline_id in config.pipelines
-            config.pipelines.pop(pipeline_id, None)
+        with self.transaction() as tx:
+            assert pipeline_id in tx.config.pipelines
+            tx.config.pipelines.pop(pipeline_id, None)
 
     @Slot(str, object)
     def assign_pipeline_to_source(self, source_id: str, pipeline_id: Optional[str]) -> None:
-        with self.transaction() as config:
-            assert source_id in config.sources
-            assert source_id in config.implicit_groups
+        with self.transaction() as tx:
+            assert source_id in tx.config.sources
+            assert source_id in tx.config.implicit_groups
 
             if pipeline_id is None:
                 self.set_pipeline_assignment(source_id, set(), {})
                 return
 
-            assert pipeline_id in config.pipelines
+            assert pipeline_id in tx.config.pipelines
 
-            source_config = config.sources[source_id]
-            pipeline_config = config.pipelines[pipeline_id]
+            source_config = tx.config.sources[source_id]
+            pipeline_config = tx.config.pipelines[pipeline_id]
 
             assert len(pipeline_config.active_config.inputs) == 1
             input_name = pipeline_config.active_config.inputs[0]
@@ -750,10 +766,10 @@ class Controller(QObject):
         pipeline_ids: Set[str],
         source_mapping: Optional[Dict[str, Dict[str, str]]] = None,
     ) -> None:
-        with self.transaction() as config:
-            assert group_id in config.all_groups
-            assert all(pid in config.pipelines for pid in pipeline_ids)
-            group_config = config.all_groups[group_id]
+        with self.transaction() as tx:
+            assert group_id in tx.config.all_groups
+            assert all(pid in tx.config.pipelines for pid in pipeline_ids)
+            group_config = tx.config.all_groups[group_id]
             group_config.pipeline_ids = pipeline_ids
             group_config.source_mapping = source_mapping or {}
 
@@ -763,29 +779,29 @@ class Controller(QObject):
 
     @Slot(object)
     def add_placeholder(self, placeholder_config: PlaceholderConfig) -> None:
-        with self.transaction() as config:
-            assert placeholder_config.id not in config.placeholders
-            config.placeholders[placeholder_config.id] = placeholder_config
+        with self.transaction() as tx:
+            assert placeholder_config.id not in tx.config.placeholders
+            tx.config.placeholders[placeholder_config.id] = placeholder_config
 
     @Slot(object)
     def edit_placeholder(self, placeholder_config: PlaceholderConfig) -> None:
-        with self.transaction() as config:
-            assert placeholder_config.id in config.placeholders
-            config.placeholders[placeholder_config.id] = placeholder_config
+        with self.transaction() as tx:
+            assert placeholder_config.id in tx.config.placeholders
+            tx.config.placeholders[placeholder_config.id] = placeholder_config
 
     @Slot(str)
     def remove_placeholder(self, placeholder_id: str) -> None:
-        with self.transaction() as config:
-            assert placeholder_id in config.placeholders
-            config.placeholders.pop(placeholder_id, None)
+        with self.transaction() as tx:
+            assert placeholder_id in tx.config.placeholders
+            tx.config.placeholders.pop(placeholder_id, None)
 
     @Slot(list)
     def reorder_placeholders(self, ordered_ids: List[str]) -> None:
-        with self.transaction() as config:
-            config.placeholders = type(config.placeholders)(
-                (id, config.placeholders[id])
+        with self.transaction() as tx:
+            tx.config.placeholders = OrderedDict(
+                (id, tx.config.placeholders[id])
                 for id in ordered_ids
-                if id in config.placeholders
+                if id in tx.config.placeholders
             )
 
     @Slot(object, object)
@@ -795,20 +811,20 @@ class Controller(QObject):
         An empty string is treated as "unset": the key is removed from the
         stored dict so that callers can detect missing values via key absence.
         """
-        with self.transaction() as config:
+        with self.transaction() as tx:
             for placeholder_id, value in global_values.items():
                 if value:
-                    config.global_placeholder_values[placeholder_id] = value
+                    tx.config.global_placeholder_values[placeholder_id] = value
                 else:
-                    config.global_placeholder_values.pop(placeholder_id, None)
+                    tx.config.global_placeholder_values.pop(placeholder_id, None)
             for group_id, values in group_values.items():
-                if group_id not in config.group_placeholder_values:
-                    config.group_placeholder_values[group_id] = {}
+                if group_id not in tx.config.group_placeholder_values:
+                    tx.config.group_placeholder_values[group_id] = {}
                 for placeholder_id, value in values.items():
                     if value:
-                        config.group_placeholder_values[group_id][placeholder_id] = value
+                        tx.config.group_placeholder_values[group_id][placeholder_id] = value
                     else:
-                        config.group_placeholder_values[group_id].pop(placeholder_id, None)
+                        tx.config.group_placeholder_values[group_id].pop(placeholder_id, None)
 
     # ------------------------------------------------------------------
     # Runtime operations — delegated to self.runtime
@@ -854,8 +870,8 @@ class Controller(QObject):
         current_group_vals = self._config.group_placeholder_values.get(group_id, {})
         if not any(ph_id in current_group_vals for ph_id in recording_ph_ids):
             return
-        with self.transaction() as config:
-            group_vals = config.group_placeholder_values.get(group_id, {})
+        with self.transaction() as tx:
+            group_vals = tx.config.group_placeholder_values.get(group_id, {})
             for ph_id in recording_ph_ids:
                 group_vals.pop(ph_id, None)
 
@@ -891,15 +907,15 @@ class Controller(QObject):
     @Slot()
     def new_project(self) -> None:
         blank = AppConfig()
-        with self.transaction() as config:
-            config.settings = blank.settings
-            config.groups = blank.groups
-            config.implicit_groups = blank.implicit_groups
-            config.sources = blank.sources
-            config.pipelines = blank.pipelines
-            config.placeholders = blank.placeholders
-            config.global_placeholder_values = blank.global_placeholder_values
-            config.group_placeholder_values = blank.group_placeholder_values
+        with self.transaction() as tx:
+            tx.config.settings = blank.settings
+            tx.config.groups = blank.groups
+            tx.config.implicit_groups = blank.implicit_groups
+            tx.config.sources = blank.sources
+            tx.config.pipelines = blank.pipelines
+            tx.config.placeholders = blank.placeholders
+            tx.config.global_placeholder_values = blank.global_placeholder_values
+            tx.config.group_placeholder_values = blank.group_placeholder_values
         self.config_loaded.emit({})
 
     @Slot(str)
@@ -910,15 +926,15 @@ class Controller(QObject):
 
         new_config = AppConfig.from_dict(data["config"], self.config_types)
 
-        with self.transaction() as config:
-            config.settings = new_config.settings
-            config.groups = new_config.groups
-            config.implicit_groups = new_config.implicit_groups
-            config.sources = new_config.sources
-            config.pipelines = new_config.pipelines
-            config.placeholders = new_config.placeholders
-            config.global_placeholder_values = new_config.global_placeholder_values
-            config.group_placeholder_values = new_config.group_placeholder_values
+        with self.transaction() as tx:
+            tx.config.settings = new_config.settings
+            tx.config.groups = new_config.groups
+            tx.config.implicit_groups = new_config.implicit_groups
+            tx.config.sources = new_config.sources
+            tx.config.pipelines = new_config.pipelines
+            tx.config.placeholders = new_config.placeholders
+            tx.config.global_placeholder_values = new_config.global_placeholder_values
+            tx.config.group_placeholder_values = new_config.group_placeholder_values
 
         _logger.info("Config loaded successfully from: %s", config_file)
         self.config_loaded.emit(data["ui_state"])
