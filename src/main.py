@@ -1,5 +1,6 @@
 import os
 import sys
+from importlib.resources import files
 from pathlib import Path
 
 import av
@@ -27,8 +28,7 @@ if __name__ == "__main__":
     import logging
     _startup_logger = logging.getLogger("flow3r")
 
-    bundle_dir = Path(getattr(sys, '_MEIPASS', os.getcwd()))
-    res_folder = Path(os.path.abspath(os.path.join(bundle_dir, 'flow3r/app/res')))
+    res_folder = files("flow3r.app.res")
 
     _excepthook = sys.excepthook
 

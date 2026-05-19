@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "flow3r"
-version = "0.1.0"
+version = "0.2.0"
 authors = [
   { name="Marcel Schmutz", email="mschmut@ethz.ch" },
 ]
@@ -40,5 +40,12 @@ dependencies = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["src/"]
+where = ["src"]
 include = ["flow3r*"]
+
+[tool.setuptools.package-data]
+flow3r = [
+  "app/res/*.png",
+  "app/res/*.ico",
+  "app/res/*.qss",
+]
