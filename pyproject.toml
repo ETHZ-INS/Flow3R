@@ -43,5 +43,5 @@ dependencies = [
 flow3r = "main:main"
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["src*"]
+where = ["src/"]
+include = ["flow3r*"]
