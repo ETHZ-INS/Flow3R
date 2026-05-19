@@ -6,6 +6,6 @@ pyinstaller^
  --add-data "flow3r/app/res/style.qss;./flow3r/app/res"^
  --onedir^
  --noconsole^
- --name "Flow3Rb"^
+ --name "Flow3R"^
  --icon "flow3r/app/res/flow3r.ico"^
  main.py -y
