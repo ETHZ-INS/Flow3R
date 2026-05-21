@@ -9,7 +9,7 @@ from flow3r.app.config.group_config import GroupConfig
 from flow3r.app.layout.recording_controls_widget import Ui_RecordingControlsWidget
 from flow3r.app.controller.session_state import SessionStateBase, Ready, Running, AcquisitionFinished, \
     FinishingProcessing, \
-    FinishingRecording, NotReady, MissingPlaceholder, Error, ConfigError, InvalidPlaceholders, Started, StartFailed
+    FinishingRecording, NotReady, ViewerOnly, MissingPlaceholder, Error, ConfigError, InvalidPlaceholders, Started, StartFailed
 
 
 class ElidingLabel(QLabel):
@@ -197,7 +197,7 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
     def _update_btn_start(self):
         enabled = self.session_id is not None and isinstance(
             self.state, (Ready, StartFailed, Running, MissingPlaceholder)
-        )
+        ) and not isinstance(self.state, ViewerOnly)
         self.btn_start.setEnabled(enabled)
 
         if isinstance(self.state, Running):
@@ -244,6 +244,9 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
             else:
                 self.lbl_status.setFullText(f"Error: {self.state.message} - <a href=\"fill_placeholders\">Edit Placeholders</a>")
             self.lbl_status.setStyleSheet("QLabel { color: red; }")
+        elif isinstance(self.state, ViewerOnly):
+            self.lbl_status.setFullText("Viewer only — recording not available")
+            self.lbl_status.setStyleSheet("QLabel { color: grey; }")
         else:
             self.lbl_status.setFullText("")
             self.lbl_status.setStyleSheet("QLabel { color: black; }")

@@ -49,6 +49,13 @@ class NotReady(SessionStateBase):
     reason: str = "Not ready"
 
 @dataclass(kw_only=True, frozen=True)
+class ViewerOnly(SessionStateBase):
+    """All pipelines in this group support only preview — recording is not available.
+
+    The UI should hide recording controls entirely for groups in this state.
+    """
+
+@dataclass(kw_only=True, frozen=True)
 class Error(SessionStateBase):
     message: str = "Error"
 

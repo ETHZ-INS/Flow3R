@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, Any, Tuple, List, Set, Optional, Literal
+from typing import Dict, Any, Tuple, List, Set, Optional
 
 from flow3r.app.config.app_config import AppConfig
 from flow3r.app.config.group_config import GroupConfig
@@ -42,8 +42,6 @@ class ChangeSet:
 
 @dataclass(frozen=True)
 class EffectSet:
-    group_controls_changed: List[Tuple[str, Literal["hidden", "source", "bottom"], Optional[str]]]
-
     sources_requiring_rebuild: Dict[str, SourceConfig]
     source_previews_to_stop: Set[str]
     source_previews_to_start: Dict[str, SourceConfig]
@@ -71,16 +69,6 @@ def diff_by_id(old_map: Dict[str, Any], new_map: Dict[str, Any]):
         if old_map[_id] != new_map[_id]
     }
     return added, removed, updated
-
-
-def determine_location(sources: List[SourceConfig], pipelines: List[PipelineConfig]) -> Tuple[Literal["hidden", "source", "bottom"], Optional[str]]:
-    if len(sources) == 0 or len(pipelines) == 0:
-        return "hidden", None
-    elif len(sources) == 1:
-        #return "source", sources[0].id
-        return "bottom", None
-    else:
-        return "bottom", None
 
 
 def diff_config(old: AppConfig, new: AppConfig) -> ChangeSet:
@@ -188,27 +176,6 @@ def _group_source_ids(config: AppConfig, group_id: str) -> Set[str]:
     return {source_config.id for source_config in config.sources.values() if source_config.implicit_group_id == group_id}
 
 
-def _group_sources(config: AppConfig, group_id: str) -> List[SourceConfig]:
-    return [
-        source_config
-        for source_config in config.sources.values()
-        if source_config.group_id == group_id or source_config.id == group_id
-    ]
-
-
-def _group_pipelines(config: AppConfig, group_config: GroupConfig) -> List[PipelineConfig]:
-    return [
-        pipeline_config
-        for pipeline_config in config.pipelines.values()
-        if pipeline_config.id in group_config.pipeline_ids
-    ]
-
-
-def group_control_location(config: AppConfig, group_id: str) -> Tuple[Literal["hidden", "source", "bottom"], Optional[str]]:
-    group_config = config.all_groups[group_id]
-    return determine_location(_group_sources(config, group_id), _group_pipelines(config, group_config))
-
-
 def source_requires_rebuild(old_source_config: SourceConfig, new_source_config: SourceConfig) -> bool:
     return old_source_config.active_config != new_source_config.active_config
 
@@ -283,31 +250,8 @@ def group_requires_preview_start(changes: ChangeSet, group_id: str) -> bool:
     return group_id in changes.groups_added
 
 
-def group_controls_changes(
-    changes: ChangeSet,
-    old: AppConfig,
-    new: AppConfig,
-) -> List[Tuple[str, Literal["hidden", "source", "bottom"], Optional[str]]]:
-    changed_locations: List[Tuple[str, Literal["hidden", "source", "bottom"], Optional[str]]] = []
-    added_group_ids = set(changes.groups_added)
-
-    for group_id in new.all_groups:
-        new_location, new_source_id = group_control_location(new, group_id)
-
-        if group_id not in old.all_groups:
-            changed_locations.append((group_id, new_location, new_source_id))
-            continue
-
-        old_location, old_source_id = group_control_location(old, group_id)
-        if group_id in added_group_ids or old_location != new_location or old_source_id != new_source_id:
-            changed_locations.append((group_id, new_location, new_source_id))
-
-    return changed_locations
-
-
 def impacted_group_ids(
     changes: ChangeSet,
-    group_controls_changed: List[Tuple[str, Literal["hidden", "source", "bottom"], Optional[str]]],
     groups_requiring_session_state_refresh: Set[str],
     groups_requiring_preview_stop: Set[str],
     groups_requiring_preview_start: Set[str],
@@ -316,7 +260,6 @@ def impacted_group_ids(
     group_ids |= groups_requiring_session_state_refresh
     group_ids |= groups_requiring_preview_stop
     group_ids |= groups_requiring_preview_start
-    group_ids |= {group_id for group_id, _location, _source_id in group_controls_changed}
     group_ids |= {source_config.implicit_group_id for source_config in changes.sources_added.values()}
     group_ids |= {source_config.implicit_group_id for source_config in changes.sources_removed.values()}
     group_ids |= {old_source_config.implicit_group_id for old_source_config, _ in changes.sources_updated.values()}
@@ -334,7 +277,6 @@ def calculate_effects(
 
     rebuilt_sources = sources_requiring_rebuild(changes)
     rebuilt_source_ids = set(rebuilt_sources)
-    group_controls_changed = group_controls_changes(changes, old, new)
 
     groups_requiring_session_state_refresh = {
         group_id
@@ -361,7 +303,6 @@ def calculate_effects(
     source_previews_to_start = rebuilt_sources | changes.sources_added
 
     return EffectSet(
-        group_controls_changed=group_controls_changed,
         sources_requiring_rebuild=rebuilt_sources,
         source_previews_to_stop=source_previews_to_stop,
         source_previews_to_start=source_previews_to_start,
@@ -370,7 +311,6 @@ def calculate_effects(
         groups_requiring_preview_start=groups_requiring_preview_start,
         impacted_group_ids=impacted_group_ids(
             changes,
-            group_controls_changed,
             groups_requiring_session_state_refresh,
             groups_requiring_preview_stop,
             groups_requiring_preview_start,

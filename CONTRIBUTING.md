@@ -6,15 +6,17 @@ Thank you for your interest in contributing! This guide covers everything you ne
 
 ## Dev environment
 
-Flow3R runs inside the **`GrimaceRecorder`** conda environment.
+Flow3R uses **[uv](https://docs.astral.sh/uv/)** for environment and dependency management.
 
 ```bash
-conda create -n GrimaceRecorder python=3.11
-conda activate GrimaceRecorder
-pip install -e ".[dev]"   # installs the package + dev/docs extras
+# Install all dependencies (creates .venv automatically)
+uv sync --extra dev
+
+# Run any command inside the managed environment
+uv run python src/main.py
 ```
 
-All Python commands in this project must be run inside this environment. Prefix with `conda run -n GrimaceRecorder <command>` if the environment is not already activated.
+All Python commands in this project must be prefixed with `uv run` if the virtual environment is not already activated.
 
 ---
 
@@ -46,10 +48,10 @@ Layout files in `src/flow3r/app/layout/` are auto-generated from Qt Designer XML
 
 ```bash
 # Recompile all UI files at once (from repo root):
-conda run -n GrimaceRecorder src\flow3r\app\compile_ui.bat
+uv run src\flow3r\app\compile_ui.bat
 
 # Or compile a single file:
-conda run -n GrimaceRecorder pyside6-uic "src/flow3r/app/ui/MyDialog.ui" -o "src/flow3r/app/layout/my_dialog.py"
+uv run pyside6-uic "src/flow3r/app/ui/MyDialog.ui" -o "src/flow3r/app/layout/my_dialog.py"
 ```
 
 > **Gotcha:** Use PowerShell `[System.IO.File]::WriteAllText(...)` when editing `.ui` files programmatically. The standard file-edit tools may silently fail due to whitespace mismatches.
@@ -107,9 +109,7 @@ class MyDialog(Ui_MyDialog, QDialog):
 ## Building the docs locally
 
 ```bash
-conda activate GrimaceRecorder
-mkdocs serve
+uv run mkdocs serve
 ```
 
 Then open [http://127.0.0.1:8000](http://127.0.0.1:8000).
-

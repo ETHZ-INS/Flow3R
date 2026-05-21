@@ -4,11 +4,8 @@ from typing import Optional, Dict
 import reactivex as rx
 from py3r.media.video.ffmpeg_video_file_writer import FFmpegVideoFileWriter
 from reactivex import operators as ops
-from reactivex.disposable import CompositeDisposable
 from reactivex.scheduler import EventLoopScheduler
-
-from flow3r.core.api.app.session_context import ISessionContext
-from flow3r.core.pipeline.abc.pipeline import PipelineSubscription, PipelineBase, PreviewSubscription
+from flow3r.core.pipeline.abc.pipeline import ConfigureContext, PreviewContext, PipelineContext, PipelineBase
 from flow3r.core.streaming.abc.stream import IStream
 from flow3r.core.streaming.stream import Stream
 from flow3r.plugins.core.pipeline.record_video.config import RecordVideoConfig
@@ -30,24 +27,23 @@ class RecordVideoPipeline(PipelineBase[RecordVideoConfig]):
         self._main_scheduler = EventLoopScheduler()
         self._writer_scheduler = EventLoopScheduler()
 
-    def configure(self, session_context: ISessionContext, config: RecordVideoConfig):
-        self._config = config
+    def configure(self, context: ConfigureContext[RecordVideoConfig]) -> None:
+        self._config = context.config
 
-    def preview(self, session_context: ISessionContext, sources: Dict[str, IStream]) -> PreviewSubscription:
-        return PreviewSubscription(CompositeDisposable(), rx.from_list([None]))
+    def preview(self, context: PreviewContext[RecordVideoConfig], sources: Dict[str, IStream]) -> None:
+        context.register_done(rx.from_list([None]))
 
-    def build(self, session_context: ISessionContext, sources: Dict[str, IStream]) -> PipelineSubscription:
+    def build(self, context: PipelineContext[RecordVideoConfig], sources: Dict[str, IStream]) -> None:
         source = sources["Video"]
-        video_writer_sink = VideoWriterSink(Path(self._config.video_file), factory=video_writer_factory(self._config.video_quality))
+        video_writer_sink = VideoWriterSink(Path(context.config.video_file), factory=video_writer_factory(context.config.video_quality))
 
         shared_source = Stream(source.format, source.data.pipe(ops.observe_on(self._main_scheduler), ops.share()))
         video_writer_stream = Stream(source.format, shared_source.data.pipe(ops.observe_on(self._writer_scheduler)))
 
         video_writer_sub = video_writer_sink.subscribe(video_writer_stream)
 
-        disposable = CompositeDisposable(video_writer_sub)
-        primary_done = video_writer_sub.done
-        return PipelineSubscription(disposable, primary_done)
+        context.register_primary_done(video_writer_sub.done)
+        context.add_disposable(video_writer_sub.disposable)
 
     def dispose(self):
         pass

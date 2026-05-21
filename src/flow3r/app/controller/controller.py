@@ -504,12 +504,8 @@ class Controller(QObject):
         for group_id in effects.groups_requiring_preview_start:
             rt.start_pipeline_preview(group_id)
 
-        # 11. Update group-controls widget locations.
-        for group_id, location, source_id in effects.group_controls_changed:
-            try:
-                rt.widget_service.set_recording_controls_location(group_id, location, source_id)
-            except Exception as exc:
-                rt.set_group_runtime_error(group_id, rt._format_exception(exc))
+        # Location of recording-controls widgets is determined by the UI layer
+        # reacting to active_session_changed (ViewerOnly → hidden, else → bottom).
 
     # ------------------------------------------------------------------
     # Config repair & validation

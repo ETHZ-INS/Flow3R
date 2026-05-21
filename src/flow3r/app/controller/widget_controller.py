@@ -6,6 +6,7 @@ from typing import Dict, Optional, Literal, Tuple, List
 from PySide6.QtCore import QObject, Slot, Qt, Signal
 from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout
 
+from flow3r.app.controller.session_state import ViewerOnly
 from flow3r.app.visualization.source_widget import SourceWidget
 from flow3r.app.visualization.visualizer_widget import VisualizerWidget
 from flow3r.app.widgets.recording_controls_widget import RecordingControlsWidget
@@ -46,6 +47,10 @@ class WidgetController(QObject):
         self._visualizer_widgets: Dict[Tuple[str, str], VisualizerWidget] = {}
         self._recording_control_widgets: Dict[str, _RecordingControlsWidgetEntry] = {}
         self._group_order: List[str] = []
+        # Active session ID per group, kept in sync with active_session_changed.
+        # Used by _on_session_state_changed to filter out state updates for
+        # non-active (e.g. finished) sessions.
+        self._active_session_ids: Dict[str, Optional[str]] = {}
 
     def set_controller(self, controller):
         assert self._controller is None
@@ -53,6 +58,46 @@ class WidgetController(QObject):
         self.source_snapshot_requested.connect(controller.send_source_snapshot)
         self.group_snapshot_requested.connect(controller.send_group_snapshot)
         controller.config_changed.connect(self._on_config_changed)
+        controller.active_session_changed.connect(self._on_active_session_changed)
+        controller.active_session_snapshot.connect(self._on_active_session_changed)
+        controller.session_state_changed.connect(self._on_session_state_changed)
+
+    @Slot(str, str, object)
+    def _on_active_session_changed(self, group_id: str, session_id: str, state) -> None:
+        """Cache the active session ID and update recording-controls location.
+
+        Handles ``active_session_changed`` and ``active_session_snapshot``, both of
+        which always carry the active session's state, so no filtering is needed.
+        """
+        self._active_session_ids[group_id] = session_id
+        self._apply_recording_controls_location(group_id, state)
+
+    @Slot(str, str, object)
+    def _on_session_state_changed(self, group_id: str, session_id: str, state) -> None:
+        """Update recording-controls location on any session state change.
+
+        ``session_state_changed`` fires for all sessions including finished non-active
+        ones.  The cached active session ID is used to ignore updates that are not for
+        the currently active session, preventing a completing old recording from
+        un-hiding a viewer-only group.
+        """
+        if session_id != self._active_session_ids.get(group_id):
+            return
+        self._apply_recording_controls_location(group_id, state)
+
+    def _apply_recording_controls_location(self, group_id: str, state) -> None:
+        """Hide controls for ViewerOnly groups; show at bottom for all other states.
+
+        Skips groups whose widget is embedded in a source dock (``"source"`` location),
+        since that placement is managed by the source-widget teardown path.
+        """
+        entry = self._recording_control_widgets.get(group_id)
+        if entry is None or entry.location == "source":
+            return
+        if isinstance(state, ViewerOnly):
+            self.set_recording_controls_widget_location(group_id, "hidden")
+        else:
+            self.set_recording_controls_widget_location(group_id, "bottom")
 
     @Slot(object)
     def _on_config_changed(self, config) -> None:
@@ -197,6 +242,7 @@ class WidgetController(QObject):
 
     @Slot(str)
     def remove_recording_controls_widget(self, group_id: str) -> None:
+        self._active_session_ids.pop(group_id, None)
         entry = self._recording_control_widgets.pop(group_id, None)
         if entry:
             if entry.location == "source":

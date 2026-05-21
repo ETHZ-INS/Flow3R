@@ -25,7 +25,6 @@ from reactivex import Subject
 from PySide6.QtCore import QObject, Signal, Slot, Qt
 
 from flow3r.logger import get_logger
-from flow3r.app.api.app.session_context import SessionContext
 from flow3r.app.api.app.settings_view import SettingsView
 from flow3r.app.api.app.widget_service import WidgetService, SessionWidgetServiceWrapper
 from flow3r.app.api.plugins.plugins import PluginAPI
@@ -39,9 +38,10 @@ from flow3r.app.controller.runtime_model import Group, Preview, Recording, Sessi
 from flow3r.app.controller.session_state import (
     SessionStateBase,
     Running, FinishingRecording, FinishingProcessing, Finished,
-    Ready, StartFailed, NotReady, MissingPlaceholder, CircularDependency,
+    Ready, StartFailed, NotReady, ViewerOnly, MissingPlaceholder, CircularDependency,
 )
 from flow3r.core.pipeline.abc.pipeline import (
+    ConfigureContext, PreviewContext, PipelineContext,
     CompositePreviewSubscription, CompositePipelineSubscription,
 )
 from flow3r.core.placeholder.simple_placeholder_provider import SimplePlaceholderProvider
@@ -334,7 +334,7 @@ class RuntimeController(QObject):
             if not group.controls_initialized:
                 self.widget_service.add_recording_controls(group_id)
                 group.controls_initialized = True
-            self.widget_service.set_recording_controls_location(group_id, "bottom")
+            # Location is determined by the UI layer reacting to active_session_changed.
         except Exception as exc:
             self.set_group_runtime_error(group_id, self._format_exception(exc))
 
@@ -436,14 +436,18 @@ class RuntimeController(QObject):
             placeholder_provider = SimplePlaceholderProvider(placeholder_values)
 
             widget_service = SessionWidgetServiceWrapper(self.widget_service, group_id, "preview")
-            session_context = SessionContext(widget_service, SettingsView(self.runtime_settings))
 
             input_mapping = self._pipeline_input_mapping(group_id, pipeline_id)
             for input_name in active_config.inputs:
                 if input_name not in input_mapping:
                     raise Exception(f"Missing source assignment for input '{input_name}'")
 
-            pipeline.configure(session_context, active_config.resolve(placeholder_provider))
+            configure_ctx = ConfigureContext(
+                active_config.resolve(placeholder_provider),
+                SettingsView(self.runtime_settings),
+                widget_service,
+            )
+            pipeline.configure(configure_ctx)
         except PlaceholderResolutionError:
             # A missing/cyclic placeholder is a session-level problem;
             # _get_session_state reports it separately.  Clear any stale
@@ -695,18 +699,31 @@ class RuntimeController(QObject):
 
         # Ask each pipeline to build its preview subscription.
         try:
-            session_context = SessionContext(
-                SessionWidgetServiceWrapper(self.widget_service, group_id, "preview"),
-                SettingsView(self.runtime_settings),
-            )
+            active_session = group.active_session
+            try:
+                placeholder_values = resolve_placeholders(
+                    active_session.get_placeholder_values()
+                )
+                placeholder_provider = SimplePlaceholderProvider(placeholder_values)
+            except PlaceholderResolutionError:
+                return  # already surfaced via pipeline_errors; avoid duplicate error
+
+            settings_view = SettingsView(self.runtime_settings)
             preview_subs = []
             for pipeline_id in group.pipeline_ids:
                 pipeline = group.pipelines[pipeline_id]
+                if not pipeline.supports_preview:
+                    continue
                 name = group.pipeline_names.get(pipeline_id, pipeline_id)
+                active_config = group.pipeline_active_configs.get(pipeline_id)
                 try:
-                    sub = pipeline.preview(session_context, source_streams[pipeline_id])
-                    if sub is None:
-                        raise Exception(f"Pipeline '{name}' did not create a preview")
+                    ctx = PreviewContext(
+                        active_config.resolve(placeholder_provider),
+                        settings_view,
+                        SessionWidgetServiceWrapper(self.widget_service, group_id, "preview"),
+                    )
+                    pipeline.preview(ctx, source_streams[pipeline_id])
+                    preview_subs.append(ctx.build_subscription())
                 except Exception as exc:
                     for ps in preview_subs:
                         try:
@@ -716,7 +733,10 @@ class RuntimeController(QObject):
                     raise Exception(
                         f"Pipeline '{name}' preview failed: {self._format_exception(exc)}"
                     ) from exc
-                preview_subs.append(sub)
+
+            if not preview_subs:
+                return  # no pipeline in the group supports preview; nothing to start
+
             preview_sub = CompositePreviewSubscription(preview_subs)
         except Exception as exc:
             self._set_group_preview_error(group_id, self._format_exception(exc))
@@ -801,10 +821,7 @@ class RuntimeController(QObject):
                 )
 
         if not group.pipeline_ids:
-            return NotReady(
-                recording_number=session.recording_number, duration=duration,
-                reason="No pipelines configured",
-            )
+            return ViewerOnly(recording_number=session.recording_number, duration=duration)
 
         # --- Placeholder resolution (checked before pipeline_errors so that a
         #     missing/cyclic placeholder wins over any derivative pipeline error) ---
@@ -841,6 +858,14 @@ class RuntimeController(QObject):
                 recording_number=session.recording_number, duration=duration,
                 reason=f"Pipeline '{group.pipeline_names.get(pid, pid)}' is not ready: {msg}",
             )
+
+        # If every configured pipeline is viewer-only, recording is not available.
+        if all(
+            not group.pipelines[pid].supports_recording
+            for pid in group.pipeline_ids
+            if pid in group.pipelines
+        ):
+            return ViewerOnly(recording_number=session.recording_number, duration=duration)
 
         if group.preview_error:
             return NotReady(
@@ -1147,7 +1172,7 @@ class RuntimeController(QObject):
             return
 
         # Build gated source streams (one per pipeline input).
-        recording = Recording(Subject(), Subject())
+        recording = Recording(Subject(), Subject(), Subject())
         source_observables = []
         source_streams: Dict[str, Dict] = {}
         try:
@@ -1188,22 +1213,22 @@ class RuntimeController(QObject):
                 session.get_placeholder_values()
             )
             placeholder_provider = SimplePlaceholderProvider(placeholder_values)
-            session_context = SessionContext(
-                SessionWidgetServiceWrapper(self.widget_service, group_id, session_id),
-                SettingsView(self.runtime_settings),
-            )
+            settings_view = SettingsView(self.runtime_settings)
 
             pipeline_subs = []
             for pipeline_id in group.pipeline_ids:
                 active_config = group.pipeline_active_configs[pipeline_id]
                 name = group.pipeline_names.get(pipeline_id, pipeline_id)
                 pipeline = group.pipelines[pipeline_id]
+                if not pipeline.supports_recording:
+                    continue
+                resolved_config = active_config.resolve(placeholder_provider)
+                widget_svc = SessionWidgetServiceWrapper(self.widget_service, group_id, session_id)
                 try:
-                    pipeline.configure(session_context, active_config.resolve(placeholder_provider))
-                    sub = pipeline.build(session_context, source_streams[pipeline_id])
-                    if sub is None:
-                        raise Exception(f"Pipeline '{name}' did not create a recording subscription")
-                    pipeline_subs.append(sub)
+                    pipeline.configure(ConfigureContext(resolved_config, settings_view, widget_svc))
+                    build_ctx = PipelineContext(resolved_config, settings_view, widget_svc, recording.control)
+                    pipeline.build(build_ctx, source_streams[pipeline_id])
+                    pipeline_subs.append(build_ctx.build_subscription())
                 except Exception:
                     for ps in pipeline_subs:
                         try:
@@ -1212,11 +1237,15 @@ class RuntimeController(QObject):
                             traceback.print_exc()
                     raise
 
+            if not pipeline_subs:
+                raise Exception("No pipelines in this group support recording")
+
             recording.pipeline_sub = CompositePipelineSubscription(pipeline_subs)
             recording.start_time = datetime.now()
             recording.connections = [obs.connect() for obs in source_observables]
             session.recording = recording
             recording.start.on_next(None)
+            recording.control.on_next(None)
             self.recording_started.emit(group_id, session_id, recording.start_time)
             _logger.info(
                 "Recording started (group=%s, session=%s, started_at=%s)",
@@ -1274,6 +1303,8 @@ class RuntimeController(QObject):
                 session.recording.stop_time.isoformat(timespec="seconds"),
             )
             session.recording.stop.on_next(None)
+            if not session.recording.control.is_stopped:
+                session.recording.control.on_completed()
 
         self._update_session_state(group_id, session_id)
 

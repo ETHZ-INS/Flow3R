@@ -16,8 +16,7 @@ $content = $content -replace 'old string', 'new string'
 ## After every edit — recompile
 
 ```powershell
-conda run -n GrimaceRecorder pyside6-uic "src/flow3r/app/ui/MyDialog.ui" -o "src/flow3r/app/layout/my_dialog.py"
+uv run pyside6-uic "src/flow3r/app/ui/MyDialog.ui" -o "src/flow3r/app/layout/my_dialog.py"
 ```
 
 - Do **not** edit anything in `src/flow3r/app/layout/` — overwritten by the compiler.
-

@@ -57,6 +57,10 @@ class Recording:
 
     start: Subject
     stop: Subject
+    control: Subject
+    """Emits ``None`` once when the recording gate opens; completes when stop is requested.
+    Used to drive :class:`~flow3r.core.pipeline.abc.pipeline.PipelineContext`.
+    """
     start_time: Optional[datetime] = None
     stop_time: Optional[datetime] = None
     acquisition_finished_time: Optional[datetime] = None

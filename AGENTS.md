@@ -17,7 +17,7 @@ Before editing code:
 - Do **not** edit `.ui` files with standard text-replacement tools — use PowerShell `ReadAllText`/`WriteAllText`. See `docs/agent/ui-layer.md`.
 - All config mutations go through `Controller.transaction()` — never mutate `AppConfig` directly.
 - New config fields must have a default and be loaded with `data.get("field", default)` — never `data["field"]`.
-- Use `conda run -n GrimaceRecorder <cmd>` for all Python commands unless the environment is already active.
+- Use `uv run <cmd>` for all Python commands.
 - Use `@Slot(...)` on every slot method in `QObject` subclasses.
 - Log with `get_logger(__name__)` from `flow3r.logger` — never `print()`.
 - Raise `ConfigError` (from `flow3r.core.config.abc.config`) for config serialisation errors.
@@ -46,19 +46,19 @@ Before editing code:
 
 ```powershell
 # Run the application
-conda run -n GrimaceRecorder python src/main.py
+uv run python src/main.py
 
 # Recompile all .ui files
-conda run -n GrimaceRecorder src\flow3r\app\compile_ui.bat
+uv run src\flow3r\app\compile_ui.bat
 
 # Recompile a single .ui file
-conda run -n GrimaceRecorder pyside6-uic "src/flow3r/app/ui/MyDialog.ui" -o "src/flow3r/app/layout/my_dialog.py"
+uv run pyside6-uic "src/flow3r/app/ui/MyDialog.ui" -o "src/flow3r/app/layout/my_dialog.py"
 
 # Build and verify docs (warnings become errors)
-conda run -n GrimaceRecorder mkdocs build --strict
+uv run mkdocs build --strict
 
 # Serve docs locally
-conda run -n GrimaceRecorder mkdocs serve
+uv run mkdocs serve
 ```
 
 ---
@@ -87,5 +87,3 @@ Flow3R/
 ---
 
 *All further detail lives in `docs/agent/`. Read the relevant file before making changes.*
-
-
