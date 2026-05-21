@@ -220,6 +220,10 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
             QTimer.singleShot(0, lambda: self.ask_load_auto_save())
 
     def _build_settings_menus(self):
+        all_settings_menus = self.plugin_api.settings_menus.get_settings_menus()
+        if not all_settings_menus:
+            return
+
         top_level_menu = self.menuBar().addMenu("Settings")
 
         menus = {}
@@ -231,7 +235,7 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
                     return top_level_menu
                 return _get_menu(path[:-1]).addMenu(path[-1])
 
-        for settings_menu in self.plugin_api.settings_menus.get_settings_menus().values():
+        for settings_menu in all_settings_menus.values():
             parent_menu = _get_menu(settings_menu.path[:-1])
             action = parent_menu.addAction(settings_menu.path[-1])
             action.triggered.connect(lambda _, path=settings_menu.path: self._open_settings_menu(path))
@@ -344,8 +348,8 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
             duration_changed = True
 
         active_recording = False
-        for group_id, session_id in self._active_recordings:
-            if group_id == group_id:
+        for active_group_id, session_id in self._active_recordings:
+            if active_group_id == group_id:
                 active_recording = True
                 break
 
@@ -673,27 +677,31 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         pass
 
     def closeEvent(self, event):
-        if not self._closing and self._active_recordings:
-            count = len(self._active_recordings)
-            plural = "s" if count != 1 else ""
-            popup = QMessageBox(self)
-            popup.setWindowTitle("Recordings Still Active")
-            popup.setText(
-                f"{count} recording{plural} still active.\n\n"
-                "Stop all recordings and exit?"
-            )
-            popup.setStandardButtons(
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel
-            )
-            popup.setDefaultButton(QMessageBox.StandardButton.Cancel)
-            if popup.exec() != QMessageBox.StandardButton.Yes:
+        if not self._closing:
+            if not self._confirm_discard_unsaved_changes():
+                return
+
+            if self._active_recordings:
+                count = len(self._active_recordings)
+                plural = "s" if count != 1 else ""
+                popup = QMessageBox(self)
+                popup.setWindowTitle("Recordings Still Active")
+                popup.setText(
+                    f"{count} recording{plural} still active.\n\n"
+                    "Stop all recordings and exit?"
+                )
+                popup.setStandardButtons(
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel
+                )
+                popup.setDefaultButton(QMessageBox.StandardButton.Cancel)
+                if popup.exec() != QMessageBox.StandardButton.Yes:
+                    event.ignore()
+                    return
+                for group_id, session_id in list(self._active_recordings):
+                    self.stop_recording.emit(group_id, session_id)
+                self._closing = True
                 event.ignore()
                 return
-            for group_id, session_id in list(self._active_recordings):
-                self.stop_recording.emit(group_id, session_id)
-            self._closing = True
-            event.ignore()
-            return
 
         self.worker_thread.quit()
         self.worker_thread.wait(5000)  # 5-second grace period

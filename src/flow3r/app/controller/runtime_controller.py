@@ -872,6 +872,7 @@ class RuntimeController(QObject):
 
     def _update_session_state(self, group_id: str, session_id: str) -> None:
         state = self._get_session_state(group_id, session_id)
+        _logger.debug("Session state for '%s': %s", session_id, state)
         self.session_state_changed.emit(group_id, session_id, state)
 
     def _update_active_session(self, group_id: str) -> None:

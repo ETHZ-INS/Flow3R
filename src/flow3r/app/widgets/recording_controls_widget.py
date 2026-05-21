@@ -217,32 +217,32 @@ class RecordingControlsWidget(Ui_RecordingControlsWidget, QWidget):
             self.lbl_status.setFullText("Ready - <a href=\"fill_placeholders\">Edit Placeholders</a>")
             self.lbl_status.setStyleSheet("QLabel { color: black; }")
         elif isinstance(self.state, StartFailed):
-            self.lbl_status.setFullText(f"Start failed: {self.state.message}")
+            self.lbl_status.setFullText(f"Start failed: {self.state.message} - <a href=\"fill_placeholders\">Edit Placeholders</a>")
             self.lbl_status.setStyleSheet("QLabel { color: red; }")
         elif isinstance(self.state, Started):
             if isinstance(self.state, FinishingProcessing):
-                self.lbl_status.setFullText(f"Finishing processing ({self.state.processing_progress*100:.0f}%)...")
+                self.lbl_status.setFullText(f"Finishing processing ({self.state.processing_progress*100:.0f}%)... - <a href=\"fill_placeholders\">Edit placeholders for next recording</a>")
                 self.lbl_status.setStyleSheet("QLabel { color: orange; }")
             elif isinstance(self.state, FinishingRecording):
-                self.lbl_status.setFullText("Finishing recording...")
+                self.lbl_status.setFullText("Finishing recording... - <a href=\"fill_placeholders\">Edit placeholders for next recording</a>")
                 self.lbl_status.setStyleSheet("QLabel { color: green; }")
             else:
-                self.lbl_status.setFullText("Recording...")
+                self.lbl_status.setFullText("Recording... - <a href=\"fill_placeholders\">Edit placeholders for next recording</a>")
                 self.lbl_status.setStyleSheet("QLabel { color: green; }")
         elif isinstance(self.state, NotReady):
             if isinstance(self.state, MissingPlaceholder):
-                self.lbl_status.setFullText("Almost Ready: <a href=\"fill_placeholders\">Missing Information</a>")
+                self.lbl_status.setFullText("Almost Ready: <a href=\"fill_placeholders\">Missing Placeholders</a>")
                 self.lbl_status.setStyleSheet("QLabel { color: orange; }")
             else:
-                self.lbl_status.setFullText(f"Not Ready: {self.state.reason}")
+                self.lbl_status.setFullText(f"Not Ready: {self.state.reason} - <a href=\"fill_placeholders\">Edit Placeholders</a>")
                 self.lbl_status.setStyleSheet("QLabel { color: red; }")
         elif isinstance(self.state, Error):
             if isinstance(self.state, ConfigError):
-                self.lbl_status.setFullText(f"Config Error: <a href=\"config_error\">{self.state.message}</a>")
+                self.lbl_status.setFullText(f"Config Error: <a href=\"config_error\">{self.state.message}</a> - <a href=\"fill_placeholders\">Edit Placeholders</a>")
             elif isinstance(self.state, InvalidPlaceholders):
-                self.lbl_status.setFullText(f"Error: invalid placeholders: {', '.join(self.state.invalid_placeholders)}")
+                self.lbl_status.setFullText(f"Error: invalid placeholders: {', '.join(self.state.invalid_placeholders)} - <a href=\"fill_placeholders\">Edit Placeholders</a>")
             else:
-                self.lbl_status.setFullText(f"Error: {self.state.message}")
+                self.lbl_status.setFullText(f"Error: {self.state.message} - <a href=\"fill_placeholders\">Edit Placeholders</a>")
             self.lbl_status.setStyleSheet("QLabel { color: red; }")
         else:
             self.lbl_status.setFullText("")
