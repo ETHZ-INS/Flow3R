@@ -39,6 +39,13 @@ dependencies = [
     "pyyaml >= 6.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "mkdocs-material >= 9.5",
+    "mkdocstrings[python] >= 0.25",
+    "mkdocs-autorefs >= 1.0",
+]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["flow3r*"]
