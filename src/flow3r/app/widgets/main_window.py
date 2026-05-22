@@ -215,7 +215,7 @@ class MainWindow(Ui_WelfareRecorder, QMainWindow):
         self.add_log_entry("Application started", "INFO")
 
         if self.config_file is not None:
-            QTimer.singleShot(0, lambda: self.load_project())
+            QTimer.singleShot(0, lambda: self._load_project(self.config_file))
         elif AUTO_SAVE_FILE.exists():
             QTimer.singleShot(0, lambda: self.ask_load_auto_save())
 

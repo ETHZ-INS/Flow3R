@@ -33,6 +33,19 @@ if __name__ == "__main__":
     import logging
     _startup_logger = logging.getLogger("flow3r")
 
+    project_file = None
+    if len(sys.argv) > 1:
+        _startup_logger.info("Command line arguments: %s", sys.argv[1:])
+        try:
+            project_file = Path(sys.argv[1])
+        except Exception as e:
+            _startup_logger.warning("Failed to parse project file argument: %s", e)
+            project_file = None
+
+        if not project_file.is_file():
+            _startup_logger.warning("Provided project file %s does not exist or is not a file", project_file)
+            project_file = None
+
     res_folder = files("flow3r.app.res")
 
     _excepthook = sys.excepthook
@@ -72,7 +85,7 @@ if __name__ == "__main__":
         loaded_plugins.append(plugin)
 
     _startup_logger.info("Flow3R application starting")
-    window = MainWindow(api)
+    window = MainWindow(api, config_file=project_file)
     window.setWindowTitle("Flow3R")
     window.show()
 
