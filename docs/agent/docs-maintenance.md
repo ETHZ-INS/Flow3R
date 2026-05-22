@@ -25,7 +25,8 @@ Treat docs as part of the code. Update them in the same change — not afterward
 - `src/flow3r/core/source/abc/source_type.py` — `ISourceType`, `SourceType`
 - `src/flow3r/core/pipeline/abc/pipeline_type.py` — `IPipelineType`, `PipelineType`
 - `src/flow3r/core/source/abc/source.py` — `ISource`
-- `src/flow3r/core/pipeline/abc/pipeline.py` — `IPipeline`, `PipelineBase`, `PipelineSubscription`, `PreviewSubscription`
+- `src/flow3r/core/pipeline/abc/pipeline.py` — `IPipeline`, `PipelineBase`, `PipelineContext`, `PipelineSubscription`, `PreviewSubscription`
+- `src/flow3r/core/pipeline/iterative_pipeline.py` — `IterativePipeline`
 - `src/flow3r/core/config/abc/config.py` — `ConfigBase`
 - `src/flow3r/core/source/abc/source_config.py` — `SourceConfigBase`
 - `src/flow3r/core/pipeline/abc/pipeline_config.py` — `PipelineConfigBase`, `IPipelineConfig`
@@ -79,8 +80,7 @@ Treat docs as part of the code. Update them in the same change — not afterward
 ## Verifying the docs build
 
 ```powershell
-conda run -n GrimaceRecorder mkdocs build --strict
+uv run mkdocs build --strict
 ```
 
 `--strict` promotes warnings (broken links, missing docstrings) to errors. Fix all before finishing.
-

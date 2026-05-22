@@ -27,7 +27,7 @@ $content = $content -replace 'old string', 'new string'
 Then recompile:
 
 ```powershell
-conda run -n GrimaceRecorder pyside6-uic "src/flow3r/app/ui/MyDialog.ui" -o "src/flow3r/app/layout/my_dialog.py"
+uv run pyside6-uic "src/flow3r/app/ui/MyDialog.ui" -o "src/flow3r/app/layout/my_dialog.py"
 ```
 
 ## Adding a new dialog — checklist
@@ -43,4 +43,3 @@ conda run -n GrimaceRecorder pyside6-uic "src/flow3r/app/ui/MyDialog.ui" -o "src
 - Use `blockSignals(True) / blockSignals(False)` around programmatic `setChecked`, `setCurrentIndex`, `setKeySequence`, etc. to prevent re-entrant handlers.
 - Connect a signal/slot pair only once; call `disconnect()` before reconnecting if needed.
 - Write config state **before** calling `QMessageBox.exec()` — modal dialogs spin the Qt event loop.
-
