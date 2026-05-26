@@ -20,13 +20,13 @@ class ISource(Protocol[TDesc, TData]):
 
     @property
     def stream(self) -> IStream[TDesc, TData]:
-        """The reactive stream that emits ``(descriptor, data)`` pairs from this source."""
+        """The reactive stream that emits items from this source."""
         ...
 
     def open(self) -> None:
-        """Open/initialise the underlying device or file and start producing frames."""
+        """Open/initialize the underlying device or file and start producing items."""
         ...
 
     def close(self) -> None:
-        """Stop producing frames and release all resources held by this source."""
+        """Stop producing items and release all resources held by this source."""
         ...
