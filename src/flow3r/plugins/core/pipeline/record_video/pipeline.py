@@ -24,7 +24,6 @@ class RecordVideoPipeline(PipelineBase[RecordVideoConfig]):
     def __init__(self):
         self._config: Optional[RecordVideoConfig] = None
 
-        self._main_scheduler = EventLoopScheduler()
         self._writer_scheduler = EventLoopScheduler()
 
     def configure(self, context: ConfigureContext[RecordVideoConfig]) -> None:
@@ -37,9 +36,7 @@ class RecordVideoPipeline(PipelineBase[RecordVideoConfig]):
         source = sources["Video"]
         video_writer_sink = VideoWriterSink(Path(context.config.video_file), factory=video_writer_factory(context.config.video_quality))
 
-        shared_source = Stream(source.format, source.data.pipe(ops.observe_on(self._main_scheduler), ops.share()))
-        video_writer_stream = Stream(source.format, shared_source.data.pipe(ops.observe_on(self._writer_scheduler)))
-
+        video_writer_stream = Stream(source.format, source.data.pipe(ops.observe_on(self._writer_scheduler)))
         video_writer_sub = video_writer_sink.subscribe(video_writer_stream)
 
         context.register_primary_done(video_writer_sub.done)
